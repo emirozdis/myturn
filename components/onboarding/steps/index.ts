@@ -1,0 +1,10 @@
+export { Splash } from "./splash";
+export { InstallApp } from "./install-app";
+export { Welcome } from "./welcome";
+export { HowItWorks } from "./how-it-works";
+export { CreateOrJoin } from "./create-or-join";
+export { SetupName } from "./setup-name";
+export { PermNotifications } from "./permissions-notifications";
+export { PermCamera } from "./permissions-camera";
+export { PermGallery } from "./permissions-gallery";
+export { AllSet } from "./all-set";
