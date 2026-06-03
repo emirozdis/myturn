@@ -693,7 +693,7 @@ export function ProfilePage() {
         <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
 
         {/* profile header */}
-        <div style={{ padding: "16px 16px 0", display: "flex", alignItems: "flex-start", gap: 16 }}>
+        <div style={{ marginTop: "12px",padding: "16px 16px 0", display: "flex", alignItems: "flex-start", gap: 16 }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
             <div style={{ width: 100, height: 100, borderRadius: "50%", overflow: "hidden", border: "2.5px solid rgba(255,255,255,0.18)" }}>
               <img src="/profile.jpg" alt="Emir" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />

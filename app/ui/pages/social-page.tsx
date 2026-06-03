@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { UserPlus, Users, ArrowRight, X, Search, Check, Flame, Compass } from "lucide-react";
 import { ACCENT } from "../theme";
@@ -41,6 +41,7 @@ const TRENDING = [
 export function SocialPage() {
   const [activeTab, setActiveTab] = useState("Friends");
   const [joinCode, setJoinCode] = useState("");
+  const activeIndex = TABS.indexOf(activeTab);
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -78,9 +79,7 @@ export function SocialPage() {
                 </h3>
                 <button
                   className="text-black px-5 py-2 rounded-full text-[12px] font-bold transition-all active:scale-95"
-                  style={{
-                    background: ACCENT,
-                  }}
+                  style={{ background: ACCENT }}
                 >
                   Find Friends
                 </button>
@@ -184,9 +183,7 @@ export function SocialPage() {
             transition={{ duration: 0.2 }}
             className="flex flex-col gap-8 pb-24"
           >
-            {/* Create / Join Group Grid */}
             <div className="grid grid-cols-2 gap-3.5">
-              {/* Create */}
               <div
                 className="rounded-[24px] p-4 flex flex-col justify-between shadow-lg min-h-[140px] group cursor-pointer"
                 style={glassStyle(0.04, 20, 0.08)}
@@ -212,7 +209,6 @@ export function SocialPage() {
                 </button>
               </div>
 
-              {/* Join */}
               <div
                 className="rounded-[24px] p-4 flex flex-col justify-between shadow-lg min-h-[140px]"
                 style={glassStyle(0.04, 20, 0.08)}
@@ -244,7 +240,6 @@ export function SocialPage() {
               </div>
             </div>
 
-            {/* Your Groups */}
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-white text-[17px] font-bold tracking-tight">Your Groups</h2>
@@ -382,7 +377,6 @@ export function SocialPage() {
             transition={{ duration: 0.2 }}
             className="flex flex-col gap-8 pb-24"
           >
-            {/* Search */}
             <div className="relative">
               <input
                 type="text"
@@ -396,7 +390,6 @@ export function SocialPage() {
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/40" />
             </div>
 
-            {/* Trending Groups */}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <Compass size={18} className="text-[#e07c30]" />
@@ -457,40 +450,35 @@ export function SocialPage() {
         scrollbarWidth: "none",
       }}
     >
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-      ::-webkit-scrollbar { display: none; }
-    `,
-        }}
-      />
-
-
+      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
 
       {/* Tabs Switcher */}
-      <div className="flex items-center justify-between p-1.5 rounded-full mb-8 relative z-10 shadow-lg"
+      <div
+        className="flex items-center justify-between p-1.5 rounded-full mb-8 relative z-10 shadow-lg"
         style={glassStyle(0.02, 20, 0.05)}
       >
+        {/* Sliding indicator — always in DOM, driven by activeIndex */}
+        <motion.div
+          className="absolute top-1.5 bottom-1.5 rounded-full z-0 pointer-events-none"
+          animate={{
+            left: `calc(${activeIndex} * (100% / ${TABS.length}) + 6px)`,
+            width: `calc(100% / ${TABS.length} - 12px)`,
+          }}
+          transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+          style={{
+            background: ACCENT,
+            boxShadow: "0 2px 8px rgba(224,124,48,0.3), inset 0 1px 1px rgba(255,255,255,0.4)",
+          }}
+        />
         {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className="flex-1 relative text-center py-2 text-[12px] font-bold rounded-full transition-colors duration-300 z-10 focus:outline-none"
             style={{
-              color: activeTab === tab ? "#111" : "rgba(255,255,255,0.5)"
+              color: activeTab === tab ? "#111" : "rgba(255,255,255,0.5)",
             }}
           >
-            {activeTab === tab && (
-              <motion.div
-                layoutId="active-social-tab"
-                className="absolute inset-0 rounded-full z-[-1]"
-                style={{
-                  background: ACCENT,
-                  boxShadow: "0 2px 8px rgba(224,124,48,0.3), inset 0 1px 1px rgba(255,255,255,0.4)"
-                }}
-                transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-              />
-            )}
             {tab}
           </button>
         ))}
