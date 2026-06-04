@@ -21,18 +21,18 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "dayroll",
+  title: "MyTurn",
   description: "Never miss your turn to vlog with your group.",
   manifest: "/manifest.webmanifest",
   themeColor: "#080808",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "dayroll",
+    title: "MyTurn",
   },
   icons: {
-    icon: [{ url: "/icon-192x192.png", sizes: "192x192", type: "image/png" }],
-    apple: [{ url: "/icon-192x192.png", sizes: "192x192", type: "image/png" }],
+    icon: [{ url: "/logo.png", type: "image/png" }],
+    apple: [{ url: "/logo.png", type: "image/png" }],
   },
 };
 

@@ -1,1 +1,543 @@
-export { default } from "./ui/page";
+// Changelog:
+// - Fixed double-padding issue on the main wrapper that was mispositioning and squishing text horizontally.
+// - Abstracted intro slider buttons to absolute overlay with a gradient to seamlessly float above content.
+// - Added bottom padding (`pb-[130px]`) to Intro slides to prevent bottom text from being hidden behind the absolute controls.
+// - Refactored Intro image wrappers to use pure `h-full` scaling with `aspect-ratio` bounds, eliminating vertical squish/overflow on smaller heights.
+// - Replaced hardcoded text sizes with responsive scaling (`text-4xl sm:text-[38px]`) to ensure clean wrapping on varied devices.
+// - Removed customized colored shadows from buttons and replaced them with standard `shadow-lg` as requested.
+// - Replaced logo colored shadow glow with a neutral white glow.
+
+"use client";
+
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, EyeOff, Eye, Camera, User } from "lucide-react";
+import { ACCENT } from "@/lib/theme";
+import { glassStyle } from "@/components/shared/glass-style";
+import { useRouter } from "next/navigation";
+
+// --- Types ---
+type Step = "intro1" | "intro2" | "intro3" | "signin" | "signup" | "join";
+
+// --- Assets / SVGs ---
+const GoogleIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+  </svg>
+);
+
+const AppleIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+    <path d="M16.142 2.97c-.984 1.22-2.392 2.003-3.834 1.954-.216-1.41.455-2.85 1.4-3.778 1.002-1.002 2.45-1.636 3.794-1.558.232 1.44-.396 2.846-1.36 3.382zm1.666 10.428c-.035-2.58 2.073-3.837 2.167-3.896-1.182-1.748-3.033-1.988-3.712-2.016-1.576-.162-3.084.938-3.896.938-.813 0-2.05-.888-3.344-.863-1.688.026-3.242.99-4.116 2.525-1.782 3.106-.456 7.708 1.282 10.237.854 1.238 1.866 2.624 3.167 2.573 1.25-.05 1.74-.814 3.256-.814 1.516 0 1.954.814 3.28.79 1.352-.026 2.223-1.264 3.078-2.522 1.002-1.464 1.41-2.885 1.432-2.96-.03-.016-2.56-1.01-2.594-3.992z" />
+  </svg>
+);
+
+const FacebookIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2" xmlns="http://www.w3.org/2000/svg">
+    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+  </svg>
+);
+
+// --- Components ---
+
+function Dots({ total, current }: { total: number; current: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      {Array.from({ length: total }).map((_, i) => (
+        <motion.div
+          key={i}
+          animate={{
+            width: i === current ? 24 : 8,
+            backgroundColor: i === current ? ACCENT : "rgba(255,255,255,0.2)",
+          }}
+          transition={{ duration: 0.3 }}
+          className="h-2 rounded-full"
+        />
+      ))}
+    </div>
+  );
+}
+
+function InputField({ label, type = "text", placeholder, icon: Icon, isPassword }: any) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="flex flex-col gap-1.5 mb-4">
+      <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1">{label}</label>
+      <div className="relative">
+        <input
+          type={isPassword && !show ? "password" : type}
+          placeholder={placeholder}
+          style={glassStyle(0.04, 16, 0.08)}
+          className="w-full rounded-[18px] py-3.5 px-4 text-white text-[15px] outline-none transition-colors focus:border-[#e07c30]/50 placeholder:text-white/30"
+        />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShow(!show)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/70 transition-colors"
+          >
+            {show ? <Eye size={18} /> : <EyeOff size={18} />}
+          </button>
+        )}
+        {Icon && !isPassword && (
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40">
+            <Icon size={18} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- Screens ---
+
+function Intro1() {
+  return (
+    <div className="flex-1 flex flex-col justify-center min-h-0 pb-[130px]">
+      <div className="flex-1 flex items-center justify-center min-h-0 pt-4">
+        <div className="relative h-full w-full max-h-[200px] flex items-center justify-center">
+          <div className="relative h-full aspect-square flex items-center justify-center mb-4">
+            <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent rounded-[40px] blur-2xl" />
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="w-full h-full object-contain relative z-10 drop-shadow-2xl"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                e.currentTarget.parentElement?.classList.add("fallback-logo");
+              }}
+            />
+            <div className="fallback-logo-content hidden absolute inset-0 items-center justify-center z-10">
+              <Camera size={64} color="white" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex-shrink-0 mt-4">
+        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight">
+          One camera.<br />
+          One day.<br />
+          <span style={{ color: ACCENT }}>Your story.</span>
+        </h1>
+        <p className="text-white/60 text-[15px] sm:text-base leading-relaxed max-w-sm">
+          Every day, someone from your group vlogs their life. Randomly picked. Authentically yours.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Intro2() {
+  return (
+    <div className="flex-1 flex flex-col justify-center min-h-0 pb-[130px]">
+      <div className="flex-1 relative flex items-center justify-center w-full min-h-0 pt-4">
+        <div className="relative h-full w-full max-h-[300px] flex items-center justify-center">
+          <div className="relative h-full aspect-[4/5]">
+            {/* Main overlapping image */}
+            <motion.div 
+              animate={{ y: [-5, 5, -5], rotateZ: [-2, 2, -2] }}
+              transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+              style={glassStyle(0.06, 20, 0.1)}
+              className="absolute inset-0 rounded-[32px] overflow-hidden p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rotate-3 z-10"
+            >
+              <div className="relative w-full h-full rounded-[26px] overflow-hidden bg-black/50">
+                <img src="/image1.jpg" className="absolute inset-0 w-full h-full object-cover" alt="" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                <div className="absolute bottom-4 right-4 w-[22%] aspect-square min-w-[32px] bg-[#e07c30] rounded-full flex items-center justify-center border-[2px] border-[#111] shadow-lg">
+                  <Camera size={18} color="white" />
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Floating Avatars using percentages */}
+            <div className="absolute top-[0%] left-[0%] -translate-x-1/3 -translate-y-1/3 w-[30%] aspect-square rounded-full border-[3px] border-[#161618] overflow-hidden z-20 shadow-xl bg-black">
+              <img src="/profile.jpg" className="w-full h-full object-cover" alt="" />
+            </div>
+            <div className="absolute bottom-[5%] right-[0%] translate-x-1/3 translate-y-1/3 w-[25%] aspect-square rounded-full border-[3px] border-[#161618] overflow-hidden z-20 shadow-xl bg-black">
+              <img src="/profile.jpg" className="w-full h-full object-cover grayscale opacity-70" alt="" />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex-shrink-0 mt-8">
+        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight">
+          Random. Fun.<br />
+          <span style={{ color: ACCENT }}>Real.</span>
+        </h1>
+        <p className="text-white/60 text-[15px] sm:text-base leading-relaxed max-w-sm">
+          A new vlogger is picked randomly each day. It could be you!
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Intro3() {
+  return (
+    <div className="flex-1 flex flex-col justify-center min-h-0 pb-[130px]">
+      <div className="flex-1 relative flex items-center justify-center w-full min-h-0 pt-4">
+        <div className="relative h-full w-full max-h-[320px] flex items-center justify-center">
+          <div 
+            className="relative h-full aspect-[3/4] rounded-[24px] overflow-hidden flex flex-col p-2 shadow-2xl mx-auto"
+            style={glassStyle(0.04, 20, 0.1)}
+          >
+            <div className="flex items-center gap-2 px-2 py-2">
+              <div className="w-6 h-6 rounded-md bg-white/10 flex items-center justify-center text-[10px]">🏠</div>
+              <span className="text-white text-xs font-bold truncate">The Apartment</span>
+            </div>
+            <div className="relative flex-1 rounded-[16px] overflow-hidden bg-black/40 border border-white/5">
+              <img src="/image1.jpg" className="absolute inset-0 w-full h-full object-cover" alt="" />
+              <div className="absolute bottom-2 left-2 right-2 flex gap-1 z-10">
+                {["😮","😂","❤️"].map((e,i) => (
+                  <div key={i} className="w-6 h-6 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-[10px] border border-white/10">{e}</div>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 mt-2 h-[42px] flex-shrink-0">
+              <div className="flex-1 rounded-[14px] p-2 flex items-center gap-2 overflow-hidden" style={glassStyle(0.04, 10, 0.1)}>
+                 <img src="/profile.jpg" className="w-6 h-6 rounded-full object-cover flex-shrink-0" alt="" />
+                 <div className="flex flex-col min-w-0">
+                   <span className="text-white text-[10px] font-bold truncate">Emir</span>
+                   <span className="text-[#e07c30] text-[8px] truncate">3 day streak</span>
+                 </div>
+              </div>
+              <div className="flex-1 rounded-[14px] p-2 flex flex-col justify-center items-center" style={glassStyle(0.04, 10, 0.1)}>
+                <span className="text-white font-bold text-[11px] tracking-widest">08:44:05</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex-shrink-0 mt-8">
+        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight">
+          Watch. React.<br />
+          <span style={{ color: ACCENT }}>Stay connected.</span>
+        </h1>
+        <p className="text-white/60 text-[15px] sm:text-base leading-relaxed max-w-sm">
+          Watch their day unfold, react, and keep your friendship stronger.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
+  return (
+    <div className="flex-1 flex flex-col pt-4 min-h-0">
+      <button onClick={() => onNavigate("intro3")} className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-white mb-2 -ml-3 rounded-full hover:bg-white/10 transition-colors">
+        <ArrowLeft size={24} />
+      </button>
+      
+      <div className="mb-6 flex-shrink-0">
+        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Welcome back!</h1>
+        <p className="text-white/60 text-[15px] sm:text-base">Sign in to continue your journey</p>
+      </div>
+
+      <div className="flex-1 flex flex-col overflow-y-auto scrollbar-hide pb-8">
+        <InputField label="Email" placeholder="you@example.com" />
+        <InputField label="Password" placeholder="Enter your password" isPassword />
+        
+        <div className="flex justify-start mb-6 mt-1">
+          <button className="text-[#e07c30] text-[13px] font-semibold hover:underline">Forgot password?</button>
+        </div>
+
+        <button 
+          onClick={() => onNavigate("join")}
+          className="w-full py-4 rounded-full text-black font-bold text-[16px] transition-transform active:scale-[0.98] mb-8 shadow-lg flex-shrink-0"
+          style={{ background: ACCENT }}
+        >
+          Sign In
+        </button>
+
+        <div className="flex items-center gap-4 mb-8 flex-shrink-0">
+          <div className="flex-1 h-[1px] bg-white/10" />
+          <span className="text-white/40 text-[13px]">or continue with</span>
+          <div className="flex-1 h-[1px] bg-white/10" />
+        </div>
+
+        <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
+          {[GoogleIcon, AppleIcon, FacebookIcon].map((Icon, i) => (
+            <button 
+              key={i} 
+              style={glassStyle(0.04, 20, 0.1)}
+              className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+            >
+              <Icon />
+            </button>
+          ))}
+        </div>
+
+        <div className="text-center mt-auto flex-shrink-0 pt-4">
+          <span className="text-white/50 text-[14px]">Don't have an account? </span>
+          <button onClick={() => onNavigate("signup")} className="text-[#e07c30] text-[14px] font-bold hover:underline">Sign Up</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignUp({ onNavigate }: { onNavigate: (step: Step) => void }) {
+  return (
+    <div className="flex-1 flex flex-col pt-4 min-h-0">
+      <button onClick={() => onNavigate("intro3")} className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-white mb-2 -ml-3 rounded-full hover:bg-white/10 transition-colors">
+        <ArrowLeft size={24} />
+      </button>
+      
+      <div className="mb-6 flex-shrink-0">
+        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Create your account</h1>
+        <p className="text-white/60 text-[15px] sm:text-base">Join your group and start vlogging</p>
+      </div>
+
+      <div className="flex-1 flex flex-col overflow-y-auto scrollbar-hide pb-8">
+        <InputField label="Full Name" placeholder="Enter your name" />
+        <InputField label="Email" placeholder="you@example.com" />
+        <InputField label="Password" placeholder="Create a password" isPassword />
+        <InputField label="Confirm Password" placeholder="Confirm your password" isPassword />
+        
+        <button 
+          onClick={() => onNavigate("join")}
+          className="w-full mt-4 py-4 rounded-full text-black font-bold text-[16px] transition-transform active:scale-[0.98] mb-8 shadow-lg flex-shrink-0"
+          style={{ background: ACCENT }}
+        >
+          Sign Up
+        </button>
+
+        <div className="flex items-center gap-4 mb-8 flex-shrink-0">
+          <div className="flex-1 h-[1px] bg-white/10" />
+          <span className="text-white/40 text-[13px]">or continue with</span>
+          <div className="flex-1 h-[1px] bg-white/10" />
+        </div>
+
+        <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
+          {[GoogleIcon, AppleIcon, FacebookIcon].map((Icon, i) => (
+            <button 
+              key={i} 
+              style={glassStyle(0.04, 20, 0.1)}
+              className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+            >
+              <Icon />
+            </button>
+          ))}
+        </div>
+
+        <div className="text-center mt-auto flex-shrink-0 pt-4">
+          <span className="text-white/50 text-[14px]">Already have an account? </span>
+          <button onClick={() => onNavigate("signin")} className="text-[#e07c30] text-[14px] font-bold hover:underline">Sign In</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
+  const router = useRouter();
+  const [code, setCode] = useState("");
+
+  const handleJoin = () => {
+    router.push("/today");
+  };
+
+  return (
+    <div className="flex-1 flex flex-col pt-4 min-h-0">
+      <button onClick={() => onNavigate("signup")} className="w-10 h-10 flex-shrink-0 flex items-center justify-center text-white mb-2 -ml-3 rounded-full hover:bg-white/10 transition-colors">
+        <ArrowLeft size={24} />
+      </button>
+      
+      <div className="mb-6 flex-shrink-0">
+        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Join your group</h1>
+        <p className="text-white/60 text-[15px] sm:text-base">Enter the invite code from your friends</p>
+      </div>
+
+      <div className="flex-1 flex flex-col overflow-y-auto scrollbar-hide pb-8">
+        <div className="flex-1 flex flex-col items-center justify-center py-4 mb-6 relative min-h-[160px]">
+          {/* Network Graphic - Fully Responsive */}
+          <div className="relative h-full aspect-square max-h-[200px] w-full max-w-[200px] mx-auto">
+            <svg className="absolute inset-0 w-full h-full text-white/15" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+              <line x1="50" y1="50" x2="50" y2="15" stroke="currentColor" strokeWidth="0.8" strokeDasharray="2 2" />
+              <line x1="50" y1="50" x2="20" y2="45" stroke="currentColor" strokeWidth="0.8" strokeDasharray="2 2" />
+              <line x1="50" y1="50" x2="80" y2="45" stroke="currentColor" strokeWidth="0.8" strokeDasharray="2 2" />
+              <line x1="50" y1="50" x2="30" y2="80" stroke="currentColor" strokeWidth="0.8" strokeDasharray="2 2" />
+              <line x1="50" y1="50" x2="70" y2="80" stroke="currentColor" strokeWidth="0.8" strokeDasharray="2 2" />
+            </svg>
+            
+            {/* Center User */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[28%] aspect-square rounded-full bg-[#111] border-[3px] border-[#e07c30] z-10 flex items-center justify-center overflow-hidden shadow-xl">
+              <User size={24} className="text-[#e07c30]" />
+            </div>
+            
+            {/* Network Nodes exactly mapped to line ends */}
+            <div className="absolute top-[15%] left-[50%] -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
+              <img src="/profile.jpg" className="w-full h-full object-cover" alt=""/>
+            </div>
+            <div className="absolute top-[45%] left-[20%] -translate-x-1/2 -translate-y-1/2 w-[16%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
+              <img src="/image1.jpg" className="w-full h-full object-cover" alt=""/>
+            </div>
+            <div className="absolute top-[45%] left-[80%] -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
+              <img src="/profile.jpg" className="w-full h-full object-cover" alt=""/>
+            </div>
+            <div className="absolute top-[80%] left-[30%] -translate-x-1/2 -translate-y-1/2 w-[18%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
+              <img src="/image1.jpg" className="w-full h-full object-cover" alt=""/>
+            </div>
+            <div className="absolute top-[80%] left-[70%] -translate-x-1/2 -translate-y-1/2 w-[16%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
+              <img src="/profile.jpg" className="w-full h-full object-cover" alt=""/>
+            </div>
+            
+            <div className="absolute top-[15%] right-[15%] text-[#e07c30]/50 animate-pulse">✨</div>
+            <div className="absolute bottom-[20%] left-[10%] text-[#e07c30]/50 animate-pulse" style={{ animationDelay: '1s' }}>✨</div>
+          </div>
+        </div>
+
+        <div className="w-full flex-shrink-0 mt-auto">
+          <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1 block mb-1.5">Enter invite code</label>
+          <input
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="e.g. A1B2-C3D4"
+            style={glassStyle(0.04, 16, 0.08)}
+            className="w-full rounded-[18px] py-3.5 px-4 text-white text-[15px] outline-none transition-colors focus:border-[#e07c30]/50 placeholder:text-white/30 text-center uppercase tracking-widest font-mono mb-6"
+          />
+          
+          <button 
+            onClick={handleJoin}
+            disabled={code.length < 4}
+            className={`w-full py-4 rounded-[18px] font-bold text-[16px] transition-all mb-6 ${
+              code.length >= 4 
+                ? "bg-[#e07c30] text-black active:scale-[0.98] shadow-lg" 
+                : "bg-white/5 text-white/30 border border-white/5"
+            }`}
+          >
+            Join Group
+          </button>
+
+          <div className="flex items-center gap-4 mb-6">
+            <div className="flex-1 h-[1px] bg-white/10" />
+            <span className="text-white/40 text-[13px]">or</span>
+            <div className="flex-1 h-[1px] bg-white/10" />
+          </div>
+
+          <button 
+            onClick={handleJoin}
+            style={glassStyle(0.02, 16, 0.1)}
+            className="w-full py-4 rounded-[18px] font-bold text-[16px] transition-transform active:scale-[0.98] border border-[#e07c30]/50 text-[#e07c30] hover:bg-[#e07c30]/10"
+          >
+            Create a New Group
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Main Page Wrapper ---
+
+export default function OnboardingPage() {
+  const [step, setStep] = useState<Step>("intro1");
+  const [direction, setDirection] = useState(1);
+
+  const navigate = (newStep: Step) => {
+    const order: Record<Step, number> = { intro1: 0, intro2: 1, intro3: 2, signin: 3, signup: 3, join: 4 };
+    setDirection(order[newStep] >= order[step] ? 1 : -1);
+    setStep(newStep);
+  };
+
+  const variants = {
+    enter: (dir: number) => ({
+      x: dir > 0 ? "100%" : "-100%",
+      opacity: 0,
+    }),
+    center: {
+      zIndex: 1,
+      x: 0,
+      opacity: 1,
+    },
+    exit: (dir: number) => ({
+      zIndex: 0,
+      x: dir < 0 ? "100%" : "-100%",
+      opacity: 0,
+    }),
+  };
+
+  const renderStep = () => {
+    switch (step) {
+      case "intro1":
+        return <Intro1 />;
+      case "intro2":
+        return <Intro2 />;
+      case "intro3":
+        return <Intro3 />;
+      case "signin":
+        return <SignIn onNavigate={navigate} />;
+      case "signup":
+        return <SignUp onNavigate={navigate} />;
+      case "join":
+        return <JoinGroup onNavigate={navigate} />;
+      default:
+        return null;
+    }
+  };
+
+  const isIntro = step.startsWith("intro");
+  const introIndex = isIntro ? parseInt(step.replace("intro", "")) - 1 : -1;
+
+  return (
+    <div className="min-h-screen bg-black flex items-center justify-center p-0 sm:p-4 overflow-hidden select-none">
+      <div
+        className="relative w-full sm:w-[393px] h-[100dvh] sm:h-[812px] sm:rounded-[48px] overflow-hidden flex flex-col transition-all duration-300 bg-[#161618]"
+        style={{
+          boxShadow: "inset 0 2px 6px rgba(255,255,255,0.1), 0 30px 60px -12px rgba(0,0,0,1), 0 0 0 1px rgba(255,255,255,0.05)",
+        }}
+      >
+        <div className="flex-1 relative flex flex-col overflow-hidden h-full">
+          <AnimatePresence initial={false} custom={direction} mode="popLayout">
+            <motion.div
+              key={step}
+              custom={direction}
+              variants={variants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{
+                x: { type: "spring", stiffness: 300, damping: 30 },
+                opacity: { duration: 0.2 },
+              }}
+              className="absolute inset-0 flex flex-col p-6 overflow-hidden"
+            >
+              {renderStep()}
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Intro Fixed Bottom Area */}
+          <AnimatePresence>
+            {isIntro && (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 20 }}
+                className="absolute bottom-0 left-0 right-0 z-10 flex flex-col px-6 pb-8 pt-12 pointer-events-none bg-gradient-to-t from-[#161618] via-[#161618]/90 to-transparent"
+              >
+                <div className="flex items-center justify-between pointer-events-auto">
+                  <Dots total={3} current={introIndex} />
+                </div>
+                <button
+                  onClick={() => {
+                    if (step === "intro1") navigate("intro2");
+                    else if (step === "intro2") navigate("intro3");
+                    else navigate("signup");
+                  }}
+                  className="w-full mt-8 py-4 rounded-full text-black font-bold text-[16px] transition-transform active:scale-[0.98] shadow-lg pointer-events-auto"
+                  style={{ background: ACCENT }}
+                >
+                  {step === "intro3" ? "Get Started" : "Next"}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  );
+}
