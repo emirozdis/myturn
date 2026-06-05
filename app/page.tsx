@@ -1,12 +1,3 @@
-// Changelog:
-// - Fixed double-padding issue on the main wrapper that was mispositioning and squishing text horizontally.
-// - Abstracted intro slider buttons to absolute overlay with a gradient to seamlessly float above content.
-// - Added bottom padding (`pb-[130px]`) to Intro slides to prevent bottom text from being hidden behind the absolute controls.
-// - Refactored Intro image wrappers to use pure `h-full` scaling with `aspect-ratio` bounds, eliminating vertical squish/overflow on smaller heights.
-// - Replaced hardcoded text sizes with responsive scaling (`text-4xl sm:text-[38px]`) to ensure clean wrapping on varied devices.
-// - Removed customized colored shadows from buttons and replaced them with standard `shadow-lg` as requested.
-// - Replaced logo colored shadow glow with a neutral white glow.
-
 "use client";
 
 import { useState } from "react";

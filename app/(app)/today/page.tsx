@@ -181,16 +181,16 @@ export default function TodayPage() {
             </button>
           </div>
 
-          <div style={glassStyle(0.04, 16, 0.08)} className="p-3 rounded-[20px] min-h-[118px] flex flex-col justify-between">
-            <div className="flex items-center gap-1.5 text-white mb-3">
+          <div style={glassStyle(0.04, 16, 0.08)} className="p-3 rounded-[20px] min-h-[118px] flex flex-col justify-between overflow-hidden">
+            <div className="flex items-center gap-1.5 text-white mb-3 flex-shrink-0">
               <Clock size={14} className="text-[#e07c30]" />
               <span className="text-[11px] font-bold tracking-wide">Time Left</span>
             </div>
-            <div className="flex flex-col flex-1 justify-center">
-              <div className="text-white font-black text-3xl leading-none tracking-tighter mb-2">
+            <div className="flex flex-col flex-1 justify-center items-center w-full min-w-0">
+              <div className="w-full mb-1.5">
                 <CountdownTimer />
               </div>
-              <div className="text-white/60 text-[10px] font-semibold tracking-wide">until day ends</div>
+              <div className="text-white/60 text-[9px] sm:text-[10px] font-semibold tracking-wide text-center">until day ends</div>
             </div>
           </div>
         </div>

@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Camera, Pencil, MapPin, Calendar, Clapperboard, Flame, Users,
+  Camera, Pencil, MapPin, Calendar, Clapperboard, Users,
   LogOut, ChevronRight, UserCircle, IdCard, Lock, Bell, Palette,
-  Moon, Sun, Check, Eye, EyeOff, ChevronLeft, Star, Bookmark, Play,
+  Moon, Check, ChevronLeft, Star, Bookmark, Play, Crown
 } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 
-type ActivityTab = "vlogs" | "streaks" | "groups" | "saved";
+type ActivityTab = "vlogs" | "rank" | "groups" | "saved";
 type Panel = "editProfile" | "accountDetails" | "privacy" | "notifications" | "theme" | "logoutConfirm" | null;
 
 const VLOGS = [
@@ -128,14 +128,6 @@ function SlidePanel({ title, onBack, children }: { title: string; onBack: () => 
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <p style={{ color: "rgba(255,255,255,0.40)", fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 8px", padding: "0 16px" }}>
-      {children}
-    </p>
-  );
-}
-
 function Divider() {
   return <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: 0 }} />;
 }
@@ -153,7 +145,7 @@ function EditProfilePanel({ onBack }: { onBack: () => void }) {
     <SlidePanel title="Edit Profile" onBack={onBack}>
       <div style={{ display: "flex", flexDirection: "column" as const, gap: 24 }}>
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 4 }}>
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative", margin: "0 auto" }}>
             <div style={{ width: 90, height: 90, borderRadius: "50%", overflow: "hidden", border: "2.5px solid rgba(255,255,255,0.18)" }}>
               <img src="/profile.jpg" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
@@ -220,35 +212,54 @@ function VlogsGrid() {
   );
 }
 
-function StreaksContent() {
+function RankContent() {
+  const currentVlogs = 36;
+  const nextRankGoal = 50;
+  const progressPercent = (currentVlogs / nextRankGoal) * 100;
+
   return (
     <div style={{ display: "flex", flexDirection: "column" as const, gap: 14 }}>
-      <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, display: "flex", alignItems: "center" }}>
-        {[
-          { label: "Current", value: "3", unit: "days", color: ACCENT },
-          { label: "Best",    value: "12", unit: "days", color: "#fff" },
-          { label: "Total",   value: "36", unit: "vlogs", color: "#fff" },
-        ].map((item, i, arr) => (
-          <div key={item.label} style={{ flex: 1, display: "flex", flexDirection: "row" as const }}>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 4, padding: "16px 8px" }}>
-              <span style={{ color: "rgba(255,255,255,0.45)", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{item.label}</span>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
-                <span style={{ color: item.color, fontSize: 26, fontWeight: 800, lineHeight: 1 }}>{item.value}</span>
-                <span style={{ color: "rgba(255,255,255,0.40)", fontSize: 10 }}>{item.unit}</span>
-              </div>
-              {item.label === "Current" && <Flame size={14} color={ACCENT} fill={ACCENT} />}
+      {/* Level Progress Card */}
+      <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, padding: "16px", display: "flex", flexDirection: "column" as const, gap: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 46, height: 46, borderRadius: 14, background: "linear-gradient(135deg, rgba(224,124,48,0.2) 0%, rgba(224,124,48,0.05) 100%)", border: "1px solid rgba(224,124,48,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Crown size={22} color={ACCENT} />
             </div>
-            {i < arr.length - 1 && <div style={{ width: 1, background: "rgba(255,255,255,0.07)", margin: "12px 0" }} />}
+            <div>
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>Current Level</p>
+              <p style={{ color: "#fff", fontSize: 20, fontWeight: 800, margin: 0, lineHeight: 1 }}>Epic</p>
+            </div>
           </div>
-        ))}
+          <div style={{ textAlign: "right" }}>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>Total Vlogs</p>
+            <p style={{ color: "#fff", fontSize: 20, fontWeight: 800, margin: 0, lineHeight: 1 }}>{currentVlogs}</p>
+          </div>
+        </div>
+
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 600 }}>Progress to Legendary</span>
+            <span style={{ color: ACCENT, fontSize: 11, fontWeight: 700 }}>{currentVlogs} / {nextRankGoal}</span>
+          </div>
+          <div style={{ height: 8, background: "rgba(0,0,0,0.3)", borderRadius: 4, overflow: "hidden", border: "1px solid rgba(255,255,255,0.05)" }}>
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${progressPercent}%` }}
+              transition={{ duration: 1, ease: "easeOut" }}
+              style={{ height: "100%", background: "linear-gradient(90deg, #ff9a44, #e07c30)", borderRadius: 4 }}
+            />
+          </div>
+        </div>
       </div>
 
+      {/* Calendar History Card */}
       <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, padding: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>April 2025</span>
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>April 2025 History</span>
           <div style={{ display: "flex", gap: 6 }}>
             {["‹", "›"].map(ch => (
-              <button key={ch} type="button" style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)", fontSize: 14, cursor: "pointer" }}>{ch}</button>
+              <button key={ch} type="button" style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.55)", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>{ch}</button>
             ))}
           </div>
         </div>
@@ -350,7 +361,7 @@ export default function ProfilePage() {
 
   const activityTabs = [
     { key: "vlogs" as const, label: "Vlogs" },
-    { key: "streaks" as const, label: "Streaks" },
+    { key: "rank" as const, label: "Rank" },
     { key: "groups" as const, label: "Groups" },
     { key: "saved" as const, label: "Saved" },
   ];
@@ -395,6 +406,10 @@ export default function ProfilePage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
               <span style={{ color: "#fff", fontSize: 26, fontWeight: 800, letterSpacing: "-0.5px", lineHeight: 1 }}>Emir</span>
+              <div style={{ background: "linear-gradient(90deg, #ff9a44 0%, #e07c30 100%)", padding: "3px 8px", borderRadius: 8, display: "flex", alignItems: "center", gap: 4, boxShadow: "0 2px 8px rgba(224,124,48,0.3)" }}>
+                <Crown size={12} color="#000" fill="#000" />
+                <span style={{ color: "#000", fontSize: 10, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase" }}>Epic</span>
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
               <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: 500 }}>@emirozdis</span>
@@ -419,7 +434,6 @@ export default function ProfilePage() {
           <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, display: "flex", alignItems: "stretch" }}>
             {[
               { icon: Clapperboard, value: 36, label: "Total Vlogs" },
-              { icon: Flame,        value: 3,  label: "Day Streak"  },
               { icon: Users,        value: 12, label: "Friends"     },
               { icon: Users,        value: 4,  label: "Groups"      },
             ].map((stat, i, arr) => (
@@ -470,10 +484,10 @@ export default function ProfilePage() {
           </div>
           <AnimatePresence mode="wait">
             <motion.div key={activityTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
-              {activityTab === "vlogs"   && <VlogsGrid />}
-              {activityTab === "streaks" && <StreaksContent />}
-              {activityTab === "groups"  && <GroupsContent />}
-              {activityTab === "saved"   && <SavedContent />}
+              {activityTab === "vlogs"  && <VlogsGrid />}
+              {activityTab === "rank"   && <RankContent />}
+              {activityTab === "groups" && <GroupsContent />}
+              {activityTab === "saved"  && <SavedContent />}
             </motion.div>
           </AnimatePresence>
         </div>
