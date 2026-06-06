@@ -1,12 +1,34 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Camera, CircleDot, Loader2, Sparkles, AlertCircle, RefreshCcw, Zap, MapPin } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useSession } from "next-auth/react";
+import { 
+  Camera, CircleDot, Loader2, AlertCircle, RefreshCcw, Zap, MapPin, 
+  ChevronRight, Check, Clock, Target, User, X, ArrowLeft
+} from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
-import { getOrCreateTodayAssignment, getSignedUploadUrls, createClip } from "@/actions/vlog";
+import { getOrCreateTodayAssignment, getSignedUploadUrls, createClip, addComment } from "@/actions/vlog";
+import { getUserGroups } from "@/actions/group";
+import { PROMPTS, ACCENT } from "@/lib/theme";
+
+function getCurrentTimePeriodLabel(): string {
+  const hours = new Date().getHours();
+  if (hours >= 9 && hours < 12) return "Morning Vlog (9AM - 12PM)";
+  if (hours >= 12 && hours < 15) return "Midday Vlog (12PM - 3PM)";
+  if (hours >= 15 && hours < 18) return "Afternoon Vlog (3PM - 6PM)";
+  if (hours >= 18 && hours < 21) return "Evening Vlog (6PM - 9PM)";
+  if (hours >= 21 && hours < 24) return "Late Night Vlog (9PM - 12AM)";
+  return "Early Morning Vlog (12AM - 9AM)";
+}
+
+function getDailyPrompt(): string {
+  const day = new Date().getDate();
+  return PROMPTS[day % PROMPTS.length];
+}
 
 export default function RecordPage() {
+  const { data: session } = useSession();
   const [step, setStep] = useState<"CAMERA" | "PREVIEW">("CAMERA");
   const [cameraFilter, setCameraFilter] = useState("Raw");
   const [isRecording, setIsRecording] = useState(false);
@@ -18,62 +40,142 @@ export default function RecordPage() {
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [locationName, setLocationName] = useState("Earth");
 
+  // Stable URL memory allocation reference
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
   const [error, setError] = useState("");
   const [assignment, setAssignment] = useState<any>(null);
   const [loadingAssignment, setLoadingAssignment] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  // Instagram-style Publish Flow states
+  const [userGroups, setUserGroups] = useState<any[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
+  const [isTurnAuthorized, setIsTurnAuthorized] = useState(true);
+  const [checkingTurn, setCheckingTurn] = useState(false);
+  const [showGroupDrawer, setShowGroupSelectorSheet] = useState(false);
+  const [caption, setCaption] = useState("");
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+
+  // Live Playbar state tracking
+  const miniVideoRef = useRef<HTMLVideoElement>(null);
+  const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
+  const [miniProgress, setMiniProgress] = useState(0);
+  const [fullProgress, setFullProgress] = useState(0);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Load today's assignment
-  const checkTurn = async (targetGroupId?: any) => {
-    let activeGroupId = typeof targetGroupId === "string" ? targetGroupId : null;
-    if (!activeGroupId && typeof window !== "undefined") {
-      activeGroupId = localStorage.getItem("active_group_id");
-    }
-    if (!activeGroupId) {
-      setError("Please choose or join a group first.");
-      setLoadingAssignment(false);
-      return;
-    }
-
-    setLoadingAssignment(true);
-    const res = await getOrCreateTodayAssignment(activeGroupId);
-    setLoadingAssignment(false);
-
-    if (res.error) {
-      setError(res.error);
-      setAssignment(null);
+  // Handle single-allocation, self-cleaning object URLs to prevent render-loop flashes
+  useEffect(() => {
+    if (recordedBlob) {
+      const url = URL.createObjectURL(recordedBlob);
+      setPreviewUrl(url);
+      return () => {
+        URL.revokeObjectURL(url);
+      };
     } else {
-      setAssignment(res.assignment);
-      setError("");
+      setPreviewUrl(null);
+    }
+  }, [recordedBlob]);
+
+  // Custom step changer to trigger layout transitions globally on parent frames
+  const handleStepChange = (newStep: "CAMERA" | "PREVIEW") => {
+    setStep(newStep);
+    window.dispatchEvent(new CustomEvent("record-step-changed", { detail: newStep }));
+  };
+
+  const handleMiniTimeUpdate = () => {
+    const vid = miniVideoRef.current;
+    if (vid && vid.duration) {
+      setMiniProgress((vid.currentTime / vid.duration) * 100);
     }
   };
 
-  // Initial load
-  useEffect(() => {
-    checkTurn();
+  const handleFullTimeUpdate = () => {
+    const vid = fullscreenVideoRef.current;
+    if (vid && vid.duration) {
+      setFullProgress((vid.currentTime / vid.duration) * 100);
+    }
+  };
 
-    const handleGroupChange = (e: Event) => {
-      const customEvent = e as CustomEvent<any>;
-      if (customEvent.detail) {
-        checkTurn(customEvent.detail);
+  // Check turn constraints dynamically for the chosen group
+  const checkGroupTurn = async (groupId: string) => {
+    setCheckingTurn(true);
+    setError("");
+    try {
+      const res = await getOrCreateTodayAssignment(groupId);
+      if (res.error) {
+        setIsTurnAuthorized(false);
+        setError(res.error);
+        setAssignment(null);
+      } else if (res.success && res.assignment) {
+        setAssignment(res.assignment);
+        // Verify if today's turn belongs to current user
+        const isAuthorized = res.assignment.userId === session?.user?.id;
+        setIsTurnAuthorized(isAuthorized);
+        if (!isAuthorized) {
+          setError(`Today's turn belongs to @${res.assignment.user?.name || "another friend"}.`);
+        } else {
+          setError("");
+        }
       }
-    };
+    } catch (err) {
+      setError("Failed to check group authorization.");
+    } finally {
+      setCheckingTurn(false);
+    }
+  };
 
-    window.addEventListener("group-changed", handleGroupChange);
-    return () => window.removeEventListener("group-changed", handleGroupChange);
-  }, []);
+  // Fetch all of the user's groups when Preview opens
+  const loadGroupsList = async () => {
+    try {
+      const res = await getUserGroups();
+      if (res.success && res.groups && res.groups.length > 0) {
+        setUserGroups(res.groups);
+        
+        // Find if current local active group exists, default to that
+        const storedGroupId = localStorage.getItem("active_group_id");
+        const matched = res.groups.find((g: any) => g.id === storedGroupId);
+        const initialGroup = matched || res.groups[0];
+        setSelectedGroup(initialGroup);
+        
+        // Check turn constraints for the initial group selection
+        await checkGroupTurn(initialGroup.id);
+      } else {
+        setUserGroups([]);
+        setError("Please choose or join a group first to vlog.");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (step === "PREVIEW" && recordedBlob) {
+      loadGroupsList();
+    }
+  }, [step, recordedBlob]);
 
   // Request camera access and get live location
   useEffect(() => {
+    let active = true;
+    let currentStream: MediaStream | null = null;
+
     async function setupCamera() {
-      if (assignment && step === "CAMERA") {
+      if (step === "CAMERA") {
         try {
+          // Clear any stale stream tracks before spinning up a new session
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((track) => track.stop());
+            streamRef.current = null;
+          }
+
           const stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode,
@@ -82,10 +184,16 @@ export default function RecordPage() {
             },
             audio: true,
           });
-          streamRef.current = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
+
+          if (!active) {
+            stream.getTracks().forEach((track) => track.stop());
+            return;
           }
+
+          currentStream = stream;
+          streamRef.current = stream;
+          setActiveStream(stream);
+
           const track = stream.getVideoTracks()[0];
           setVideoTrack(track);
 
@@ -96,26 +204,111 @@ export default function RecordPage() {
                 const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
                 const data = await res.json();
                 const city = data.address?.city || data.address?.town || data.address?.village || data.address?.suburb || "Earth";
-                setLocationName(city);
+                if (active) setLocationName(city);
               } catch (e) {
-                setLocationName("Earth");
+                if (active) setLocationName("Earth");
               }
-            }, () => setLocationName("Earth"));
+            }, () => {
+              if (active) setLocationName("Earth");
+            });
           }
         } catch (err) {
           console.error("Camera access failed:", err);
-          setError("Could not access camera or microphone. Please grant access permissions.");
+          if (active) {
+            setError("Could not access camera or microphone. Please grant access permissions.");
+          }
+        }
+      } else {
+        // Explicitly tear down visual hardware feed when active view shifts to background
+        if (active) setActiveStream(null);
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach((track) => track.stop());
+          streamRef.current = null;
         }
       }
     }
+    
     setupCamera();
 
     return () => {
+      active = false;
+      if (currentStream) {
+        currentStream.getTracks().forEach((track) => track.stop());
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
     };
-  }, [assignment, step, facingMode]);
+  }, [step, facingMode]);
+
+  // Bind the active video stream dynamically to the camera video elements whenever stream updates
+  useEffect(() => {
+    if (videoRef.current) {
+      if (activeStream) {
+        videoRef.current.srcObject = activeStream;
+        videoRef.current.play().catch((e) => console.warn("Video playback was interrupted:", e));
+      } else {
+        videoRef.current.srcObject = null;
+      }
+    }
+  }, [activeStream]);
+
+  // Callback ref to cleanly mount video elements and attach active state streams immediately on render
+  const setVideoRef = (el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    if (el) {
+      if (activeStream) {
+        el.srcObject = activeStream;
+        el.play().catch((e) => console.warn("Video mount playback was interrupted:", e));
+      } else {
+        el.srcObject = null;
+      }
+    }
+  };
+
+  // Initial turn check logic on standby
+  useEffect(() => {
+    const checkInitialTurn = async () => {
+      let activeGroupId = localStorage.getItem("active_group_id");
+      if (!activeGroupId) {
+        setError("Please choose or join a group first.");
+        setIsTurnAuthorized(false);
+        setLoadingAssignment(false);
+        return;
+      }
+
+      setLoadingAssignment(true);
+      const res = await getOrCreateTodayAssignment(activeGroupId);
+      setLoadingAssignment(false);
+
+      if (res.error) {
+        setError(res.error);
+        setIsTurnAuthorized(false);
+        setAssignment(null);
+      } else if (res.success && res.assignment) {
+        setAssignment(res.assignment);
+        const isAuthorized = res.assignment.userId === session?.user?.id;
+        setIsTurnAuthorized(isAuthorized);
+        if (!isAuthorized) {
+          setError(`Today's turn belongs to @${res.assignment.user?.name || "another friend"}.`);
+        } else {
+          setError("");
+        }
+      }
+    };
+    checkInitialTurn();
+
+    const handleGroupChange = (e: Event) => {
+      const customEvent = e as CustomEvent<any>;
+      if (customEvent.detail) {
+        loadGroupsList();
+      }
+    };
+
+    window.addEventListener("group-changed", handleGroupChange);
+    return () => window.removeEventListener("group-changed", handleGroupChange);
+  }, []);
 
   // Handle maximum 60s recording threshold timer
   useEffect(() => {
@@ -185,7 +378,7 @@ export default function RecordPage() {
     mediaRecorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: mimeType });
       setRecordedBlob(blob);
-      setStep("PREVIEW");
+      handleStepChange("PREVIEW");
       setIsRecording(false);
       setRecordTime(0);
     };
@@ -229,10 +422,22 @@ export default function RecordPage() {
   const handlePublish = async () => {
     try {
       setIsUploading(true);
-      const activeGroupId = localStorage.getItem("active_group_id");
+      setUploadProgress(15);
+      
+      // Animate progress smoothly in parallel with file transfer actions
+      const progressInterval = setInterval(() => {
+        setUploadProgress((p) => {
+          if (p >= 85) {
+            clearInterval(progressInterval);
+            return 85;
+          }
+          return p + 5;
+        });
+      }, 150);
+
+      const activeGroupId = selectedGroup?.id;
       if (!activeGroupId || !assignment || !recordedBlob) {
-        setError("Invalid state. Missing parameters.");
-        return;
+        throw new Error("Invalid state. Missing group parameters.");
       }
 
       const ext = recordedBlob.type.includes("mp4") ? "mp4" : "webm";
@@ -272,16 +477,28 @@ export default function RecordPage() {
 
       if (clipRes.error) throw new Error(clipRes.error);
 
+      // Auto-publish the written caption as the very first commentary row under the post
+      if (caption.trim() && clipRes.clip?.id) {
+        await addComment(clipRes.clip.id, caption.trim());
+      }
+
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      setIsUploading(false);
       setUploadSuccess(true);
+      
+      // Delay and reset back to camera
       setTimeout(() => {
         setUploadSuccess(false);
         setRecordedBlob(null);
-        setStep("CAMERA");
-      }, 3000);
+        setCaption("");
+        setUploadProgress(0);
+        handleStepChange("CAMERA");
+      }, 2500);
     } catch (err: any) {
-      setError(err?.message || "Failed to publish vlog format clip.");
-    } finally {
       setIsUploading(false);
+      setUploadProgress(0);
+      setError(err?.message || "Failed to publish vlog format clip.");
     }
   };
 
@@ -300,28 +517,28 @@ export default function RecordPage() {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.2 }}
-      className="flex-1 flex flex-col justify-between min-h-0"
+      transition={{ duration: 0.3 }}
+      className={`flex-1 flex flex-col h-full min-h-0 relative overflow-hidden transition-all duration-300 ${
+        step === "CAMERA" 
+          ? "rounded-2xl bg-neutral-900/40 border border-white/5" 
+          : "rounded-none bg-neutral-950 border border-white/0"
+      }`}
     >
-      <div
-        style={glassStyle(0.04, 20, 0.08)}
-        className="flex-1 rounded-2xl p-0 flex flex-col justify-between overflow-hidden relative"
-      >
-        <div className="absolute inset-0 z-0 bg-neutral-900/40 border border-white/5 flex flex-col justify-between p-0">
-          
-          {error && (
-            <div className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 text-center bg-black/80">
-              <AlertCircle size={40} className="text-[#e07c30] mb-3" />
-              <p className="text-white font-bold text-sm mb-1">Upload Blocked</p>
-              <p className="text-white/50 text-xs leading-relaxed max-w-[240px]">{error}</p>
-            </div>
-          )}
+      <div className="absolute inset-0 z-0 bg-neutral-900/40 flex flex-col justify-between p-0">
 
-          {/* ACTIVE RECORDING COMPOSITOR LAYER */}
-          {step === "CAMERA" && !error && (
-            <>
+        {/* Dynamic crossfade step rendering without mode="wait" for concurrent transitions */}
+        <AnimatePresence>
+          {step === "CAMERA" ? (
+            <motion.div
+              key="camera-view"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="absolute inset-0 flex flex-col justify-between z-10"
+            >
               <video
-                ref={videoRef}
+                ref={setVideoRef}
                 autoPlay
                 playsInline
                 muted
@@ -330,7 +547,21 @@ export default function RecordPage() {
               
               <div className="absolute inset-x-8 inset-y-12 border border-white/5 border-dashed pointer-events-none z-10" />
 
-              <div className="flex items-center justify-between z-10 p-4">
+              {/* Subdued notice top-banner if it is not their turn */}
+              {!isTurnAuthorized && error && (
+                <div 
+                  style={{ marginTop: "max(12px, env(safe-area-inset-top, 12px))" }}
+                  className="absolute top-4 inset-x-4 z-20 p-3 bg-red-950/80 backdrop-blur-md border border-red-500/20 rounded-2xl flex items-center gap-2.5 shadow-lg"
+                >
+                  <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
+                  <p className="text-white text-[11px] font-semibold leading-tight">{error}</p>
+                </div>
+              )}
+
+              <div 
+                style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}
+                className="flex items-center justify-between z-10 p-4"
+              >
                 <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-white text-[11px] font-mono shadow-md">
                   <CircleDot
                     size={10}
@@ -386,10 +617,11 @@ export default function RecordPage() {
                   ))}
                 </div>
 
+                {/* Shutter button disabled if not authorized turn */}
                 <button
                   onClick={isRecording ? stopRecording : startRecording}
-                  disabled={!!error || isUploading}
-                  className="w-14 h-14 rounded-full border-[3px] border-white flex items-center justify-center bg-black/40 disabled:opacity-50 shadow-xl"
+                  disabled={!isTurnAuthorized || isUploading}
+                  className="w-14 h-14 rounded-full border-[3px] border-white flex items-center justify-center bg-black/40 disabled:opacity-30 shadow-xl"
                 >
                   <motion.div
                     animate={{
@@ -416,58 +648,387 @@ export default function RecordPage() {
                   ))}
                 </div>
               </div>
-            </>
-          )}
-
-          {/* ACTIVE PREVIEW LAYER */}
-          {step === "PREVIEW" && recordedBlob && (
-            <div className="absolute inset-0 z-20 bg-black flex flex-col justify-between">
-              <video
-                src={URL.createObjectURL(recordedBlob)}
-                autoPlay
-                loop
-                playsInline
-                className="absolute inset-0 w-full h-full object-cover z-0"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 pointer-events-none z-10" />
-              
-              <div className="relative z-20 flex justify-between items-center p-4">
-                 <span className="text-white text-[14px] font-bold shadow-md">Preview Vlog</span>
-                 <button onClick={() => setStep("CAMERA")} disabled={isUploading} className="px-4 py-2 bg-white/20 backdrop-blur rounded-full text-white text-[11px] font-bold shadow-md hover:bg-white/30 disabled:opacity-50">Retake</button>
-              </div>
-              
-              <div className="relative z-20 flex flex-col gap-4 p-4 mt-auto">
-                <div className="flex items-center gap-2 bg-black/40 backdrop-blur w-fit px-3.5 py-2 rounded-full text-white text-[11px] font-semibold shadow-md">
-                  <MapPin size={12} className="text-[#e07c30]" />
-                  <span>{locationName}</span>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="preview-view"
+              initial={{ opacity: 0, y: 35 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 35 }}
+              transition={{ type: "spring", damping: 26, stiffness: 220 }}
+              className="absolute inset-0 z-20 bg-neutral-950 flex flex-col justify-between overflow-hidden"
+            >
+              {/* Instagram-Style Top Progress Bar */}
+              {isUploading && (
+                <div className="absolute top-0 left-0 right-0 h-1 bg-neutral-800 z-50 overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-amber-500 to-[#e07c30]"
+                    animate={{ width: `${uploadProgress}%` }}
+                    transition={{ ease: "easeInOut", duration: 0.15 }}
+                  />
                 </div>
+              )}
+
+              {/* Header Bar */}
+              <div 
+                style={{ paddingTop: "max(14px, env(safe-area-inset-top, 14px))" }}
+                className="flex items-center justify-between px-4 pb-3.5 border-b border-white/5 bg-neutral-900/60 backdrop-blur-md relative z-10 flex-shrink-0"
+              >
                 <button 
-                  onClick={handlePublish} 
+                  onClick={() => { handleStepChange("CAMERA"); setCaption(""); setError(""); }} 
                   disabled={isUploading} 
-                  className="w-full py-4 bg-[#e07c30] text-black rounded-xl font-bold text-base shadow-[0_0_20px_rgba(224,124,48,0.4)] transition-transform active:scale-95 disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors text-xs font-semibold"
                 >
-                  Publish to Group
+                  <ArrowLeft size={16} />
+                  <span>Retake</span>
+                </button>
+                <span className="text-white text-sm font-extrabold tracking-tight">New Post</span>
+                <div className="w-12 h-6" />
+              </div>
+
+              {/* Scrollable Publishing Panel Body */}
+              <div className="flex-1 overflow-y-auto scrollbar-hide p-4 flex flex-col gap-6">
+                
+                {/* Visual split section: Mini preview & caption text field */}
+                <div className="flex gap-4 items-start">
+                  
+                  {/* Visual Video Container - styled exactly like Today UI */}
+                  <div className="flex flex-col items-center flex-shrink-0">
+                    <div 
+                      onClick={() => setIsPreviewFullscreen(true)}
+                      className="relative w-24 aspect-[3/4] rounded-2xl overflow-hidden bg-neutral-900 flex-shrink-0 shadow-lg cursor-pointer group transition-transform active:scale-[0.97]"
+                    >
+                      <video
+                        ref={miniVideoRef}
+                        src={previewUrl || ""}
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        onTimeUpdate={handleMiniTimeUpdate}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+
+                      {/* Today UI glazing frame, glare highlights, and inset shadows */}
+                      <div
+                        style={{
+                          borderTop: "1px solid rgba(255,255,255,0.45)",
+                          borderLeft: "1px solid rgba(255,255,255,0.25)",
+                          borderRight: "1px solid rgba(255,255,255,0.05)",
+                          borderBottom: "1px solid rgba(255,255,255,0.05)",
+                          boxShadow: "inset 0 1.5px 3px rgba(255,255,255,0.35), inset 0 -1.5px 3px rgba(0,0,0,0.55)",
+                        }}
+                        className="absolute inset-0 rounded-2xl pointer-events-none z-10"
+                      />
+
+                      {/* Miniature live playbar matching Today UI requirements */}
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20 overflow-hidden">
+                        <div 
+                          className="h-full bg-[#e07c30] transition-all duration-100 ease-linear"
+                          style={{ width: `${miniProgress}%` }}
+                        />
+                      </div>
+
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-20">
+                        <span className="text-white text-[9px] font-bold bg-black/50 px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">Unmute</span>
+                      </div>
+                    </div>
+
+                    {/* Clean text label directly below preview box */}
+                    <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-2 block text-center select-none">
+                      Tap to preview
+                    </span>
+                  </div>
+                  
+                  <div className="flex-1 h-full min-w-0">
+                    <textarea
+                      value={caption}
+                      onChange={(e) => setCaption(e.target.value)}
+                      placeholder="Write a caption... (Will post as first comment)"
+                      rows={4}
+                      disabled={isUploading}
+                      className="w-full bg-transparent border-none text-white text-xs placeholder:text-white/30 outline-none resize-none h-full"
+                    />
+                  </div>
+                </div>
+
+                <hr className="border-t border-white/5" />
+
+                {/* Dynamic Group Select Panel */}
+                <div className="flex flex-col gap-3">
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Post Destination</span>
+                    <span className="text-[10px] font-semibold text-[#e07c30]">Select Group</span>
+                  </div>
+
+                  <div 
+                    onClick={() => { if (!isUploading) setShowGroupSelectorSheet(true); }}
+                    style={glassStyle(0.04, 16, 0.08)} 
+                    className="flex items-center justify-between p-3.5 rounded-2xl border border-white/5 cursor-pointer hover:bg-white/[0.06] transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center text-lg shadow-inner">
+                        {selectedGroup?.emoji || "🏠"}
+                      </div>
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-white text-xs font-bold truncate leading-tight">
+                          {selectedGroup?.name || "Choose target group"}
+                        </span>
+                        <span className="text-white/40 text-[9px] font-semibold">
+                          {selectedGroup?.memberCount || 0} members enrolled
+                        </span>
+                      </div>
+                    </div>
+                    <ChevronRight size={16} className="text-white/30" />
+                  </div>
+                </div>
+
+                {/* Dynamic Turn Detail Information Panel */}
+                <div className="flex flex-col gap-3">
+                  <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">Vlogging Context</span>
+                  
+                  <div 
+                    style={glassStyle(0.04, 16, 0.08)} 
+                    className="rounded-2xl border border-white/5 p-4 flex flex-col gap-3.5 text-xs text-white"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-white/60">
+                        <Clock size={13} className="text-[#e07c30]" />
+                        <span>Active Period</span>
+                      </div>
+                      <span className="font-semibold text-right">{getCurrentTimePeriodLabel()}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-white/60">
+                        <Target size={13} className="text-[#e07c30]" />
+                        <span>Today's Prompt</span>
+                      </div>
+                      <span className="font-semibold text-right max-w-[180px] truncate">{getDailyPrompt()}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-white/60">
+                        <User size={13} className="text-[#e07c30]" />
+                        <span>Turn Owner</span>
+                      </div>
+                      <span className="font-semibold text-[#e07c30] text-right">
+                        @{assignment?.user?.handle || assignment?.user?.name || "Unassigned"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Authorization Warning Banner */}
+                {checkingTurn ? (
+                  <div className="flex items-center gap-2 px-1 text-[10px] text-white/50 animate-pulse">
+                    <Loader2 size={12} className="animate-spin text-[#e07c30]" />
+                    <span>Verifying turn access parameters...</span>
+                  </div>
+                ) : (
+                  !isTurnAuthorized && error && (
+                    <div className="p-3.5 bg-red-950/20 border border-red-500/20 rounded-2xl flex items-start gap-3">
+                      <AlertCircle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-red-400 text-xs font-bold leading-tight">Posting Blocked</span>
+                        <span className="text-white/60 text-[10px] leading-snug">{error}</span>
+                      </div>
+                    </div>
+                  )
+                )}
+
+                {/* Location Input */}
+                <div className="flex flex-col gap-3">
+                  <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">Location details</span>
+                  <div 
+                    style={glassStyle(0.04, 16, 0.08)} 
+                    className="flex items-center gap-3 p-3.5 rounded-2xl border border-white/5"
+                  >
+                    <MapPin size={15} className="text-[#e07c30]" />
+                    <input
+                      type="text"
+                      value={locationName}
+                      onChange={(e) => setLocationName(e.target.value)}
+                      placeholder="Search or add location..."
+                      disabled={isUploading}
+                      className="flex-1 bg-transparent border-none text-white text-xs placeholder:text-white/30 outline-none"
+                    />
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Immersive Large Footer Trigger Share Button - Restored */}
+              <div className="p-4 border-t border-white/5 bg-neutral-900/40 backdrop-blur-md flex-shrink-0">
+                <button
+                  onClick={handlePublish}
+                  disabled={isUploading || !isTurnAuthorized || checkingTurn}
+                  className="w-full py-3.5 bg-[#e07c30] text-black font-extrabold rounded-2xl text-sm transition-all active:scale-[0.98] disabled:opacity-30 flex items-center justify-center gap-2"
+                >
+                  {isUploading ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin animate-fade-in" />
+                      <span>Uploading Vlog ({uploadProgress}%)</span>
+                    </>
+                  ) : (
+                    <span>Share to {selectedGroup?.name || "Group"}</span>
+                  )}
                 </button>
               </div>
-            </div>
-          )}
 
-          {isUploading && (
-            <div className="absolute inset-0 z-30 bg-black/70 backdrop-blur-md flex flex-col items-center justify-center">
-              <Loader2 size={32} className="animate-spin text-[#e07c30] mb-2" />
-              <span className="text-white text-[13px] font-bold mt-2">Publishing Update...</span>
-            </div>
-          )}
+              {/* Dynamic sliding group picker sheet overlay */}
+              <AnimatePresence>
+                {showGroupDrawer && (
+                  <>
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      onClick={() => setShowGroupSelectorSheet(false)}
+                      className="absolute inset-0 z-30 bg-black/70 backdrop-blur-sm cursor-pointer"
+                    />
+                    <motion.div
+                      initial={{ y: "100%" }}
+                      animate={{ y: 0 }}
+                      exit={{ y: "100%" }}
+                      transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                      className="absolute bottom-0 inset-x-0 z-40 bg-neutral-950 border-t border-white/10 rounded-t-[32px] p-6 max-h-[75%] flex flex-col"
+                    >
+                      <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-5 flex-shrink-0" />
+                      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                        <h3 className="text-white text-sm font-bold">Choose a Group</h3>
+                        <button onClick={() => setShowGroupSelectorSheet(false)} className="text-xs text-white/50 hover:text-white">Cancel</button>
+                      </div>
 
-          {uploadSuccess && (
-            <div className="absolute inset-0 z-30 bg-emerald-950/80 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center">
-              <Sparkles size={40} className="text-emerald-400 mb-3 animate-pulse" />
-              <span className="text-white text-base font-bold">Vlog Published Successfully! 🎉</span>
-              <span className="text-white/60 text-[12px] font-medium mt-1.5">Your group members have been notified.</span>
-            </div>
-          )}
+                      <div className="flex-1 overflow-y-auto space-y-2.5 pr-0.5 scrollbar-hide pb-6">
+                        {userGroups.map((group) => {
+                          const isCurrent = group.id === selectedGroup?.id;
+                          return (
+                            <div
+                              key={group.id}
+                              onClick={async () => {
+                                setSelectedGroup(group);
+                                setShowGroupSelectorSheet(false);
+                                await checkGroupTurn(group.id);
+                              }}
+                              className={`p-3.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-colors ${
+                                isCurrent 
+                                  ? "bg-white/[0.06] border-[#e07c30]/50" 
+                                  : "bg-white/[0.02] border-white/5 hover:bg-white/[0.04]"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className="text-lg">{group.emoji || "🏠"}</span>
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-white text-xs font-bold leading-tight">{group.name}</span>
+                                  <span className="text-white/40 text-[9px] font-semibold">{group.memberCount} members</span>
+                                </div>
+                              </div>
+                              {isCurrent && <Check size={14} className="text-[#e07c30] stroke-[3]" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
 
-        </div>
+              {/* Immersive full-screen playback mode on preview click */}
+              <AnimatePresence>
+                {isPreviewFullscreen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ ease: [0.16, 1, 0.3, 1], duration: 0.3 }}
+                    className="absolute inset-0 z-50 bg-black flex flex-col justify-between"
+                    onClick={() => setIsPreviewFullscreen(false)}
+                  >
+                    <video
+                      ref={fullscreenVideoRef}
+                      src={previewUrl || ""}
+                      autoPlay
+                      loop
+                      muted={false} // Unmuted with audio!
+                      playsInline
+                      onTimeUpdate={handleFullTimeUpdate}
+                      className="absolute inset-0 w-full h-full object-cover z-0"
+                    />
+                    {/* Backdrop Gradient overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/60 pointer-events-none z-10" />
+
+                    {/* Dynamic playbar for Fullscreen Mode */}
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20 overflow-hidden">
+                      <div 
+                        className="h-full bg-[#e07c30] transition-all duration-100 ease-linear"
+                        style={{ width: `${fullProgress}%` }}
+                      />
+                    </div>
+
+                    <div className="relative z-20 p-4 pt-12 flex justify-between items-center">
+                      <span className="text-white text-sm font-bold tracking-tight drop-shadow-md">Fullscreen Preview</span>
+                      <button className="px-4 py-2 bg-white/20 backdrop-blur rounded-full text-white text-xs font-extrabold shadow-md flex items-center gap-1.5 hover:bg-white/30 transition-colors">
+                        <X size={12} strokeWidth={2.5} />
+                        <span>Close</span>
+                      </button>
+                    </div>
+
+                    <div className="relative z-20 p-6 mt-auto text-center pointer-events-none">
+                      <span className="text-white/60 text-xs drop-shadow font-medium tracking-wide">Tap anywhere to return</span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* High-end spring popped iOS Success screen */}
+              <AnimatePresence>
+                {uploadSuccess && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="absolute inset-0 z-50 bg-neutral-950 flex flex-col items-center justify-center p-6 text-center"
+                  >
+                    <motion.div
+                      initial={{ scale: 0.3, rotate: -20, opacity: 0 }}
+                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                      transition={{ type: "spring", damping: 14, stiffness: 180, delay: 0.1 }}
+                      className="mb-6"
+                    >
+                      <img 
+                        src="/assets/icons/tick.png" 
+                        className="w-20 h-24 object-contain filter drop-shadow-[0_4px_16px_rgba(34,197,94,0.15)]" 
+                        alt="Success Check" 
+                      />
+                    </motion.div>
+                    
+                    <motion.span
+                      initial={{ y: 12, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.25, type: "spring", stiffness: 200 }}
+                      className="text-white text-lg font-extrabold tracking-tight"
+                    >
+                      Vlog Shared Successfully!
+                    </motion.span>
+                    
+                    <motion.span
+                      initial={{ y: 12, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.35, type: "spring", stiffness: 200 }}
+                      className="text-white/50 text-xs mt-2 max-w-[220px] leading-relaxed font-medium"
+                    >
+                      Your daily update is live, and your friends have been notified.
+                    </motion.span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+            </motion.div>
+          )}
+        </AnimatePresence>
+
       </div>
     </motion.div>
   );

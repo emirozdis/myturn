@@ -33,7 +33,7 @@ export async function getStreaksData(groupId: string) {
       .map((member, i) => ({
         name: member.user.name || "User",
         streak: member.streak,
-        img: member.user.image || "/profile.jpg",
+        img: member.user.image,
         isMe: member.userId === session.user.id,
         rank: i + 1,
       }))

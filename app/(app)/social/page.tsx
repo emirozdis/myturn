@@ -8,6 +8,7 @@ import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { getSocialData } from "@/actions/social";
 import { joinGroup, createGroup, getGroupDetails, leaveGroup } from "@/actions/group";
+import { Avatar } from "@/components/shared/avatar";
 
 const TABS = ["Friends", "Groups", "Requests", "Discover"];
 
@@ -102,7 +103,7 @@ export default function SocialPage() {
     setLoadingDetailsId(null);
 
     if (res.success && res.group) {
-      // Trigger the slide up Apple Sheet layout for Group Details (satisfies Req 5)
+      // Trigger the slide up Apple Sheet layout for Group Details
       window.dispatchEvent(
         new CustomEvent("open-bottom-sheet", {
           detail: {
@@ -212,10 +213,11 @@ export default function SocialPage() {
                         {friend.hasStory && (
                           <div className="absolute inset-0 rounded-full border-[2.5px] border-[#0A84FF] opacity-90 scale-[1.08]" />
                         )}
-                        <img
-                          src={friend.image || "/profile.jpg"}
-                          alt={friend.name}
-                          className={`w-full h-full rounded-full object-cover ${friend.hasStory ? "border-2 border-[#111]" : "border-[1.5px] border-white/15"}`}
+                        <Avatar
+                          src={friend.image}
+                          name={friend.name}
+                          size={64}
+                          ring={friend.hasStory}
                         />
                         <div
                           className={`absolute bottom-0 right-0 w-4 h-4 border-[2.5px] border-[#111] rounded-full shadow-sm ${
@@ -249,10 +251,10 @@ export default function SocialPage() {
                     style={glassStyle(0.03, 16, 0.06)}
                   >
                     <div className="flex items-center gap-3.5">
-                      <img
-                        src="/profile.jpg"
-                        alt={user.name}
-                        className="w-[44px] h-[44px] rounded-full object-cover border border-white/15 shadow-md"
+                      <Avatar
+                        src={user.image}
+                        name={user.name}
+                        size={44}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="text-white text-[14px] font-bold truncate leading-tight tracking-tight">

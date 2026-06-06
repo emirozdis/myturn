@@ -9,9 +9,11 @@ import { GroupSwipePager } from "@/components/group-swipe-pager";
 import { BottomNavRouter } from "@/components/bottom-nav-router";
 import { getUserGroups, getGroupDetails } from "@/actions/group";
 import { Loader2, Plus, Users, Copy, Check, Info } from "lucide-react";
-import { addComment } from "@/actions/vlog";
+import { addComment, getOrCreateTodayAssignment } from "@/actions/vlog";
 import { glassStyle } from "@/components/shared/glass-style";
 import { ACCENT } from "@/lib/theme";
+import { Avatar } from "@/components/shared/avatar";
+import { VloggerRevealModal } from "@/components/vlogger-reveal-modal";
 
 export interface GroupConfig {
   id: string;
@@ -29,6 +31,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [activeGroupIndex, setActiveGroupIndex] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  // Monitor record step changes to morph container margins smoothly
+  const [recordStep, setRecordStep] = useState<"CAMERA" | "PREVIEW">("CAMERA");
+
   // Bottom Sheet States
   const [activeSheet, setActiveSheet] = useState<"views" | "comments" | "group-info" | null>(null);
   const [sheetData, setSheetData] = useState<any>(null);
@@ -39,6 +44,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [commentsList, setCommentsList] = useState<any[]>([]);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+
+  // Vlogger Reveal Overlay states
+  const [showRevealModal, setShowRevealModal] = useState(false);
+  const [revealAssignment, setRevealAssignment] = useState<any>(null);
+
+  const checkRevealStatus = useCallback(async (groupId: string) => {
+    try {
+      const res = await getOrCreateTodayAssignment(groupId);
+      if (res.success && res.assignment) {
+        setRevealAssignment(res.assignment);
+        const storageKey = `revealed_vlogger_${res.assignment.id}`;
+        const alreadyRevealed = localStorage.getItem(storageKey);
+        if (!alreadyRevealed) {
+          setShowRevealModal(true);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to check vlogger reveal status:", e);
+    }
+  }, []);
 
   // Fetch groups dynamically without autojoining new users
   const loadGroups = async () => {
@@ -51,9 +76,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         const foundIndex = res.groups.findIndex((g) => g.id === stored);
         if (foundIndex !== -1) {
           setActiveGroupIndex(foundIndex);
+          checkRevealStatus(res.groups[foundIndex].id);
         } else {
           localStorage.setItem("active_group_id", res.groups[0].id);
           setActiveGroupIndex(0);
+          checkRevealStatus(res.groups[0].id);
         }
       }
     } else {
@@ -72,8 +99,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       const groupId = groups[index].id;
       localStorage.setItem("active_group_id", groupId);
       window.dispatchEvent(new CustomEvent("group-changed", { detail: groupId }));
+      checkRevealStatus(groupId);
     }
-  }, [groups]);
+  }, [groups, checkRevealStatus]);
 
   // Handle slide up menu global trigger events
   useEffect(() => {
@@ -87,11 +115,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       }
     };
 
+    const handleRecordStep = (e: Event) => {
+      const customEvent = e as CustomEvent<"CAMERA" | "PREVIEW">;
+      setRecordStep(customEvent.detail);
+    };
+
     window.addEventListener("open-bottom-sheet" as any, handleOpenSheet);
     window.addEventListener("reload-groups", loadGroups);
+    window.addEventListener("record-step-changed" as any, handleRecordStep);
+    
     return () => {
       window.removeEventListener("open-bottom-sheet" as any, handleOpenSheet);
       window.removeEventListener("reload-groups", loadGroups);
+      window.removeEventListener("record-step-changed" as any, handleRecordStep);
     };
   }, []);
 
@@ -123,11 +159,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     setTimeout(() => setCopySuccess(false), 2000);
   };
 
-  const showMainChrome = activeTab !== "streaks";
+  // Strip margins and padding completely for streaks and recording full-bleed views
+  const isRecordPreview = activeTab === "record" && recordStep === "PREVIEW";
+  const showMainChrome = activeTab !== "streaks" && !isRecordPreview;
   const isTodayTab = activeTab === "today";
   const isProfileTab = activeTab === "profile";
   const isStreaksTab = activeTab === "streaks";
   const showGroupHeader = groups.length > 1 && (isStreaksTab || isTodayTab);
+  const showBottomNav = activeTab !== "record" || recordStep === "CAMERA";
 
   if (loading) {
     return (
@@ -197,11 +236,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 >
                   {() => (
                     <div
-                      className={`flex-1 min-h-0 flex flex-col ${
-                        showMainChrome ? "px-4 pb-4" : ""
+                      className={`flex-1 min-h-0 flex flex-col transition-all duration-300 ease-out ${
+                        showMainChrome ? "px-4 pb-4" : "p-0"
                       }`}
                       style={{
-                        paddingTop: showGroupHeader ? "1rem" : "max(16px, env(safe-area-inset-top, 0px))",
+                        paddingTop: showGroupHeader 
+                          ? "1rem" 
+                          : isRecordPreview 
+                            ? "0px" 
+                            : "max(16px, env(safe-area-inset-top, 0px))",
                       }}
                     >
                       {children}
@@ -211,10 +254,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </>
             )}
 
-            <BottomNavRouter />
+            {/* Seamless fading transitions of footer bar */}
+            <div 
+              className="transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0"
+              style={{ 
+                height: showBottomNav ? "auto" : "0px",
+                opacity: showBottomNav ? 1 : 0
+              }}
+            >
+              <BottomNavRouter />
+            </div>
           </div>
 
-          {/* Global Apple-Like Bottom Sheet Overlay Container (Bypasses general navbar) */}
+          {/* Global Apple-Like Bottom Sheet Overlay Container */}
           <AnimatePresence>
             {activeSheet && (
               <>
@@ -250,10 +302,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                           <div className="flex flex-col gap-2">
                             {sheetData.views.map((view: any, idx: number) => (
                               <div key={idx} className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5">
-                                <img
-                                  src={view.user?.image || "/profile.jpg"}
-                                  alt=""
-                                  className="w-10 h-10 rounded-full object-cover border border-white/10"
+                                <Avatar
+                                  src={view.user?.image}
+                                  name={view.user?.name}
+                                  size={40}
                                 />
                                 <span className="text-white text-sm font-bold">{view.user?.name || "Group Friend"}</span>
                               </div>
@@ -272,10 +324,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                           <div className="flex flex-col gap-2 max-h-[280px] overflow-y-auto pr-1">
                             {commentsList.map((comm: any, idx: number) => (
                               <div key={idx} className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5">
-                                <img
-                                  src={comm.user?.image || "/profile.jpg"}
-                                  alt=""
-                                  className="w-8 h-8 rounded-full object-cover border border-white/10"
+                                <Avatar
+                                  src={comm.user?.image}
+                                  name={comm.user?.name}
+                                  size={32}
                                 />
                                 <div className="flex flex-col gap-0.5 min-w-0">
                                   <span className="text-white text-xs font-bold">{comm.user?.name || "Friend"}</span>
@@ -346,10 +398,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                           <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto">
                             {sheetData?.members?.map((member: any) => (
                               <div key={member.user.id} className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5">
-                                <img
-                                  src={member.user.image || "/profile.jpg"}
-                                  alt=""
-                                  className="w-10 h-10 rounded-full object-cover border border-white/10"
+                                <Avatar
+                                  src={member.user.image}
+                                  name={member.user.name}
+                                  size={40}
                                 />
                                 <div className="flex flex-col">
                                   <span className="text-white text-sm font-bold">{member.user.name}</span>
@@ -364,6 +416,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   </div>
                 </motion.div>
               </>
+            )}
+          </AnimatePresence>
+
+          {/* Vlogger Selection Reveal Modal */}
+          <AnimatePresence>
+            {showRevealModal && revealAssignment && groups[activeGroupIndex] && (
+              <VloggerRevealModal
+                groupId={groups[activeGroupIndex].id}
+                assignment={revealAssignment}
+                onClose={() => setShowRevealModal(false)}
+              />
             )}
           </AnimatePresence>
         </div>

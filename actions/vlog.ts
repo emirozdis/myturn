@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 
-function getLocalDateInTimezone(timezone: string): Date {
+export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
@@ -21,6 +21,98 @@ function getLocalDateInTimezone(timezone: string): Date {
   return new Date(`${year}-${month}-${day}T00:00:00Z`);
 }
 
+/**
+ * Sweeps and transitions stale active assignments into missed status,
+ * resetting the associated user's streak in that group.
+ */
+export async function processGroupDayTransition(groupId: string, localDate: Date) {
+  const missedAssignments = await db.dailyAssignment.findMany({
+    where: {
+      groupId,
+      status: "active",
+      date: {
+        lt: localDate,
+      },
+    },
+  });
+
+  for (const asg of missedAssignments) {
+    await db.dailyAssignment.update({
+      where: { id: asg.id },
+      data: { status: "missed" },
+    });
+
+    await db.groupMember.updateMany({
+      where: {
+        groupId,
+        userId: asg.userId,
+      },
+      data: { streak: 0 },
+    });
+  }
+}
+
+/**
+ * Shared logic to handle day transitions and roll today's assignment cleanly.
+ */
+export async function rollGroupAssignmentForDate(groupId: string, localDate: Date) {
+  // 1. Process any outstanding past day transitions/missed assignments
+  await processGroupDayTransition(groupId, localDate);
+
+  // 2. Check if today's assignment already exists
+  const existingAssignment = await db.dailyAssignment.findFirst({
+    where: {
+      groupId,
+      date: localDate,
+    },
+  });
+
+  if (existingAssignment) {
+    return existingAssignment;
+  }
+
+  // 3. Roll a new assignment
+  const group = await db.group.findUnique({
+    where: { id: groupId },
+    include: {
+      members: true,
+    },
+  });
+
+  if (!group || group.members.length === 0) {
+    return null;
+  }
+
+  // Pick a member at random. Ensure we don't pick yesterday's if possible
+  const yesterdayDate = new Date(localDate);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+
+  const yesterdayAssignment = await db.dailyAssignment.findFirst({
+    where: {
+      groupId,
+      date: yesterdayDate,
+    },
+  });
+
+  let pool = group.members;
+  if (group.members.length > 1 && yesterdayAssignment) {
+    pool = group.members.filter((m) => m.userId !== yesterdayAssignment.userId);
+  }
+
+  const chosenMember = pool[Math.floor(Math.random() * pool.length)];
+
+  const assignment = await db.dailyAssignment.create({
+    data: {
+      groupId,
+      userId: chosenMember.userId,
+      date: localDate,
+      status: "active",
+    },
+  });
+
+  return assignment;
+}
+
 export async function getOrCreateTodayAssignment(groupId: string) {
   try {
     const session = await getAuthSession();
@@ -30,94 +122,32 @@ export async function getOrCreateTodayAssignment(groupId: string) {
 
     const group = await db.group.findUnique({
       where: { id: groupId },
-      include: {
-        members: {
-          include: {
-            user: {
-              select: { id: true, name: true, image: true },
-            },
-          },
-        },
-      },
     });
 
     if (!group) {
       return { error: "Group not found" };
     }
 
-    const localDate = getLocalDateInTimezone(group.timezone);
+    const localDate = await getLocalDateInTimezone(group.timezone);
 
-    // Using findFirst instead of findUnique with compound keys to bypass Prisma Client generation bugs
-    let assignment = await db.dailyAssignment.findFirst({
-      where: {
-        groupId,
-        date: localDate,
-      },
-      include: {
-        user: {
-          select: { id: true, name: true, image: true },
-        },
-        clips: {
-          orderBy: { recordedAt: "asc" },
-          include: {
-            reactions: true,
-            comments: {
-              orderBy: { createdAt: "asc" },
-              include: {
-                user: {
-                  select: { id: true, name: true, image: true },
-                },
-              },
-            },
-            views: {
-              include: {
-                user: {
-                  select: { id: true, name: true, image: true },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
+    // Roll or retrieve today's assignment
+    const assignment = await rollGroupAssignmentForDate(groupId, localDate);
 
-    if (assignment) {
-      return { success: true, assignment };
-    }
-
-    // --- Dynamic Auto-Roll Fallback ---
-    if (group.members.length === 0) {
+    if (!assignment) {
       return { error: "No members in group to assign" };
     }
 
-    // Pick a member at random. Ensure we don't pick yesterday's if possible
-    const yesterdayDate = new Date(localDate);
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-
-    const yesterdayAssignment = await db.dailyAssignment.findFirst({
-      where: {
-        groupId,
-        date: yesterdayDate,
-      },
-    });
-
-    let pool = group.members;
-    if (group.members.length > 1 && yesterdayAssignment) {
-      pool = group.members.filter((m) => m.userId !== yesterdayAssignment.userId);
-    }
-
-    const chosenMember = pool[Math.floor(Math.random() * pool.length)];
-
-    assignment = await db.dailyAssignment.create({
-      data: {
-        groupId,
-        userId: chosenMember.userId,
-        date: localDate,
-        status: "active",
-      },
+    // Fetch fully populated assignment context with group timezone and user handles
+    const fullyPopulatedAssignment = await db.dailyAssignment.findFirst({
+      where: { id: assignment.id },
       include: {
+        group: {
+          select: {
+            timezone: true,
+          },
+        },
         user: {
-          select: { id: true, name: true, image: true },
+          select: { id: true, name: true, image: true, handle: true },
         },
         clips: {
           orderBy: { recordedAt: "asc" },
@@ -127,14 +157,14 @@ export async function getOrCreateTodayAssignment(groupId: string) {
               orderBy: { createdAt: "asc" },
               include: {
                 user: {
-                  select: { id: true, name: true, image: true },
+                  select: { id: true, name: true, image: true, handle: true },
                 },
               },
             },
             views: {
               include: {
                 user: {
-                  select: { id: true, name: true, image: true },
+                  select: { id: true, name: true, image: true, handle: true },
                 },
               },
             },
@@ -143,7 +173,7 @@ export async function getOrCreateTodayAssignment(groupId: string) {
       },
     });
 
-    return { success: true, assignment };
+    return { success: true, assignment: fullyPopulatedAssignment };
   } catch (error: any) {
     return { error: error?.message || "Failed to retrieve or roll daily assignment." };
   }
@@ -209,6 +239,8 @@ export async function createClip(data: {
       return { error: "It is not your turn to vlog today!" };
     }
 
+    const isFirstClip = assignment.status === "active";
+
     const clip = await db.clip.create({
       data: {
         assignmentId: data.assignmentId,
@@ -220,11 +252,26 @@ export async function createClip(data: {
       },
     });
 
-    // Update daily assignment status to completed if successfully posted
-    await db.dailyAssignment.update({
-      where: { id: data.assignmentId },
-      data: { status: "completed" },
-    });
+    if (isFirstClip) {
+      // Update daily assignment status to completed if successfully posted
+      await db.dailyAssignment.update({
+        where: { id: data.assignmentId },
+        data: { status: "completed" },
+      });
+
+      // Increment user's streak in the group
+      await db.groupMember.updateMany({
+        where: {
+          groupId: data.groupId,
+          userId: session.user.id,
+        },
+        data: {
+          streak: {
+            increment: 1,
+          },
+        },
+      });
+    }
 
     return { success: true, clip };
   } catch (error: any) {
@@ -232,7 +279,7 @@ export async function createClip(data: {
   }
 }
 
-export async function getSignedReadUrl(bucket: "vlogs" | "thumbnails", path: string) {
+export async function getSignedReadUrl(bucket: "vlogs" | "thumbnails" | "avatars", path: string) {
   try {
     const response = await supabaseServer.storage.from(bucket).createSignedUrl(path, 3600); // 1 hour link
     if (response.error) {
@@ -298,7 +345,7 @@ export async function addComment(clipId: string, text: string) {
       },
       include: {
         user: {
-          select: { id: true, name: true, image: true },
+          select: { id: true, name: true, image: true, handle: true },
         },
       },
     });

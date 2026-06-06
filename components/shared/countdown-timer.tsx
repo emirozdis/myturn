@@ -3,6 +3,42 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+function getSecondsUntilMidnight(timezone: string): number {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    
+    const parts = formatter.formatToParts(now);
+    const hourPart = parts.find((p) => p.type === "hour")?.value || "0";
+    const minPart = parts.find((p) => p.type === "minute")?.value || "0";
+    const secPart = parts.find((p) => p.type === "second")?.value || "0";
+    
+    let hour = parseInt(hourPart, 10);
+    if (hour === 24) hour = 0; // Guard for certain environment formatting styles
+    const minute = parseInt(minPart, 10);
+    const second = parseInt(secPart, 10);
+    
+    const currentSeconds = hour * 3600 + minute * 60 + second;
+    const totalSecondsInDay = 24 * 3600;
+    
+    return Math.max(0, totalSecondsInDay - currentSeconds);
+  } catch (e) {
+    // Graceful fallback to UTC if target timezone is missing or unsupported
+    const now = new Date();
+    const currentSeconds = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+    return Math.max(0, 24 * 3600 - currentSeconds);
+  }
+}
+
 function TimeUnit({ value, label }: { value: string; label: string }) {
   return (
     <div className="flex flex-col items-center gap-1 sm:gap-1.5 flex-1 min-w-0">
@@ -27,13 +63,19 @@ function TimeUnit({ value, label }: { value: string; label: string }) {
   );
 }
 
-export function CountdownTimer() {
-  const [time, setTime] = useState(8 * 3600 + 45 * 60 + 12);
+export function CountdownTimer({ timezone = "UTC" }: { timezone?: string }) {
+  const [time, setTime] = useState(() => getSecondsUntilMidnight(timezone));
 
   useEffect(() => {
-    const id = setInterval(() => setTime((t) => (t > 0 ? t - 1 : 0)), 1000);
+    // Reset timer state cleanly whenever the selected group's timezone changes
+    setTime(getSecondsUntilMidnight(timezone));
+
+    const id = setInterval(() => {
+      setTime(getSecondsUntilMidnight(timezone));
+    }, 1000);
+
     return () => clearInterval(id);
-  }, []);
+  }, [timezone]);
 
   const h = String(Math.floor(time / 3600)).padStart(2, "0");
   const m = String(Math.floor((time % 3600) / 60)).padStart(2, "0");

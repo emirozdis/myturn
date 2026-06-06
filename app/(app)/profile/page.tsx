@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera, Pencil, MapPin, Calendar, Clapperboard, Users,
@@ -9,8 +9,9 @@ import {
 } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
-import { getProfileData, updateProfile } from "@/actions/profile";
+import { getProfileData, updateProfile, uploadAvatar } from "@/actions/profile";
 import { signOut } from "next-auth/react";
+import { Avatar } from "@/components/shared/avatar";
 
 type ActivityTab = "vlogs" | "rank" | "groups" | "saved";
 type Panel = "editProfile" | "accountDetails" | "privacy" | "notifications" | "theme" | "logoutConfirm" | null;
@@ -80,7 +81,19 @@ function SlidePanel({ title, onBack, children }: { title: string; onBack: () => 
   );
 }
 
-function EditProfilePanel({ user, onBack, onSaveSuccess }: { user: any; onBack: () => void; onSaveSuccess: () => void }) {
+function EditProfilePanel({ 
+  user, 
+  onBack, 
+  onSaveSuccess,
+  uploadingAvatar,
+  triggerAvatarSelection
+}: { 
+  user: any; 
+  onBack: () => void; 
+  onSaveSuccess: () => void;
+  uploadingAvatar: boolean;
+  triggerAvatarSelection: () => void;
+}) {
   const [name, setName] = useState(user.name || "");
   const [handle, setHandle] = useState(user.handle || "");
   const [bio, setBio] = useState(user.bio || "");
@@ -108,12 +121,19 @@ function EditProfilePanel({ user, onBack, onSaveSuccess }: { user: any; onBack: 
       <div style={{ display: "flex", flexDirection: "column" as const, gap: 24 }}>
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 4 }}>
           <div style={{ position: "relative", margin: "0 auto" }}>
-            <div style={{ width: 90, height: 90, borderRadius: "50%", overflow: "hidden", border: "2.5px solid rgba(255,255,255,0.18)" }}>
-              <img src={user.image || "/profile.jpg"} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            </div>
-            <div style={{ position: "absolute", bottom: 2, right: 2, width: 26, height: 26, borderRadius: "50%", background: ACCENT, display: "flex", alignItems: "center" as const, justifyContent: "center" as const, border: "2px solid #111", cursor: "pointer" }}>
+            {uploadingAvatar && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 rounded-full">
+                <Loader2 size={18} className="animate-spin text-[#e07c30]" />
+              </div>
+            )}
+            <Avatar src={user.image} name={user.name} size={90} ring />
+            <button 
+              type="button" 
+              onClick={triggerAvatarSelection}
+              style={{ position: "absolute", bottom: 2, right: 2, width: 26, height: 26, borderRadius: "50%", background: ACCENT, display: "flex", alignItems: "center" as const, justifyContent: "center" as const, border: "2px solid #111", cursor: "pointer" }}
+            >
               <Camera size={12} color="#000" />
-            </div>
+            </button>
           </div>
         </div>
 
@@ -255,10 +275,12 @@ function RankContent({ vlogsCount, calendarDays }: { vlogsCount: number; calenda
 }
 
 export default function ProfilePage() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [activityTab, setActivityTab] = useState<ActivityTab>("vlogs");
   const [panel, setPanel] = useState<Panel>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -272,6 +294,49 @@ export default function ProfilePage() {
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  const triggerAvatarSelection = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        // High-end client compression: Maintain uniform 256x256 aspect ratio bounds
+        const canvas = document.createElement("canvas");
+        const SIZE = 256;
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext("2d");
+        
+        if (ctx) {
+          const minDim = Math.min(img.width, img.height);
+          const sx = (img.width - minDim) / 2;
+          const sy = (img.height - minDim) / 2;
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, SIZE, SIZE);
+          
+          const base64 = canvas.toDataURL("image/jpeg", 0.85);
+          
+          setUploadingAvatar(true);
+          const res = await uploadAvatar(base64);
+          setUploadingAvatar(false);
+          
+          if (res.success) {
+            fetchProfile();
+          } else if (res.error) {
+            alert(res.error);
+          }
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const activityTabs = [
     { key: "vlogs" as const, label: "Vlogs" },
@@ -306,6 +371,16 @@ export default function ProfilePage() {
         position: "relative", overflow: "hidden", margin: "-16px"
       }}
     >
+      {/* Hidden File Input for Image Selection */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleAvatarFileChange}
+        accept="image/*"
+        className="hidden"
+        id="avatar-file-selector"
+      />
+
       <div
         style={{
           flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" as const,
@@ -316,10 +391,17 @@ export default function ProfilePage() {
 
         <div style={{ marginTop: "12px", padding: "16px 16px 0", display: "flex", alignItems: "flex-start", gap: 16 }}>
           <div style={{ position: "relative", flexShrink: 0 }}>
-            <div style={{ width: 100, height: 100, borderRadius: "50%", overflow: "hidden", border: "2.5px solid rgba(255,255,255,0.18)" }}>
-              <img src={user.image || "/profile.jpg"} alt={user.name || "User"} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-            </div>
-            <button type="button" onClick={() => setPanel("editProfile")} style={{ position: "absolute", bottom: 2, right: 2, width: 28, height: 28, borderRadius: "50%", background: ACCENT, display: "flex", alignItems: "center" as const, justifyContent: "center" as const, border: "2px solid #111", cursor: "pointer" }}>
+            {uploadingAvatar && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 rounded-full">
+                <Loader2 size={20} className="animate-spin text-[#e07c30]" />
+              </div>
+            )}
+            <Avatar src={user.image} name={user.name} size={100} ring />
+            <button 
+              type="button" 
+              onClick={triggerAvatarSelection} 
+              style={{ position: "absolute", bottom: 2, right: 2, width: 28, height: 28, borderRadius: "50%", background: ACCENT, display: "flex", alignItems: "center" as const, justifyContent: "center" as const, border: "2px solid #111", cursor: "pointer" }}
+            >
               <Camera size={13} color="#000" />
             </button>
           </div>
@@ -389,7 +471,7 @@ export default function ProfilePage() {
         </div>
 
         <div style={{ padding: "16px 16px 0" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <span style={{ color: "#fff", fontWeight: 700, fontSize: 18 }}>My Activity</span>
           </div>
           <div style={{ display: "flex", ...glassStyle(0.04, 20, 0.08), borderRadius: 12, padding: 3, gap: 2, marginBottom: 14 }}>
@@ -428,6 +510,8 @@ export default function ProfilePage() {
             user={user}
             onBack={() => setPanel(null)}
             onSaveSuccess={fetchProfile}
+            uploadingAvatar={uploadingAvatar}
+            triggerAvatarSelection={triggerAvatarSelection}
           />
         )}
       </AnimatePresence>

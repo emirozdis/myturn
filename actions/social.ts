@@ -54,6 +54,7 @@ export async function getSocialData() {
       id: user.id,
       name: user.name || "User",
       handle: user.handle || "handle",
+      image: user.image,
       status: "Active Member",
       online: Math.random() > 0.5, // Simulation indicator
       hasStory: Math.random() > 0.3,
@@ -75,6 +76,7 @@ export async function getSocialData() {
     const suggestions = suggestionsRaw.map((u) => ({
       id: u.id,
       name: u.name || "Discovery User",
+      image: u.image,
       mutual: Math.floor(Math.random() * 4),
     }));
 

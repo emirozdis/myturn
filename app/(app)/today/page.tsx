@@ -173,6 +173,8 @@ export default function TodayPage() {
     );
   }
 
+  const todayVloggerHandle = assignment?.user?.handle ? `@${assignment.user.handle}` : "No vlogger";
+
   return (
     <motion.div
       key="today-tab"
@@ -229,13 +231,13 @@ export default function TodayPage() {
               className="p-[1.5px] rounded-full"
               style={{ background: ACCENT }}
             >
-              <Avatar src={assignment?.user?.image || "/profile.jpg"} size={28} />
+              <Avatar src={assignment?.user?.image} name={assignment?.user?.name} size={28} />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-400 border-2 border-black rounded-full" />
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-white font-semibold text-[10px] tracking-tight">
-              @{assignment?.user?.name || "No vlogger"}
+              {todayVloggerHandle}
             </span>
             <span className="text-white/45 text-[9px]">Today's Turn</span>
           </div>
@@ -259,7 +261,7 @@ export default function TodayPage() {
               <div className="flex -space-x-1.5">
                 {activeClip?.views?.slice(0, 3).map((view: any, idx: number) => (
                   <div key={view.id || idx} className="relative z-10 border border-black rounded-full">
-                    <Avatar src={view.user?.image || "/profile.jpg"} size={20} />
+                    <Avatar src={view.user?.image} name={view.user?.name} size={20} />
                   </div>
                 ))}
                 {(!activeClip?.views || activeClip.views.length === 0) && (
@@ -336,7 +338,7 @@ export default function TodayPage() {
                 {commentList.length > 0 ? (
                   commentList.map((c) => (
                     <div key={c.id} className="flex gap-2.5 items-start">
-                      <Avatar src={c.user?.image || "/profile.jpg"} size={24} />
+                      <Avatar src={c.user?.image} name={c.user?.name} size={24} />
                       <div className="flex flex-col flex-1 min-w-0 bg-white/[0.04] rounded-2xl px-3.5 py-2 border border-white/5">
                         <div className="flex justify-between items-baseline mb-0.5">
                           <span className="text-white text-[10px] font-bold">@{c.user?.name || "user"}</span>
@@ -402,7 +404,7 @@ export default function TodayPage() {
                 {activeClip?.views && activeClip.views.length > 0 ? (
                   activeClip.views.map((v: any, idx: number) => (
                     <div key={v.id || idx} className="flex items-center gap-3">
-                      <Avatar src={v.user?.image || "/profile.jpg"} size={32} />
+                      <Avatar src={v.user?.image} name={v.user?.name} size={32} />
                       <div className="flex flex-col">
                         <span className="text-white text-[12px] font-bold">@{v.user?.name || "user"}</span>
                         <span className="text-white/40 text-[9px] font-medium">Watched today</span>
@@ -437,12 +439,14 @@ export default function TodayPage() {
             </div>
 
             <div className="flex items-center gap-2.5">
-              <Avatar src={assignment?.user?.image || "/profile.jpg"} size={44} />
+              <Avatar src={assignment?.user?.image} name={assignment?.user?.name} size={44} />
               <div className="flex flex-col gap-0.5 min-w-0">
                 <span className="text-white font-bold text-[14px] leading-tight truncate">
                   {assignment?.user?.name || "Unassigned"}
                 </span>
-                <span className="text-[#e07c30] text-[10px] font-semibold">Active Turn 🔥</span>
+                <span className="text-white/40 text-[10px] truncate">
+                  {assignment?.user?.handle ? `@${assignment.user.handle}` : ""}
+                </span>
               </div>
             </div>
 
@@ -461,7 +465,7 @@ export default function TodayPage() {
             </div>
             <div className="flex flex-col flex-1 justify-center items-center w-full min-w-0">
               <div className="w-full mb-1.5">
-                <CountdownTimer />
+                <CountdownTimer timezone={assignment?.group?.timezone} />
               </div>
               <div className="text-white/60 text-[9px] sm:text-[10px] font-semibold tracking-wide text-center">until day ends</div>
             </div>
