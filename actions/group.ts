@@ -82,7 +82,6 @@ export async function joinGroup(inviteCode: string) {
       },
     });
 
-    
     if (existingMember) {
       return { success: true, group, alreadyMember: true };
     }
@@ -125,6 +124,7 @@ export async function getUserGroups() {
       id: m.group.id,
       name: m.group.name,
       emoji: "🏠",
+      inviteCode: m.group.inviteCode,
       memberCount: m.group._count.members,
       role: m.role,
     }));
@@ -132,5 +132,75 @@ export async function getUserGroups() {
     return { success: true, groups };
   } catch (error: any) {
     return { error: error?.message };
+  }
+}
+
+export async function getGroupDetails(groupId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) {
+      return { error: "Unauthorized" };
+    }
+
+    const group = await db.group.findUnique({
+      where: { id: groupId },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                handle: true,
+                image: true,
+                bio: true,
+                location: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!group) {
+      return { error: "Group not found." };
+    }
+
+    return { success: true, group };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to fetch group details." };
+  }
+}
+
+export async function leaveGroup(groupId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) {
+      return { error: "Unauthorized" };
+    }
+
+    await db.groupMember.delete({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId: session.user.id,
+        },
+      },
+    });
+
+    // Automatically purge group if empty
+    const membersCount = await db.groupMember.count({
+      where: { groupId },
+    });
+
+    if (membersCount === 0) {
+      await db.group.delete({
+        where: { id: groupId },
+      });
+    }
+
+    return { success: true };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to leave the group." };
   }
 }

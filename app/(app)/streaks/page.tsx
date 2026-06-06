@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Flame, Clapperboard, ChevronRight, Star, Lock, Loader2 } from "lucide-react";
+import { Flame, Clapperboard, Loader2 } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
 import { Avatar } from "@/components/shared/avatar";
 import { getOrCreateTodayAssignment } from "@/actions/vlog";
@@ -17,28 +17,38 @@ export default function StreaksPage() {
   const [loading, setLoading] = useState(true);
   const [activeAchievement, setActiveAchievement] = useState<AchievementConfig | null>(null);
 
-  useEffect(() => {
-    async function loadStreaks() {
-      const activeGroupId = localStorage.getItem("active_group_id");
-      if (!activeGroupId) return;
-
-      setLoading(true);
-      const assignmentRes = await getOrCreateTodayAssignment(activeGroupId);
-      const statsRes = await getStreaksData(activeGroupId);
-      setLoading(false);
-
-      if (assignmentRes.success && assignmentRes.assignment) {
-        setAssignment(assignmentRes.assignment);
-      }
-      if (statsRes.success) {
-        setStreaks(statsRes);
-      }
+  const loadStreaks = async (targetGroupId?: any) => {
+    let activeGroupId = typeof targetGroupId === "string" ? targetGroupId : null;
+    if (!activeGroupId && typeof window !== "undefined") {
+      activeGroupId = localStorage.getItem("active_group_id");
     }
+    if (!activeGroupId) return;
 
+    setLoading(true);
+    const assignmentRes = await getOrCreateTodayAssignment(activeGroupId);
+    const statsRes = await getStreaksData(activeGroupId);
+    setLoading(false);
+
+    if (assignmentRes.success && assignmentRes.assignment) {
+      setAssignment(assignmentRes.assignment);
+    }
+    if (statsRes.success) {
+      setStreaks(statsRes);
+    }
+  };
+
+  useEffect(() => {
     loadStreaks();
 
-    window.addEventListener("group-changed", loadStreaks);
-    return () => window.removeEventListener("group-changed", loadStreaks);
+    const handleGroupChange = (e: Event) => {
+      const customEvent = e as CustomEvent<any>;
+      if (customEvent.detail) {
+        loadStreaks(customEvent.detail);
+      }
+    };
+
+    window.addEventListener("group-changed", handleGroupChange);
+    return () => window.removeEventListener("group-changed", handleGroupChange);
   }, []);
 
   if (loading || !streaks) {
@@ -197,7 +207,8 @@ export default function StreaksPage() {
           <div className="grid grid-cols-7 gap-y-3.5 gap-x-1 text-center">
             {["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
               <span key={day} className="text-white/40 text-[9px] font-medium tracking-wider mb-2">
-                {day}
+                {day
+              }
               </span>
             ))}
 

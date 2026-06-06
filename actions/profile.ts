@@ -66,15 +66,18 @@ export async function getProfileData() {
     const clips = await Promise.all(
       rawClips.map(async (clip) => {
         try {
-          const { data, error } = await supabaseServer.storage
+          const { data: videoData } = await supabaseServer.storage
             .from("vlogs")
             .createSignedUrl(clip.videoUrl, 3600);
+            
+          const { data: thumbData } = await supabaseServer.storage
+            .from("vlogs")
+            .createSignedUrl(clip.thumbnailUrl, 3600);
           
-          const signedUrl = !error && data ? data.signedUrl : clip.videoUrl;
           return {
             ...clip,
-            videoUrl: signedUrl,
-            thumbnailUrl: signedUrl, // Using video presigned URL to extract video frames
+            videoUrl: videoData?.signedUrl || clip.videoUrl,
+            thumbnailUrl: thumbData?.signedUrl || clip.thumbnailUrl,
           };
         } catch {
           return clip;

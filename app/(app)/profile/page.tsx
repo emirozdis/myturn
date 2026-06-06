@@ -434,43 +434,63 @@ export default function ProfilePage() {
 
       <AnimatePresence>
         {panel === "logoutConfirm" && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.72)", zIndex: 20, display: "flex", alignItems: "flex-end", paddingBottom: 32 }}
-            onClick={() => setPanel(null)}
-          >
+          <>
+            {/* Backdrop Overlay */}
             <motion.div
-              initial={{ y: 80, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 80, opacity: 0 }}
-              transition={{ type: "spring", damping: 26, stiffness: 280 }}
-              onClick={e => e.stopPropagation()}
-              style={{ width: "100%", background: "#1a1a1a", borderTop: "1px solid rgba(255,255,255,0.10)", borderRadius: "24px 24px 0 0", padding: "24px 20px 12px" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setPanel(null)}
+              className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm cursor-pointer"
+            />
+
+            {/* Sliding Card */}
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 30, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+              className="absolute bottom-0 inset-x-0 z-50 rounded-t-[32px] p-6 flex flex-col bg-neutral-950/95 border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
             >
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-                <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)" }} />
-              </div>
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
-                <div style={{ width: 52, height: 52, borderRadius: "50%", background: `${ACCENT}22`, border: `1.5px solid ${ACCENT}44`, display: "flex", alignItems: "center" as const, justifyContent: "center" as const }}>
-                  <LogOut size={22} color={ACCENT} />
+              {/* Apple Handle bar indicator */}
+              <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-5 flex-shrink-0" />
+
+              <div className="flex flex-col items-center text-center gap-4">
+                <div 
+                  className="w-14 h-14 rounded-full flex items-center justify-center border border-[#e07c30]/20 shadow-sm"
+                  style={{ background: `${ACCENT}15` }}
+                >
+                  <LogOut size={24} className="text-[#e07c30]" />
+                </div>
+                
+                <div className="flex flex-col gap-1.5">
+                  <h3 className="text-white text-lg font-bold">Log out?</h3>
+                  <p className="text-white/50 text-xs leading-relaxed max-w-[280px]">
+                    You'll need to sign in again to access your account.
+                  </p>
+                </div>
+
+                <div className="w-full flex gap-3 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setPanel(null)}
+                    className="flex-1 py-3.5 rounded-xl text-white font-bold text-sm bg-white/5 border border-white/10 hover:bg-white/10 active:scale-[0.98] transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => signOut({ callbackUrl: "/" })}
+                    className="flex-1 py-3.5 rounded-xl text-black font-bold text-sm active:scale-[0.98] transition-all"
+                    style={{ background: ACCENT }}
+                  >
+                    Log Out
+                  </button>
                 </div>
               </div>
-              <p style={{ color: "#fff", fontWeight: 800, fontSize: 18, textAlign: "center", margin: "0 0 6px" }}>Log out?</p>
-              <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 13, textAlign: "center", margin: "0 0 24px" }}>You'll need to sign in again to access your account.</p>
-              <div style={{ display: "flex", gap: 10 }}>
-                <button type="button" onClick={() => setPanel(null)}
-                  style={{ flex: 1, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 14, color: "#fff", fontWeight: 700, fontSize: 15, padding: "13px 0", cursor: "pointer" }}>
-                  Cancel
-                </button>
-                <button type="button" onClick={() => signOut({ callbackUrl: "/" })}
-                  style={{ flex: 1, background: ACCENT, border: "none", borderRadius: 14, color: "#000", fontWeight: 700, fontSize: 15, padding: "13px 0", cursor: "pointer" }}>
-                  Log Out
-                </button>
-              </div>
             </motion.div>
-          </motion.div>
+          </>
         )}
       </AnimatePresence>
     </motion.div>

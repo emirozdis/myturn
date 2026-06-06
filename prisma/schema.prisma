@@ -63,6 +63,8 @@ model User {
   clips             Clip[]
   reactions         Reaction[]
   pushSubscriptions PushSubscription[]
+  comments          Comment[]
+  views             View[]
 
   @@map("users")
 }
@@ -136,12 +138,15 @@ model Clip {
   groupId       String
   videoUrl      String
   thumbnailUrl  String
+  location      String?
   recordedAt    DateTime @default(now())
 
   assignment DailyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   group      Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
   reactions  Reaction[]
+  comments   Comment[]
+  views      View[]
 
   @@index([assignmentId])
   @@index([userId])
@@ -162,6 +167,36 @@ model Reaction {
   @@index([clipId])
   @@index([userId])
   @@map("reactions")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  clipId    String
+  userId    String
+  text      String
+  createdAt DateTime @default(now())
+
+  clip Clip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([clipId])
+  @@index([userId])
+  @@map("comments")
+}
+
+model View {
+  id        String   @id @default(cuid())
+  clipId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  clip Clip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clipId, userId])
+  @@index([clipId])
+  @@index([userId])
+  @@map("views")
 }
 
 model PushSubscription {

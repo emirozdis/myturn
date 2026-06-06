@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UserPlus, Users, ArrowRight, X, Search, Check, Flame, Compass, Loader2 } from "lucide-react";
+import { UserPlus, Users, ArrowRight, X, Search, Check, Flame, Compass, Loader2, Copy, Sparkles, ChevronLeft, LogOut, CheckCircle, Info } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { getSocialData } from "@/actions/social";
-import { joinGroup } from "@/actions/group";
+import { joinGroup, createGroup, getGroupDetails, leaveGroup } from "@/actions/group";
 
 const TABS = ["Friends", "Groups", "Requests", "Discover"];
 
@@ -18,12 +18,29 @@ export default function SocialPage() {
   const [loading, setLoading] = useState(true);
   const [socialData, setSocialData] = useState<any>(null);
   const [enrollMsg, setEnrollMsg] = useState("");
+  const [joining, setJoining] = useState(false);
+
+  // Create Group State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [createdGroupCode, setCreatedGroupCode] = useState("");
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  // Group Detail State
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [loadingDetailsId, setLoadingDetailsId] = useState<string | null>(null);
 
   const loadSocial = async () => {
     setLoading(true);
     const res = await getSocialData();
     if (res.success) {
       setSocialData(res);
+    }
+    
+    if (typeof window !== "undefined") {
+      setActiveGroupId(localStorage.getItem("active_group_id"));
     }
     setLoading(false);
   };
@@ -34,9 +51,9 @@ export default function SocialPage() {
 
   const handleJoinCode = async () => {
     if (!joinCode.trim()) return;
-    setLoading(true);
+    setJoining(true);
     const res = await joinGroup(joinCode);
-    setLoading(false);
+    setJoining(false);
 
     if (res.error) {
       setEnrollMsg(res.error);
@@ -44,8 +61,85 @@ export default function SocialPage() {
       setEnrollMsg("Joined successfully! 🎉");
       setJoinCode("");
       loadSocial();
+      
+      if (res.group) {
+        triggerActiveGroupChange(res.group.id);
+      }
     }
     setTimeout(() => setEnrollMsg(""), 3500);
+  };
+
+  const handleCreateGroup = async () => {
+    setCreateError("");
+    if (!newGroupName.trim()) {
+      setCreateError("Please enter a group name.");
+      return;
+    }
+
+    setCreating(true);
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const res = await createGroup(newGroupName, timezone);
+    setCreating(false);
+
+    if (res.error) {
+      setCreateError(res.error);
+    } else if (res.group) {
+      setCreatedGroupCode(res.group.inviteCode);
+      triggerActiveGroupChange(res.group.id);
+    }
+  };
+
+  const triggerActiveGroupChange = (id: string) => {
+    localStorage.setItem("active_group_id", id);
+    setActiveGroupId(id);
+    window.dispatchEvent(new CustomEvent("reload-groups"));
+    window.dispatchEvent(new CustomEvent("group-changed", { detail: id }));
+  };
+
+  const handleViewGroup = async (groupId: string) => {
+    setLoadingDetailsId(groupId);
+    const res = await getGroupDetails(groupId);
+    setLoadingDetailsId(null);
+
+    if (res.success && res.group) {
+      // Trigger the slide up Apple Sheet layout for Group Details (satisfies Req 5)
+      window.dispatchEvent(
+        new CustomEvent("open-bottom-sheet", {
+          detail: {
+            type: "group-info",
+            data: {
+              groupId: res.group.id,
+              groupName: res.group.name,
+              inviteCode: res.group.inviteCode,
+              members: res.group.members,
+            },
+          },
+        })
+      );
+    } else if (res.error) {
+      alert(res.error);
+    }
+  };
+
+  const copyCodeToClipboard = () => {
+    if (!createdGroupCode) return;
+    navigator.clipboard.writeText(createdGroupCode);
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
+  };
+
+  const copyExistingCode = (e: React.MouseEvent, code: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(code);
+    alert(`Code "${code}" copied to clipboard! Share it with friends to invite them. ✨`);
+  };
+
+  const closeCreateFlow = () => {
+    setShowCreateModal(false);
+    setNewGroupName("");
+    setCreatedGroupCode("");
+    setCreateError("");
+    loadSocial();
   };
 
   if (loading || !socialData) {
@@ -197,7 +291,7 @@ export default function SocialPage() {
           >
             <div className="grid grid-cols-2 gap-3.5">
               <div
-                onClick={() => router.push("/")}
+                onClick={() => setShowCreateModal(true)}
                 className="rounded-[24px] p-4 flex flex-col justify-between shadow-lg min-h-[140px] group cursor-pointer"
                 style={glassStyle(0.04, 20, 0.08)}
               >
@@ -246,9 +340,13 @@ export default function SocialPage() {
                     onClick={handleJoinCode}
                     className="absolute right-1 top-1 bottom-1 w-7 h-7 rounded-full flex items-center justify-center text-black shadow-md hover:scale-105 transition-transform my-auto disabled:opacity-50"
                     style={{ background: ACCENT }}
-                    disabled={!joinCode.trim()}
+                    disabled={!joinCode.trim() || joining}
                   >
-                    <ArrowRight size={14} strokeWidth={2.5} />
+                    {joining ? (
+                      <Loader2 size={12} className="animate-spin text-black" />
+                    ) : (
+                      <ArrowRight size={14} strokeWidth={2.5} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -266,25 +364,44 @@ export default function SocialPage() {
                 {groups.map((group: any) => (
                   <div
                     key={group.id}
-                    className="flex items-center gap-3.5 p-3.5 rounded-[22px] transition-all hover:bg-white/[0.06]"
+                    onClick={() => handleViewGroup(group.id)}
+                    className="flex items-center justify-between p-3.5 rounded-[22px] transition-all hover:bg-white/[0.06] cursor-pointer"
                     style={glassStyle(0.03, 16, 0.06)}
                   >
-                    <img
-                      src="/image1.jpg"
-                      alt={group.name}
-                      className="w-14 h-14 rounded-full object-cover shadow-md border-[1.5px] border-white/10"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-white text-[15px] font-bold truncate tracking-tight">{group.name}</div>
-                      <div className="text-white/60 text-[11px] font-medium flex items-center gap-1.5 mt-0.5">
-                        <Users size={12} className="opacity-80" />
-                        <span>{group.members} members</span>
-                      </div>
-                      <div className="text-white/40 text-[10px] font-medium mt-1.5 tracking-wide flex items-center gap-1">
-                        <Flame size={10} className="text-[#e07c30]" />
-                        Status: {group.lastVlog}
+                    <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                      <img
+                        src="/image1.jpg"
+                        alt={group.name}
+                        className="w-14 h-14 rounded-full object-cover shadow-md border-[1.5px] border-white/10 flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white text-[15px] font-bold truncate tracking-tight">{group.name}</div>
+                        <div className="text-white/60 text-[11px] font-medium flex items-center gap-1.5 mt-0.5">
+                          <Users size={12} className="opacity-80" />
+                          <span>{group.members} members</span>
+                        </div>
+                        <div className="text-white/40 text-[10px] font-medium mt-1.5 tracking-wide flex items-center gap-1">
+                          <Flame size={10} className="text-[#e07c30]" />
+                          <span>Code: {group.inviteCode}</span>
+                        </div>
                       </div>
                     </div>
+
+                    {loadingDetailsId === group.id ? (
+                      <Loader2 size={16} className="animate-spin text-[#e07c30] mr-2.5 flex-shrink-0" />
+                    ) : (
+                      <button
+                        onClick={(e) => copyExistingCode(e, group.inviteCode)}
+                        style={{
+                          background: "rgba(255,255,255,0.08)",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                        }}
+                        className="p-2.5 rounded-full text-white/70 hover:text-white transition-colors"
+                        title="Copy invite code"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -373,54 +490,160 @@ export default function SocialPage() {
   };
 
   return (
-    <motion.div
-      key="social-tab"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.2 }}
-      className="flex-1 flex flex-col h-full overflow-y-auto scrollbar-hide -mx-4 -mb-4 px-4 pt-6"
-      style={{
-        WebkitOverflowScrolling: "touch",
-        msOverflowStyle: "none",
-        scrollbarWidth: "none",
-      }}
-    >
-      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
-
-      <div
-        className="flex items-center justify-between p-1.5 rounded-full mb-8 relative z-10 shadow-lg"
-        style={glassStyle(0.02, 20, 0.05)}
+    <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+      <motion.div
+        key="social-tab"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.2 }}
+        className="flex-1 flex flex-col h-full overflow-y-auto scrollbar-hide -mx-4 -mb-4 px-4 pt-6"
+        style={{
+          WebkitOverflowScrolling: "touch",
+          msOverflowStyle: "none",
+          scrollbarWidth: "none",
+        }}
       >
-        <motion.div
-          className="absolute top-1.5 bottom-1.5 rounded-full z-0 pointer-events-none"
-          animate={{
-            left: `calc(${activeIndex} * (100% / ${TABS.length}) + 6px)`,
-            width: `calc(100% / ${TABS.length} - 12px)`,
-          }}
-          transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
-          style={{
-            background: ACCENT,
-            boxShadow: "0 2px 8px rgba(224,124,48,0.3), inset 0 1px 1px rgba(255,255,255,0.4)",
-          }}
-        />
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className="flex-1 relative text-center py-2 text-[12px] font-bold rounded-full transition-colors duration-300 z-10 focus:outline-none"
-            style={{
-              color: activeTab === tab ? "#111" : "rgba(255,255,255,0.5)",
-            }}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+        <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
 
-      <AnimatePresence mode="wait">
-        {renderTabContent()}
+        <div
+          className="flex items-center justify-between p-1.5 rounded-full mb-8 relative z-10 shadow-lg"
+          style={glassStyle(0.02, 20, 0.05)}
+        >
+          <motion.div
+            className="absolute top-1.5 bottom-1.5 rounded-full z-0 pointer-events-none"
+            animate={{
+              left: `calc(${activeIndex} * (100% / ${TABS.length}) + 6px)`,
+              width: `calc(100% / ${TABS.length} - 12px)`,
+            }}
+            transition={{ type: "spring", bounce: 0.2, duration: 0.5 }}
+            style={{
+              background: ACCENT,
+              boxShadow: "0 2px 8px rgba(224,124,48,0.3), inset 0 1px 1px rgba(255,255,255,0.4)",
+            }}
+          />
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="flex-1 relative text-center py-2 text-[12px] font-bold rounded-full transition-colors duration-300 z-10 focus:outline-none"
+              style={{
+                color: activeTab === tab ? "#111" : "rgba(255,255,255,0.5)",
+              }}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        <AnimatePresence mode="wait">
+          {renderTabContent()}
+        </AnimatePresence>
+      </motion.div>
+
+      {/* Slide-over Create Group Panel */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <motion.div
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 28, stiffness: 300 }}
+            className="absolute inset-0 bg-[#111] z-50 flex flex-col p-6 overflow-y-auto"
+          >
+            <div className="flex items-center gap-3 mb-8">
+              <button
+                onClick={closeCreateFlow}
+                className="p-1 rounded-full text-white/70 hover:text-white transition-colors hover:bg-white/5"
+              >
+                <ChevronLeft size={24} />
+              </button>
+              <h2 className="text-white text-xl font-bold">Create a Group</h2>
+            </div>
+
+            {createdGroupCode ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center px-4">
+                <Sparkles size={48} className="text-[#e07c30] mb-4 animate-bounce" />
+                <h3 className="text-white text-2xl font-bold mb-2">Group Created! 🎉</h3>
+                <p className="text-white/60 text-xs leading-relaxed max-w-[280px] mb-8">
+                  Invite your friends to your group using this unique code. Once they join, you can start rolling daily vlog assignments!
+                </p>
+
+                <div 
+                  style={glassStyle(0.04, 16, 0.08)} 
+                  className="rounded-2xl p-6 w-full max-w-[280px] flex flex-col items-center gap-4 mb-8"
+                >
+                  <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Invite Code</span>
+                  <span className="text-white font-mono text-3xl font-extrabold tracking-widest selection:bg-amber-500/30">
+                    {createdGroupCode}
+                  </span>
+                  
+                  <button
+                    onClick={copyCodeToClipboard}
+                    style={{ background: copySuccess ? "#22c55e" : ACCENT }}
+                    className="w-full py-2.5 rounded-xl text-black font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                  >
+                    {copySuccess ? (
+                      <>
+                        <Check size={14} strokeWidth={3} />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={14} />
+                        Copy Code
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <button
+                  onClick={closeCreateFlow}
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                  }}
+                  className="w-full max-w-[280px] py-3.5 rounded-xl text-white font-bold text-sm transition-transform active:scale-[0.98]"
+                >
+                  Finish Setup
+                </button>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col justify-between">
+                <div className="flex flex-col gap-4">
+                  {createError && (
+                    <p className="text-red-500 text-sm font-semibold text-center bg-red-500/10 py-2.5 px-4 rounded-xl border border-red-500/20 mb-2">
+                      {createError}
+                    </p>
+                  )}
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1">Group Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Weekend Warriors"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      style={glassStyle(0.04, 16, 0.08)}
+                      className="w-full rounded-[18px] py-3.5 px-4 text-white text-[15px] outline-none transition-colors focus:border-[#e07c30]/50 placeholder:text-white/30"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleCreateGroup}
+                  disabled={creating || !newGroupName.trim()}
+                  className="w-full py-4 rounded-full text-black font-bold text-[16px] transition-transform active:scale-[0.98] shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                  style={{ background: ACCENT }}
+                >
+                  {creating && <Loader2 size={18} className="animate-spin" />}
+                  {creating ? "Creating..." : "Create Group"}
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
 }

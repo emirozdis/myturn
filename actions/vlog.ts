@@ -61,6 +61,21 @@ export async function getOrCreateTodayAssignment(groupId: string) {
           orderBy: { recordedAt: "asc" },
           include: {
             reactions: true,
+            comments: {
+              orderBy: { createdAt: "asc" },
+              include: {
+                user: {
+                  select: { id: true, name: true, image: true },
+                },
+              },
+            },
+            views: {
+              include: {
+                user: {
+                  select: { id: true, name: true, image: true },
+                },
+              },
+            },
           },
         },
       },
@@ -108,6 +123,21 @@ export async function getOrCreateTodayAssignment(groupId: string) {
           orderBy: { recordedAt: "asc" },
           include: {
             reactions: true,
+            comments: {
+              orderBy: { createdAt: "asc" },
+              include: {
+                user: {
+                  select: { id: true, name: true, image: true },
+                },
+              },
+            },
+            views: {
+              include: {
+                user: {
+                  select: { id: true, name: true, image: true },
+                },
+              },
+            },
           },
         },
       },
@@ -119,32 +149,37 @@ export async function getOrCreateTodayAssignment(groupId: string) {
   }
 }
 
-export async function getSignedUploadUrl(groupId: string, assignmentId: string, fileName: string) {
+export async function getSignedUploadUrls(groupId: string, assignmentId: string, ext: string = "webm") {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) {
       return { error: "Unauthorized" };
     }
 
-    const path = `${groupId}/${assignmentId}/${Date.now()}-${fileName}`;
+    const timestamp = Date.now();
+    const videoPath = `${groupId}/${assignmentId}/${timestamp}-vlog.${ext}`;
+    const thumbPath = `${groupId}/${assignmentId}/${timestamp}-thumb.jpg`;
 
-    // Generate signed upload URLs for both vlogs and thumbnails
+    // Generate signed upload URLs for vlogs and thumbnails
     const videoResponse = await supabaseServer.storage
       .from("vlogs")
-      .createSignedUploadUrl(path);
+      .createSignedUploadUrl(videoPath);
 
-    if (videoResponse.error) {
-      throw new Error(`Video Storage Error: ${videoResponse.error.message}`);
+    const thumbResponse = await supabaseServer.storage
+      .from("vlogs")
+      .createSignedUploadUrl(thumbPath);
+
+    if (videoResponse.error || thumbResponse.error) {
+      throw new Error("Storage Error: Failed to generate signed URLs.");
     }
 
     return {
       success: true,
-      path,
-      token: videoResponse.data.token,
-      signedUrl: videoResponse.data.signedUrl,
+      video: { path: videoPath, url: videoResponse.data.signedUrl },
+      thumbnail: { path: thumbPath, url: thumbResponse.data.signedUrl }
     };
   } catch (error: any) {
-    return { error: error?.message || "Failed to generate signed upload URL." };
+    return { error: error?.message || "Failed to generate signed upload URLs." };
   }
 }
 
@@ -153,6 +188,7 @@ export async function createClip(data: {
   assignmentId: string;
   videoUrl: string;
   thumbnailUrl: string;
+  location?: string;
 }) {
   try {
     const session = await getAuthSession();
@@ -180,10 +216,11 @@ export async function createClip(data: {
         groupId: data.groupId,
         videoUrl: data.videoUrl,
         thumbnailUrl: data.thumbnailUrl,
+        location: data.location || "Earth",
       },
     });
 
-    // Update daily assignment status to completed if they successfully posted
+    // Update daily assignment status to completed if successfully posted
     await db.dailyAssignment.update({
       where: { id: data.assignmentId },
       data: { status: "completed" },
@@ -240,5 +277,70 @@ export async function toggleReaction(clipId: string, emoji: string) {
     return { success: true, reaction };
   } catch (error: any) {
     return { error: error?.message };
+  }
+}
+
+/**
+ * Handle dynamic commentary posts on active vlogs.
+ */
+export async function addComment(clipId: string, text: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) {
+      return { error: "Unauthorized" };
+    }
+
+    const comment = await db.comment.create({
+      data: {
+        clipId,
+        userId: session.user.id,
+        text,
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, image: true },
+        },
+      },
+    });
+
+    return { success: true, comment };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to publish comment." };
+  }
+}
+
+/**
+ * Track unique vlog views natively to update active watchers indexes.
+ */
+export async function trackView(clipId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) {
+      return { error: "Unauthorized" };
+    }
+
+    const existing = await db.view.findUnique({
+      where: {
+        clipId_userId: {
+          clipId,
+          userId: session.user.id,
+        },
+      },
+    });
+
+    if (existing) {
+      return { success: true, alreadyViewed: true };
+    }
+
+    const view = await db.view.create({
+      data: {
+        clipId,
+        userId: session.user.id,
+      },
+    });
+
+    return { success: true, view };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to track view." };
   }
 }

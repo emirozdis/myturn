@@ -608,16 +608,16 @@ export default function OnboardingPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center text-white/50">
+      <div className="fixed inset-0 bg-black flex items-center justify-center text-white/50">
         <Loader2 size={32} className="animate-spin text-[#e07c30]" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-0 sm:p-4 overflow-hidden select-none">
+    <div className="fixed inset-0 sm:relative sm:min-h-screen bg-black flex sm:items-center sm:justify-center p-0 sm:p-4 overflow-hidden select-none">
       <div
-        className="relative w-full sm:w-[393px] h-[100dvh] sm:h-[812px] sm:rounded-[48px] overflow-hidden flex flex-col transition-all duration-300 bg-[#161618]"
+        className="absolute inset-0 sm:relative sm:w-[393px] sm:h-[812px] sm:rounded-[48px] overflow-hidden flex flex-col transition-all duration-300 bg-[#161618]"
         style={{
           boxShadow: "inset 0 2px 6px rgba(255,255,255,0.1), 0 30px 60px -12px rgba(0,0,0,1), 0 0 0 1px rgba(255,255,255,0.05)",
         }}

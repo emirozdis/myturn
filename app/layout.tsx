@@ -31,6 +31,10 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "MyTurn",
   },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "mobile-web-app-capable": "yes",
+  },
   icons: {
     icon: [{ url: "/logo.png", type: "image/png" }],
     apple: [{ url: "/logo.png", type: "image/png" }],
@@ -45,9 +49,15 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${satoshi.variable} ${satoshi.className} h-dvh overflow-hidden antialiased`}
+      className={`${satoshi.variable} ${satoshi.className} h-screen overflow-hidden antialiased`}
     >
-      <body className="h-dvh w-full overflow-hidden flex flex-col">
+      <head>
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+      </head>
+      <body className="h-screen w-full overflow-hidden flex flex-col">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
