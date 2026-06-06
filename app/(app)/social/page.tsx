@@ -1,46 +1,63 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UserPlus, Users, ArrowRight, X, Search, Check, Flame, Compass } from "lucide-react";
+import { UserPlus, Users, ArrowRight, X, Search, Check, Flame, Compass, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
+import { getSocialData } from "@/actions/social";
+import { joinGroup } from "@/actions/group";
 
 const TABS = ["Friends", "Groups", "Requests", "Discover"];
 
-const FRIENDS = [
-  { id: 1, name: "Emir", status: "Online", online: true, hasStory: true },
-  { id: 2, name: "Nadz", status: "Online", online: true, hasStory: false },
-  { id: 3, name: "Jhon", status: "Online", online: true, hasStory: false },
-  { id: 4, name: "Clara", status: "Offline", online: false, hasStory: false },
-  { id: 5, name: "Miguel", status: "Online", online: true, hasStory: false },
-];
-
-const GROUPS = [
-  { id: 1, name: "The Apartment", members: 8, last: "2 days ago" },
-  { id: 2, name: "Weekend Warriors", members: 5, last: "1 week ago" },
-  { id: 3, name: "Foodies Club", members: 6, last: "3 days ago" },
-];
-
-const SUGGESTIONS = [
-  { id: 1, name: "Alex Reyes", mutual: 3 },
-  { id: 2, name: "Samantha Lee", mutual: 4 },
-  { id: 3, name: "Mark Dela Cruz", mutual: 2 },
-];
-
-const REQUESTS = [
-  { id: 1, name: "David Kim", info: "5 mutual friends", type: "friend" },
-  { id: 2, name: "Izmir Vloggers", info: "12 members", type: "group" },
-];
-
-const TRENDING = [
-  { id: 1, name: "Local Explorers", members: 124, active: "12 mins ago" },
-  { id: 2, name: "Coffee Lovers", members: 89, active: "1 hour ago" },
-];
-
 export default function SocialPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("Friends");
   const [joinCode, setJoinCode] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [socialData, setSocialData] = useState<any>(null);
+  const [enrollMsg, setEnrollMsg] = useState("");
+
+  const loadSocial = async () => {
+    setLoading(true);
+    const res = await getSocialData();
+    if (res.success) {
+      setSocialData(res);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadSocial();
+  }, []);
+
+  const handleJoinCode = async () => {
+    if (!joinCode.trim()) return;
+    setLoading(true);
+    const res = await joinGroup(joinCode);
+    setLoading(false);
+
+    if (res.error) {
+      setEnrollMsg(res.error);
+    } else {
+      setEnrollMsg("Joined successfully! 🎉");
+      setJoinCode("");
+      loadSocial();
+    }
+    setTimeout(() => setEnrollMsg(""), 3500);
+  };
+
+  if (loading || !socialData) {
+    return (
+      <div className="flex-1 flex flex-col justify-center items-center text-white/50">
+        <Loader2 size={32} className="animate-spin text-[#e07c30] mb-2" />
+        <span className="text-[12px] font-medium tracking-wide">Retrieving network data...</span>
+      </div>
+    );
+  }
+
+  const { friends, groups, suggestions, trending } = socialData;
   const activeIndex = TABS.indexOf(activeTab);
 
   const renderTabContent = () => {
@@ -55,7 +72,6 @@ export default function SocialPage() {
             transition={{ duration: 0.2 }}
             className="flex flex-col gap-8 pb-24"
           >
-            {/* Banner */}
             <div
               className="relative rounded-[24px] overflow-hidden min-h-[140px] flex items-center"
               style={{
@@ -78,6 +94,7 @@ export default function SocialPage() {
                   Add friends to<br />join the fun
                 </h3>
                 <button
+                  onClick={() => setActiveTab("Discover")}
                   className="text-black px-5 py-2 rounded-full text-[12px] font-bold transition-all active:scale-95"
                   style={{ background: ACCENT }}
                 >
@@ -86,52 +103,52 @@ export default function SocialPage() {
               </div>
             </div>
 
-            {/* Your Friends */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white text-[17px] font-bold tracking-tight">Your Friends</h2>
-                <button className="text-[#e07c30] text-[12px] font-bold hover:text-white transition-colors">See all</button>
+                <h2 className="text-white text-[17px] font-bold tracking-tight">Group Co-Members ({friends.length})</h2>
               </div>
-              <div
-                className="flex gap-4 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-2 pt-1"
-                style={{ WebkitOverflowScrolling: "touch" }}
-              >
-                {FRIENDS.map((friend) => (
-                  <div key={friend.id} className="flex flex-col items-center flex-shrink-0 w-[68px] cursor-pointer group">
-                    <div className="relative w-[64px] h-[64px] mb-2 flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
-                      {friend.hasStory && (
-                        <div className="absolute inset-0 rounded-full border-[2.5px] border-[#0A84FF] opacity-90 scale-[1.08]" />
-                      )}
-                      <img
-                        src="/profile.jpg"
-                        alt={friend.name}
-                        className={`w-full h-full rounded-full object-cover ${friend.hasStory ? "border-2 border-[#111]" : "border-[1.5px] border-white/15"}`}
-                      />
-                      <div
-                        className={`absolute bottom-0 right-0 w-4 h-4 border-[2.5px] border-[#111] rounded-full shadow-sm ${
-                          friend.online ? "bg-[#30D158]" : "bg-[#555]"
-                        }`}
-                      />
+              {friends.length > 0 ? (
+                <div
+                  className="flex gap-4 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-2 pt-1"
+                  style={{ WebkitOverflowScrolling: "touch" }}
+                >
+                  {friends.map((friend: any) => (
+                    <div key={friend.id} className="flex flex-col items-center flex-shrink-0 w-[68px] cursor-pointer group">
+                      <div className="relative w-[64px] h-[64px] mb-2 flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
+                        {friend.hasStory && (
+                          <div className="absolute inset-0 rounded-full border-[2.5px] border-[#0A84FF] opacity-90 scale-[1.08]" />
+                        )}
+                        <img
+                          src={friend.image || "/profile.jpg"}
+                          alt={friend.name}
+                          className={`w-full h-full rounded-full object-cover ${friend.hasStory ? "border-2 border-[#111]" : "border-[1.5px] border-white/15"}`}
+                        />
+                        <div
+                          className={`absolute bottom-0 right-0 w-4 h-4 border-[2.5px] border-[#111] rounded-full shadow-sm ${
+                            friend.online ? "bg-[#30D158]" : "bg-[#555]"
+                          }`}
+                        />
+                      </div>
+                      <span className="text-white text-[13px] font-semibold truncate w-full text-center tracking-tight">
+                        {friend.name}
+                      </span>
+                      <span className="text-white/50 text-[11px] font-medium truncate w-full text-center mt-0.5">
+                        {friend.status}
+                      </span>
                     </div>
-                    <span className="text-white text-[13px] font-semibold truncate w-full text-center tracking-tight">
-                      {friend.name}
-                    </span>
-                    <span className="text-white/50 text-[11px] font-medium truncate w-full text-center mt-0.5">
-                      {friend.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-white/30 text-xs">No group members found. Share your group code!</p>
+              )}
             </div>
 
-            {/* Suggestions */}
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white text-[17px] font-bold tracking-tight">Suggestions</h2>
-                <button className="text-[#e07c30] text-[12px] font-bold hover:text-white transition-colors">See all</button>
+                <h2 className="text-white text-[17px] font-bold tracking-tight">Suggested Connections</h2>
               </div>
               <div className="flex flex-col gap-3">
-                {SUGGESTIONS.map((user) => (
+                {suggestions.map((user: any) => (
                   <div
                     key={user.id}
                     className="flex items-center justify-between p-3 rounded-[22px] transition-all hover:bg-white/[0.06]"
@@ -147,25 +164,20 @@ export default function SocialPage() {
                         <div className="text-white text-[14px] font-bold truncate leading-tight tracking-tight">
                           {user.name}
                         </div>
-                        <div className="text-white/50 text-[11px] font-medium mt-0.5">{user.mutual} mutual friends</div>
+                        <div className="text-white/50 text-[11px] font-medium mt-0.5">{user.mutual} mutual groups</div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="px-4 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95 whitespace-nowrap"
-                        style={{
-                          background: "rgba(224,124,48,0.15)",
-                          border: "1px solid rgba(224,124,48,0.4)",
-                          color: ACCENT,
-                          boxShadow: "inset 0 1px 2px rgba(255,255,255,0.1)"
-                        }}
-                      >
-                        Add Friend
-                      </button>
-                      <button className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors focus:outline-none">
-                        <X size={14} strokeWidth={2.5} />
-                      </button>
-                    </div>
+                    <button
+                      className="px-4 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95 whitespace-nowrap"
+                      style={{
+                        background: "rgba(224,124,48,0.15)",
+                        border: "1px solid rgba(224,124,48,0.4)",
+                        color: ACCENT,
+                        boxShadow: "inset 0 1px 2px rgba(255,255,255,0.1)"
+                      }}
+                    >
+                      Connect
+                    </button>
                   </div>
                 ))}
               </div>
@@ -185,6 +197,7 @@ export default function SocialPage() {
           >
             <div className="grid grid-cols-2 gap-3.5">
               <div
+                onClick={() => router.push("/")}
                 className="rounded-[24px] p-4 flex flex-col justify-between shadow-lg min-h-[140px] group cursor-pointer"
                 style={glassStyle(0.04, 20, 0.08)}
               >
@@ -230,6 +243,7 @@ export default function SocialPage() {
                     }}
                   />
                   <button
+                    onClick={handleJoinCode}
                     className="absolute right-1 top-1 bottom-1 w-7 h-7 rounded-full flex items-center justify-center text-black shadow-md hover:scale-105 transition-transform my-auto disabled:opacity-50"
                     style={{ background: ACCENT }}
                     disabled={!joinCode.trim()}
@@ -240,13 +254,16 @@ export default function SocialPage() {
               </div>
             </div>
 
+            {enrollMsg && (
+              <p className="text-center text-xs font-semibold text-[#e07c30]">{enrollMsg}</p>
+            )}
+
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white text-[17px] font-bold tracking-tight">Your Groups</h2>
-                <button className="text-[#e07c30] text-[12px] font-bold hover:text-white transition-colors">See all</button>
+                <h2 className="text-white text-[17px] font-bold tracking-tight">Your Groups ({groups.length})</h2>
               </div>
               <div className="flex flex-col gap-3">
-                {GROUPS.map((group) => (
+                {groups.map((group: any) => (
                   <div
                     key={group.id}
                     className="flex items-center gap-3.5 p-3.5 rounded-[22px] transition-all hover:bg-white/[0.06]"
@@ -265,20 +282,9 @@ export default function SocialPage() {
                       </div>
                       <div className="text-white/40 text-[10px] font-medium mt-1.5 tracking-wide flex items-center gap-1">
                         <Flame size={10} className="text-[#e07c30]" />
-                        Last vlog: {group.last}
+                        Status: {group.lastVlog}
                       </div>
                     </div>
-                    <button
-                      className="px-4 py-2 rounded-full text-[11px] font-bold transition-all active:scale-95 whitespace-nowrap"
-                      style={{
-                        background: "rgba(224,124,48,0.15)",
-                        border: "1px solid rgba(224,124,48,0.4)",
-                        color: ACCENT,
-                        boxShadow: "inset 0 1px 2px rgba(255,255,255,0.1)"
-                      }}
-                    >
-                      View Group
-                    </button>
                   </div>
                 ))}
               </div>
@@ -296,73 +302,12 @@ export default function SocialPage() {
             transition={{ duration: 0.2 }}
             className="flex flex-col gap-8 pb-24"
           >
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white text-[17px] font-bold tracking-tight">Pending Requests</h2>
+            <div className="py-12 flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                <Check size={24} className="text-white/30" />
               </div>
-              <div className="flex flex-col gap-3">
-                {REQUESTS.length > 0 ? REQUESTS.map((req) => (
-                  <div
-                    key={req.id}
-                    className="flex flex-col gap-3 p-4 rounded-[22px] transition-all"
-                    style={glassStyle(0.04, 20, 0.08)}
-                  >
-                    <div className="flex items-center gap-3.5">
-                      <div className="relative">
-                        <img
-                          src={req.type === "group" ? "/image1.jpg" : "/profile.jpg"}
-                          alt={req.name}
-                          className="w-12 h-12 rounded-full object-cover border-[1.5px] border-white/15 shadow-md"
-                        />
-                        <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#111] flex items-center justify-center border border-white/10">
-                          {req.type === "group" ? (
-                            <Users size={10} className="text-[#e07c30]" />
-                          ) : (
-                            <UserPlus size={10} className="text-[#e07c30]" />
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white text-[15px] font-bold truncate tracking-tight">{req.name}</div>
-                        <div className="text-white/50 text-[11px] font-medium mt-0.5">{req.info}</div>
-                        <div className="text-[#e07c30] text-[10px] font-bold uppercase tracking-wider mt-1">
-                          {req.type === "group" ? "Group Invite" : "Friend Request"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <button
-                        className="flex-1 py-2 rounded-xl text-black text-[12px] font-bold transition-all shadow-md active:scale-95 flex items-center justify-center gap-1.5"
-                        style={{
-                          background: ACCENT,
-                          boxShadow: "inset 0 1px 1px rgba(255,255,255,0.4)"
-                        }}
-                      >
-                        <Check size={14} strokeWidth={3} />
-                        Accept
-                      </button>
-                      <button
-                        className="flex-1 py-2 rounded-xl text-white text-[12px] font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
-                        style={{
-                          background: "rgba(255,255,255,0.08)",
-                          border: "1px solid rgba(255,255,255,0.12)",
-                        }}
-                      >
-                        <X size={14} strokeWidth={3} className="opacity-70" />
-                        Decline
-                      </button>
-                    </div>
-                  </div>
-                )) : (
-                  <div className="py-12 flex flex-col items-center text-center">
-                    <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-                      <Check size={24} className="text-white/30" />
-                    </div>
-                    <p className="text-white/70 font-semibold text-[14px]">You're all caught up!</p>
-                    <p className="text-white/40 text-[12px] mt-1">No pending requests at the moment.</p>
-                  </div>
-                )}
-              </div>
+              <p className="text-white/70 font-semibold text-[14px]">You're all caught up!</p>
+              <p className="text-white/40 text-[12px] mt-1">No pending invitations or join requests.</p>
             </div>
           </motion.div>
         );
@@ -393,10 +338,10 @@ export default function SocialPage() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <Compass size={18} className="text-[#e07c30]" />
-                <h2 className="text-white text-[17px] font-bold tracking-tight">Trending Groups</h2>
+                <h2 className="text-white text-[17px] font-bold tracking-tight">Active Groups</h2>
               </div>
               <div className="flex flex-col gap-3">
-                {TRENDING.map((group) => (
+                {trending.length > 0 ? trending.map((group: any) => (
                   <div
                     key={group.id}
                     className="flex items-center justify-between p-3.5 rounded-[22px] transition-all hover:bg-white/[0.06]"
@@ -416,19 +361,10 @@ export default function SocialPage() {
                         <div className="text-[#e07c30] text-[10px] font-semibold mt-1">Active {group.active}</div>
                       </div>
                     </div>
-                    <button
-                      className="px-4 py-2 rounded-full text-[11px] font-bold transition-all active:scale-95 whitespace-nowrap"
-                      style={{
-                        background: "rgba(255,255,255,0.08)",
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        color: "white",
-                        boxShadow: "inset 0 1px 2px rgba(255,255,255,0.05)"
-                      }}
-                    >
-                      View
-                    </button>
                   </div>
-                ))}
+                )) : (
+                  <p className="text-white/30 text-xs">No suggested groups available yet.</p>
+                )}
               </div>
             </div>
           </motion.div>
@@ -452,12 +388,10 @@ export default function SocialPage() {
     >
       <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
 
-      {/* Tabs Switcher */}
       <div
         className="flex items-center justify-between p-1.5 rounded-full mb-8 relative z-10 shadow-lg"
         style={glassStyle(0.02, 20, 0.05)}
       >
-        {/* Sliding indicator */}
         <motion.div
           className="absolute top-1.5 bottom-1.5 rounded-full z-0 pointer-events-none"
           animate={{
@@ -484,7 +418,6 @@ export default function SocialPage() {
         ))}
       </div>
 
-      {/* Tab Content Area */}
       <AnimatePresence mode="wait">
         {renderTabContent()}
       </AnimatePresence>

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { AuthProvider } from "@/components/providers";
 
 const satoshi = localFont({
   src: [
@@ -46,7 +47,9 @@ export default function RootLayout({
       lang="en"
       className={`${satoshi.variable} ${satoshi.className} h-dvh overflow-hidden antialiased`}
     >
-      <body className="h-dvh w-full overflow-hidden flex flex-col">{children}</body>
+      <body className="h-dvh w-full overflow-hidden flex flex-col">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

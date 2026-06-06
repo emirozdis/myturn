@@ -6,9 +6,11 @@ import { ACCENT, TIMELINE_POINTS } from "@/lib/theme";
 export function TimelineTracker({
   currentHourIndex,
   onHourChange,
+  uploadedSlots = [],
 }: {
   currentHourIndex: number;
   onHourChange: (index: number) => void;
+  uploadedSlots?: number[];
 }) {
   return (
     <div className="px-4 pb-3 flex-shrink-0">
@@ -34,6 +36,8 @@ export function TimelineTracker({
           {TIMELINE_POINTS.map((pt) => {
             const isCurrent = pt.key === currentHourIndex;
             const isDone = pt.key < currentHourIndex;
+            const hasUpload = uploadedSlots.includes(pt.key);
+
             return (
               <button
                 key={pt.key}
@@ -43,16 +47,20 @@ export function TimelineTracker({
                 <div
                   className="w-3.5 h-3.5 rounded-full flex items-center justify-center transition-all duration-300 backdrop-blur-sm"
                   style={{
-                    background: isDone
-                      ? ACCENT
-                      : isCurrent
-                        ? "rgba(224,124,48,0.3)"
-                        : "rgba(0,0,0,0.6)",
+                    background: isCurrent
+                      ? "rgba(224,124,48,0.3)"
+                      : hasUpload
+                        ? `${ACCENT}88`
+                        : isDone
+                          ? ACCENT
+                          : "rgba(0,0,0,0.6)",
                     border: isCurrent
                       ? `2px solid ${ACCENT}`
-                      : isDone
-                        ? "none"
-                        : "1.5px solid rgba(255,255,255,0.2)",
+                      : hasUpload
+                        ? `1.5px solid ${ACCENT}`
+                        : isDone
+                          ? "none"
+                          : "1.5px solid rgba(255,255,255,0.2)",
                   }}
                 >
                   {isCurrent && (
@@ -64,9 +72,11 @@ export function TimelineTracker({
                   style={{
                     color: isCurrent
                       ? ACCENT
-                      : isDone
-                        ? "rgba(255,255,255,0.8)"
-                        : "rgba(255,255,255,0.4)",
+                      : hasUpload
+                        ? ACCENT
+                        : isDone
+                          ? "rgba(255,255,255,0.8)"
+                          : "rgba(255,255,255,0.4)",
                   }}
                 >
                   {pt.label}

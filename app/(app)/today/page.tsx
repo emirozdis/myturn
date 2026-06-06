@@ -8,44 +8,117 @@ import {
   Smile,
   Plus,
   User,
-  Zap,
   Sparkles,
   Clock,
+  Loader2,
+  VideoOff,
 } from "lucide-react";
-import { glassStyle } from "../../../components/shared/glass-style";
-import { CountdownTimer } from "../../../components/shared/countdown-timer";
-import { Avatar } from "../../../components/shared/avatar";
-import { ACCENT } from "../../../lib/theme";
+import { glassStyle } from "@/components/shared/glass-style";
+import { CountdownTimer } from "@/components/shared/countdown-timer";
+import { Avatar } from "@/components/shared/avatar";
+import { ACCENT } from "@/lib/theme";
 import { TimelineTracker } from "@/components/timeline-tracker";
+import { getOrCreateTodayAssignment, getSignedReadUrl, toggleReaction } from "@/actions/vlog";
+
+function getSlotForClip(recordedAt: Date | string): number {
+  const date = new Date(recordedAt);
+  const hours = date.getHours();
+  if (hours >= 9 && hours < 12) return 0;
+  if (hours >= 12 && hours < 15) return 1;
+  if (hours >= 15 && hours < 18) return 2;
+  if (hours >= 18 && hours < 21) return 3;
+  if (hours >= 21 && hours < 24) return 4;
+  return 5;
+}
 
 export default function TodayPage() {
   const [isVideoExpanded, setIsVideoExpanded] = useState(false);
   const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(24);
-  const [currentHourIndex, setCurrentHourIndex] = useState(2);
+  const [likeCount, setLikeCount] = useState(0);
+  const [currentHourIndex, setCurrentHourIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [videoProgress, setVideoProgress] = useState(0);
-  const videoIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const [assignment, setAssignment] = useState<any>(null);
+  const [clips, setClips] = useState<any[]>([]);
+  const [resolvedClipUrls, setResolvedClipUrls] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
 
-  const videoSrc = "/image1.jpg";
+  // Load dynamic data on group switch
+  useEffect(() => {
+    async function loadTodayVlogs() {
+      const activeGroupId = localStorage.getItem("active_group_id");
+      if (!activeGroupId) return;
+
+      setLoading(true);
+      const res = await getOrCreateTodayAssignment(activeGroupId);
+      setLoading(false);
+
+      if (res.success && res.assignment) {
+        setAssignment(res.assignment);
+        const fetchedClips = res.assignment.clips || [];
+        setClips(fetchedClips);
+        
+        // Default to the timeline slot of the latest uploaded clip if clips exist,
+        // otherwise default to the slot of the current time.
+        if (fetchedClips.length > 0) {
+          const latestClip = fetchedClips[fetchedClips.length - 1];
+          setCurrentHourIndex(getSlotForClip(latestClip.recordedAt));
+        } else {
+          setCurrentHourIndex(getSlotForClip(new Date()));
+        }
+        
+        // Resolve pre-signed read URLs from Supabase Storage for the clips
+        const urls: Record<string, string> = {};
+        for (const clip of fetchedClips) {
+          const urlRes = await getSignedReadUrl("vlogs", clip.videoUrl);
+          if (urlRes.success && urlRes.url) {
+            urls[clip.id] = urlRes.url;
+          }
+        }
+        setResolvedClipUrls(urls);
+      }
+    }
+
+    loadTodayVlogs();
+
+    // Re-trigger load if active group index changes inside layout state
+    window.addEventListener("group-changed", loadTodayVlogs);
+    return () => window.removeEventListener("group-changed", loadTodayVlogs);
+  }, []);
+
+  // Sync like count and status whenever active clip changes
+  const activeClip = clips.find((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+  const activeClipUrl = activeClip ? resolvedClipUrls[activeClip.id] : null;
+  const uploadedSlots = clips.map((clip) => getSlotForClip(clip.recordedAt));
 
   useEffect(() => {
-    if (isPlaying) {
-      videoIntervalRef.current = setInterval(() => {
-        setVideoProgress((prev) => (prev >= 100 ? 0 : prev + 2));
-      }, 300);
-    } else if (videoIntervalRef.current) {
-      clearInterval(videoIntervalRef.current);
+    if (activeClip) {
+      setLikeCount(activeClip.reactions?.length || 0);
+      setLiked(false); // Default or match user reactions array in production context
+    } else {
+      setLikeCount(0);
+      setLiked(false);
     }
-    return () => {
-      if (videoIntervalRef.current) clearInterval(videoIntervalRef.current);
-    };
-  }, [isPlaying]);
+  }, [activeClip]);
 
-  const handleLike = useCallback(() => {
+  const handleLike = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!activeClip) return;
+
     setLiked((v) => !v);
     setLikeCount((c) => (liked ? c - 1 : c + 1));
-  }, [liked]);
+
+    await toggleReaction(activeClip.id, "❤️");
+  }, [liked, activeClip]);
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex flex-col justify-center items-center text-white/50">
+        <Loader2 size={32} className="animate-spin text-[#e07c30] mb-2" />
+        <span className="text-[12px] font-medium tracking-wide">Loading daily updates...</span>
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -73,13 +146,27 @@ export default function TodayPage() {
             boxShadow:
               "inset 0 2px 4px rgba(255,255,255,0.4), inset 0 -2px 4px rgba(0,0,0,0.6), 0 20px 40px -10px rgba(0,0,0,0.8)",
           }}
-          className="absolute inset-0 rounded-3xl pointer-events-none"
+          className="absolute inset-0 rounded-3xl pointer-events-none z-10"
         />
-        <img
-          src={videoSrc}
-          alt="Current Vlog Thumbnail"
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
-        />
+
+        {activeClipUrl ? (
+          <video
+            src={activeClipUrl}
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-neutral-900/60 z-0 flex flex-col items-center justify-center p-6 text-center">
+            <VideoOff size={32} className="text-white/20 mb-2" />
+            <span className="text-white/40 text-xs font-semibold leading-relaxed max-w-[200px]">
+              No updates uploaded for this timeframe yet.
+            </span>
+          </div>
+        )}
+
         <div className="absolute inset-0 z-0 pointer-events-none bg-gradient-to-b from-black/60 via-transparent to-black/80" />
 
         <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/40 backdrop-blur-md px-1 pr-4 py-1 rounded-full z-10">
@@ -88,21 +175,21 @@ export default function TodayPage() {
               className="p-[1.5px] rounded-full"
               style={{ background: ACCENT }}
             >
-              <Avatar src="/profile.jpg" size={28} />
+              <Avatar src={assignment?.user?.image || "/profile.jpg"} size={28} />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-400 border-2 border-black rounded-full" />
           </div>
           <div className="flex flex-col leading-tight">
             <span className="text-white font-semibold text-[10px] tracking-tight">
-              @emirozdis
+              @{assignment?.user?.name || "No vlogger"}
             </span>
-            <span className="text-white/45 text-[9px]">22m ago</span>
+            <span className="text-white/45 text-[9px]">Today's Turn</span>
           </div>
         </div>
 
         <div className="absolute top-3 right-3 flex items-center gap-1 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-white text-[9px] z-10">
           <MapPin size={9} className="text-[#e07c30]" />
-          <span>Phuket, Thailand</span>
+          <span>Live Vlog</span>
         </div>
 
         <div className="mt-auto relative z-10 flex flex-col w-full">
@@ -166,10 +253,12 @@ export default function TodayPage() {
             </div>
 
             <div className="flex items-center gap-2.5">
-              <Avatar src="/profile.jpg" size={44} />
+              <Avatar src={assignment?.user?.image || "/profile.jpg"} size={44} />
               <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-white font-bold text-base leading-tight">Emir</span>
-                <span className="text-[#e07c30] text-[10px] font-semibold">3 day streak 🔥</span>
+                <span className="text-white font-bold text-base leading-tight truncate">
+                  {assignment?.user?.name || "Unassigned"}
+                </span>
+                <span className="text-[#e07c30] text-[10px] font-semibold">Active Turn 🔥</span>
               </div>
             </div>
 
@@ -199,6 +288,7 @@ export default function TodayPage() {
           <TimelineTracker
             currentHourIndex={currentHourIndex}
             onHourChange={setCurrentHourIndex}
+            uploadedSlots={uploadedSlots}
           />
         </div>
       </div>

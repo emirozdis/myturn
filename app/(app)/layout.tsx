@@ -1,18 +1,63 @@
 "use client";
 
-import { useState, useCallback, ReactNode } from "react";
+import { useState, useCallback, useEffect, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { NEUTRAL_PAGE_BG } from "../../lib/theme";
-import { MOCK_GROUPS } from "../../components/shared/mock-data";
 import { AppHeader } from "@/components/app-header";
 import { GroupSwipePager } from "@/components/group-swipe-pager";
 import { BottomNavRouter } from "@/components/bottom-nav-router";
+import { getUserGroups, createGroup } from "@/actions/group";
+import { Loader2 } from "lucide-react";
+
+export interface GroupConfig {
+  id: string;
+  name: string;
+  emoji: string;
+  memberCount: number;
+}
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const activeTab = pathname.split("/").pop() || "today";
 
+  const [groups, setGroups] = useState<GroupConfig[]>([]);
   const [activeGroupIndex, setActiveGroupIndex] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch groups dynamically. Auto-create a default group if user doesn't have one
+  useEffect(() => {
+    async function loadGroups() {
+      setLoading(true);
+      const res = await getUserGroups();
+      if (res.success && res.groups && res.groups.length > 0) {
+        setGroups(res.groups);
+      } else {
+        // Fallback: Auto-create a dynamic demo group so the layout never crashes/looks empty
+        const fallbackRes = await createGroup("My First Vlog Group");
+        if (fallbackRes.success && fallbackRes.group) {
+          setGroups([
+            {
+              id: fallbackRes.group.id,
+              name: fallbackRes.group.name,
+              emoji: "🏠",
+              memberCount: 1,
+            },
+          ]);
+        }
+      }
+      setLoading(false);
+    }
+    loadGroups();
+  }, []);
+
+  // Save the currently active group in localStorage and dispatch sync event safely inside an effect
+  useEffect(() => {
+    if (groups[activeGroupIndex]) {
+      const activeId = groups[activeGroupIndex].id;
+      localStorage.setItem("active_group_id", activeId);
+      window.dispatchEvent(new CustomEvent("group-changed", { detail: activeId }));
+    }
+  }, [groups, activeGroupIndex]);
 
   const handleGroupIndexChange = useCallback((index: number) => {
     setActiveGroupIndex(index);
@@ -22,7 +67,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const isTodayTab = activeTab === "today";
   const isProfileTab = activeTab === "profile";
   const isStreaksTab = activeTab === "streaks";
-  const showGroupHeader = MOCK_GROUPS.length > 1 && (isStreaksTab || isTodayTab);
+  const showGroupHeader = groups.length > 1 && (isStreaksTab || isTodayTab);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center text-white/50">
+        <Loader2 size={32} className="animate-spin text-[#e07c30]" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-0 sm:p-4 overflow-hidden select-none">
@@ -47,14 +100,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <div className="relative z-10 flex-1 flex flex-col h-full justify-between overflow-hidden">
             {showGroupHeader && (
               <AppHeader
-                groups={MOCK_GROUPS}
+                groups={groups}
                 activeIndex={activeGroupIndex}
                 onSelectIndex={handleGroupIndexChange}
               />
             )}
 
             <GroupSwipePager
-              groups={MOCK_GROUPS}
+              groups={groups}
               activeIndex={activeGroupIndex}
               onIndexChange={handleGroupIndexChange}
               disabled={!isStreaksTab && !isTodayTab}
