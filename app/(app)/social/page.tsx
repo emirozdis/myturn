@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { UserPlus, Users, ArrowRight, X, Search, Check, Flame, Compass, Loader2, Copy, Sparkles, ChevronLeft, LogOut, CheckCircle, Info } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -16,10 +16,22 @@ export default function SocialPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Friends");
   const [joinCode, setJoinCode] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [socialData, setSocialData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [enrollMsg, setEnrollMsg] = useState("");
   const [joining, setJoining] = useState(false);
+
+  // Read immediately from cache to prevent skeleton flash
+  const [socialData, setSocialData] = useState<any>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("cached_social");
+        if (cached) return JSON.parse(cached);
+      } catch { }
+    }
+    return null;
+  });
 
   // Create Group State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -33,17 +45,28 @@ export default function SocialPage() {
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [loadingDetailsId, setLoadingDetailsId] = useState<string | null>(null);
 
+  // Guard to prevent concurrent duplicate fetching
+  const isFetchingRef = useRef(false);
+
   const loadSocial = async () => {
-    setLoading(true);
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    setRefreshing(true);
     const res = await getSocialData();
     if (res.success) {
       setSocialData(res);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("cached_social", JSON.stringify(res));
+      }
     }
-    
+
     if (typeof window !== "undefined") {
       setActiveGroupId(localStorage.getItem("active_group_id"));
     }
-    setLoading(false);
+    setRefreshing(false);
+    setInitialLoad(false);
+    isFetchingRef.current = false;
   };
 
   useEffect(() => {
@@ -62,7 +85,7 @@ export default function SocialPage() {
       setEnrollMsg("Joined successfully! 🎉");
       setJoinCode("");
       loadSocial();
-      
+
       if (res.group) {
         triggerActiveGroupChange(res.group.id);
       }
@@ -143,11 +166,18 @@ export default function SocialPage() {
     loadSocial();
   };
 
-  if (loading || !socialData) {
+  // Only show skeleton on absolute first load with no cached data
+  if (initialLoad && !socialData) {
     return (
-      <div className="flex-1 flex flex-col justify-center items-center text-white/50">
-        <Loader2 size={32} className="animate-spin text-[#e07c30] mb-2" />
-        <span className="text-[12px] font-medium tracking-wide">Retrieving network data...</span>
+      <div className="flex-1 flex flex-col gap-4 px-0 pt-6 animate-pulse">
+        <div className="h-10 rounded-full bg-white/[0.04]" />
+        <div className="h-[140px] rounded-[24px] bg-white/[0.04]" />
+        <div className="flex gap-3">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="w-[68px] h-[90px] rounded-[20px] bg-white/[0.03] flex-shrink-0" />
+          ))}
+        </div>
+        <div className="flex-1 rounded-[24px] bg-white/[0.03]" />
       </div>
     );
   }
@@ -220,9 +250,8 @@ export default function SocialPage() {
                           ring={friend.hasStory}
                         />
                         <div
-                          className={`absolute bottom-0 right-0 w-4 h-4 border-[2.5px] border-[#111] rounded-full shadow-sm ${
-                            friend.online ? "bg-[#30D158]" : "bg-[#555]"
-                          }`}
+                          className={`absolute bottom-0 right-0 w-4 h-4 border-[2.5px] border-[#111] rounded-full shadow-sm ${friend.online ? "bg-[#30D158]" : "bg-[#555]"
+                            }`}
                         />
                       </div>
                       <span className="text-white text-[13px] font-semibold truncate w-full text-center tracking-tight">
@@ -425,7 +454,7 @@ export default function SocialPage() {
               <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
                 <Check size={24} className="text-white/30" />
               </div>
-              <p className="text-white/70 font-semibold text-[14px]">You're all caught up!</p>
+              <p className="text-white/70 font-semibold text-[14px]">You&apos;re all caught up!</p>
               <p className="text-white/40 text-[12px] mt-1">No pending invitations or join requests.</p>
             </div>
           </motion.div>
@@ -493,6 +522,13 @@ export default function SocialPage() {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+      {/* Background refresh indicator */}
+      {refreshing && (
+        <div className="absolute top-4 right-0 z-20 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full pointer-events-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#e07c30] animate-pulse" />
+          <span className="text-white/50 text-[9px] font-semibold tracking-wide">updating</span>
+        </div>
+      )}
       <motion.div
         key="social-tab"
         initial={{ opacity: 0, y: 8 }}
@@ -571,15 +607,15 @@ export default function SocialPage() {
                   Invite your friends to your group using this unique code. Once they join, you can start rolling daily vlog assignments!
                 </p>
 
-                <div 
-                  style={glassStyle(0.04, 16, 0.08)} 
+                <div
+                  style={glassStyle(0.04, 16, 0.08)}
                   className="rounded-2xl p-6 w-full max-w-[280px] flex flex-col items-center gap-4 mb-8"
                 >
                   <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Invite Code</span>
                   <span className="text-white font-mono text-3xl font-extrabold tracking-widest selection:bg-amber-500/30">
                     {createdGroupCode}
                   </span>
-                  
+
                   <button
                     onClick={copyCodeToClipboard}
                     style={{ background: copySuccess ? "#22c55e" : ACCENT }}

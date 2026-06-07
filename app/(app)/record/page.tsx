@@ -71,6 +71,9 @@ export default function RecordPage() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Guard to prevent concurrent duplicate turn checking
+  const isCheckingTurnRef = useRef(false);
+
   // Handle single-allocation, self-cleaning object URLs to prevent render-loop flashes
   useEffect(() => {
     if (recordedBlob) {
@@ -278,6 +281,9 @@ export default function RecordPage() {
         return;
       }
 
+      if (isCheckingTurnRef.current) return;
+      isCheckingTurnRef.current = true;
+
       setLoadingAssignment(true);
       const res = await getOrCreateTodayAssignment(activeGroupId);
       setLoadingAssignment(false);
@@ -296,6 +302,8 @@ export default function RecordPage() {
           setError("");
         }
       }
+
+      isCheckingTurnRef.current = false;
     };
     checkInitialTurn();
 
@@ -513,11 +521,9 @@ export default function RecordPage() {
 
   return (
     <motion.div
-      key="record-tab"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.3 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
       className={`flex-1 flex flex-col h-full min-h-0 relative overflow-hidden transition-all duration-300 ${
         step === "CAMERA" 
           ? "rounded-2xl bg-neutral-900/40 border border-white/5" 
@@ -802,7 +808,7 @@ export default function RecordPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-white/60">
                         <Target size={13} className="text-[#e07c30]" />
-                        <span>Today's Prompt</span>
+                        <span>Today&apos;s Prompt</span>
                       </div>
                       <span className="font-semibold text-right max-w-[180px] truncate">{getDailyPrompt()}</span>
                     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   MapPin,
@@ -33,16 +33,38 @@ function getSlotForClip(recordedAt: Date | string): number {
   return 5;
 }
 
+const getCachedToday = () => {
+  if (typeof window !== "undefined") {
+    try {
+      const groupId = localStorage.getItem("active_group_id");
+      if (!groupId) return null;
+      const cached = localStorage.getItem(`cached_today_${groupId}`);
+      if (cached) return JSON.parse(cached);
+    } catch { }
+  }
+  return null;
+};
+
 export default function TodayPage() {
   const [isVideoExpanded, setIsVideoExpanded] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
-  const [currentHourIndex, setCurrentHourIndex] = useState(0);
-  
-  const [assignment, setAssignment] = useState<any>(null);
-  const [clips, setClips] = useState<any[]>([]);
-  const [resolvedClipUrls, setResolvedClipUrls] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
+
+  const cachedData = getCachedToday();
+  const [assignment, setAssignment] = useState<any>(cachedData?.assignment || null);
+  const [clips, setClips] = useState<any[]>(cachedData?.clips || []);
+  const [resolvedClipUrls, setResolvedClipUrls] = useState<Record<string, string>>(cachedData?.resolvedClipUrls || {});
+
+  const [currentHourIndex, setCurrentHourIndex] = useState(() => {
+    if (cachedData?.clips && cachedData.clips.length > 0) {
+      const latestClip = cachedData.clips[cachedData.clips.length - 1];
+      return getSlotForClip(latestClip.recordedAt);
+    }
+    return getSlotForClip(new Date());
+  });
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   // Comments and Views Drawer Integration States
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
@@ -50,7 +72,10 @@ export default function TodayPage() {
   const [newComment, setNewComment] = useState("");
   const [commentList, setCommentList] = useState<any[]>([]);
 
-  // Explicit group load and update triggers
+  // Guard to prevent concurrent duplicate fetching
+  const isFetchingRef = useRef(false);
+
+  // Load initial group config on mount — never blocks UI after first load
   const loadTodayVlogs = async (targetGroupId?: any) => {
     let activeGroupId = typeof targetGroupId === "string" ? targetGroupId : null;
     if (!activeGroupId && typeof window !== "undefined") {
@@ -58,15 +83,19 @@ export default function TodayPage() {
     }
     if (!activeGroupId) return;
 
-    setLoading(true);
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    setRefreshing(true);
     const res = await getOrCreateTodayAssignment(activeGroupId);
-    setLoading(false);
+    setRefreshing(false);
+    setInitialLoad(false);
 
     if (res.success && res.assignment) {
       setAssignment(res.assignment);
       const fetchedClips = res.assignment.clips || [];
       setClips(fetchedClips);
-      
+
       // Default to the timeline slot of the latest uploaded clip if clips exist
       if (fetchedClips.length > 0) {
         const latestClip = fetchedClips[fetchedClips.length - 1];
@@ -74,7 +103,7 @@ export default function TodayPage() {
       } else {
         setCurrentHourIndex(getSlotForClip(new Date()));
       }
-      
+
       // Resolve pre-signed read URLs from Supabase Storage
       const urls: Record<string, string> = {};
       for (const clip of fetchedClips) {
@@ -84,11 +113,21 @@ export default function TodayPage() {
         }
       }
       setResolvedClipUrls(urls);
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`cached_today_${activeGroupId}`, JSON.stringify({
+          assignment: res.assignment,
+          clips: fetchedClips,
+          resolvedClipUrls: urls
+        }));
+      }
     } else {
       setAssignment(null);
       setClips([]);
       setResolvedClipUrls({});
     }
+
+    isFetchingRef.current = false;
   };
 
   // Load initial group config on mount
@@ -164,11 +203,12 @@ export default function TodayPage() {
     }
   };
 
-  if (loading) {
+  // Show a skeleton/empty state only on the very first load with no cached data
+  if (initialLoad && !assignment) {
     return (
-      <div className="flex-1 flex flex-col justify-center items-center text-white/50">
-        <Loader2 size={32} className="animate-spin text-[#e07c30] mb-2" />
-        <span className="text-[12px] font-medium tracking-wide">Loading daily updates...</span>
+      <div className="flex-1 flex flex-col gap-3 animate-pulse">
+        <div className="flex-1 min-h-0 rounded-3xl bg-white/[0.04]" />
+        <div className="h-[138px] rounded-[24px] bg-white/[0.03]" />
       </div>
     );
   }
@@ -184,6 +224,13 @@ export default function TodayPage() {
       transition={{ duration: 0.2 }}
       className="flex-1 flex flex-col justify-between min-h-0 gap-3 relative"
     >
+      {/* Subtle background-refresh indicator */}
+      {refreshing && (
+        <div className="absolute top-0 right-0 z-20 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg pointer-events-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#e07c30] animate-pulse" />
+          <span className="text-white/50 text-[9px] font-semibold tracking-wide">updating</span>
+        </div>
+      )}
       {/* Video Container Frame */}
       <div
         onClick={() => setIsVideoExpanded((prev) => !prev)}
@@ -251,7 +298,7 @@ export default function TodayPage() {
         <div className="mt-auto relative z-10 flex flex-col w-full">
           <div className="py-2 px-3.5 flex items-center justify-between flex-shrink-0">
             {/* Watchers Click Integration to trigger Viewers overlay */}
-            <div 
+            <div
               onClick={(e) => {
                 e.stopPropagation(); // Avoid triggering video container extend/minimize
                 setIsViewsOpen(true);
@@ -295,11 +342,11 @@ export default function TodayPage() {
               </button>
               <span className="w-[1px] h-3.5 bg-white/20" />
               {/* Comments Trigger Panel */}
-              <button 
+              <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsCommentsOpen(true);
-                }} 
+                }}
                 className="flex items-center gap-1 cursor-pointer"
               >
                 <MessageCircle size={16} className="text-white/95" />
@@ -425,11 +472,10 @@ export default function TodayPage() {
 
       {/* Dynamic collapsing View Menu */}
       <div
-        className={`flex-shrink-0 rounded-[24px] flex flex-col gap-3.5 shadow-lg transition-all duration-500 ${
-          isVideoExpanded
+        className={`flex-shrink-0 rounded-[24px] flex flex-col gap-3.5 shadow-lg transition-all duration-500 ${isVideoExpanded
             ? "max-h-0 opacity-0 overflow-hidden pointer-events-none p-0"
             : "max-h-[320px] opacity-100"
-        }`}
+          }`}
       >
         <div className="grid grid-cols-2 gap-3">
           <div style={glassStyle(0.04, 16, 0.08)} className="rounded-[20px] p-3 flex flex-col justify-between min-h-[118px]">

@@ -12,6 +12,8 @@ import { glassStyle } from "@/components/shared/glass-style";
 import { getProfileData, updateProfile, uploadAvatar } from "@/actions/profile";
 import { signOut } from "next-auth/react";
 import { Avatar } from "@/components/shared/avatar";
+import { registerPushServiceWorker, subscribeToPush, getVapidPublicKey, urlBase64ToUint8Array } from "@/lib/push-client";
+import { saveSubscription } from "@/actions/push";
 
 type ActivityTab = "vlogs" | "rank" | "groups" | "saved";
 type Panel = "editProfile" | "accountDetails" | "privacy" | "notifications" | "theme" | "logoutConfirm" | null;
@@ -179,6 +181,143 @@ function EditProfilePanel({
   );
 }
 
+function NotificationsPanel({ onBack }: { onBack: () => void }) {
+  const [permission, setPermission] = useState<NotificationPermission>("default");
+  const [subscribing, setSubscribing] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const isSupported = typeof window !== "undefined" && typeof window.Notification !== "undefined";
+
+  useEffect(() => {
+    if (isSupported) {
+      setPermission(window.Notification.permission);
+    }
+  }, [isSupported]);
+
+  const handleRequestPermission = async () => {
+    setError("");
+    setSuccess(false);
+    if (!isSupported) {
+      setError("Push notifications are not supported on this browser/device.");
+      return;
+    }
+
+    setSubscribing(true);
+    try {
+      const result = await window.Notification.requestPermission();
+      setPermission(result);
+
+      if (result === "granted") {
+        const registration = await registerPushServiceWorker();
+        const key = getVapidPublicKey();
+        const convertedKey = urlBase64ToUint8Array(key);
+        const subscription = await subscribeToPush(registration, convertedKey);
+
+        const res = await saveSubscription(subscription.toJSON() as any);
+        if (res.error) {
+          setError(res.error);
+        } else {
+          setSuccess(true);
+        }
+      } else if (result === "denied") {
+        setError("Notifications permission was denied. Please enable permission in your device/browser settings.");
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to configure push alerts.");
+    } finally {
+      setSubscribing(false);
+    }
+  };
+
+  return (
+    <SlidePanel title="Push Notifications" onBack={onBack}>
+      <div style={{ display: "flex", flexDirection: "column" as const, gap: 24 }}>
+        <div style={{ padding: "0 16px" }}>
+          <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, padding: "20px", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 14 }}>
+            <div style={{ width: 54, height: 54, borderRadius: "50%", background: `${ACCENT}15`, border: `1px solid ${ACCENT}33`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Bell size={24} color={ACCENT} className={subscribing ? "animate-bounce" : ""} />
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Stay updated in real-time</h3>
+              <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 12, lineHeight: 1.5 }}>
+                Activate push alerts so you never miss your turn to vlog, and stay updated when friends post or interact with your updates.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {error && (
+          <div className="mx-4 text-red-500 text-sm font-semibold text-center bg-red-500/10 py-2.5 px-4 rounded-xl border border-red-500/20">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="mx-4 text-emerald-500 text-sm font-semibold text-center bg-emerald-500/10 py-2.5 px-4 rounded-xl border border-emerald-500/20">
+            Push notifications activated successfully! 🎉
+          </div>
+        )}
+
+        <div style={{ padding: "0 16px" }}>
+          <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, padding: "16px", display: "flex", flexDirection: "column" as const, gap: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 600 }}>Permission Status</span>
+              <span style={{
+                color: !isSupported ? "#ef4444" : permission === "granted" ? "#22c55e" : permission === "denied" ? "#ef4444" : ACCENT,
+                fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginLeft: "auto"
+              }}>
+                {!isSupported ? "UNSUPPORTED" : permission}
+              </span>
+            </div>
+            <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>Notification Channels</span>
+              <ul style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, paddingLeft: "16px", listStyleType: "disc", display: "flex", flexDirection: "column", gap: 6 }}>
+                <li>Daily turn assignment reveals</li>
+                <li>Your personal vlogging reminders</li>
+                <li>New updates posted by friends</li>
+                <li>Likes and comments on your vlogs</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding: "0 16px" }}>
+          <button
+            type="button"
+            onClick={handleRequestPermission}
+            disabled={subscribing || !isSupported}
+            style={{ 
+              width: "100%", 
+              background: isSupported ? ACCENT : "rgba(255,255,255,0.05)", 
+              border: isSupported ? "none" : "1px solid rgba(255,255,255,0.08)", 
+              borderRadius: 14, 
+              color: isSupported ? "#000" : "rgba(255,255,255,0.3)", 
+              fontWeight: 700, 
+              fontSize: 15, 
+              padding: "13px 0", 
+              cursor: isSupported ? "pointer" : "not-allowed", 
+              display: permission === "granted" ? "none" : "flex", 
+              alignItems: "center" as const, 
+              justifyContent: "center" as const, 
+              gap: 8 
+            }}
+          >
+            {subscribing ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : isSupported ? (
+              "Enable Push Alerts"
+            ) : (
+              "Push Unsupported on this Browser"
+            )}
+          </button>
+        </div>
+      </div>
+    </SlidePanel>
+  );
+}
+
 function VlogsGrid({ clips }: { clips: any[] }) {
   if (clips.length === 0) {
     return (
@@ -225,7 +364,7 @@ function RankContent({ vlogsCount, calendarDays }: { vlogsCount: number; calenda
               <p style={{ color: "#fff", fontSize: 20, fontWeight: 800, margin: 0, lineHeight: 1 }}>Epic</p>
             </div>
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div style={{ textAlign: "right", marginLeft: "auto" }}>
             <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>Total Vlogs</p>
             <p style={{ color: "#fff", fontSize: 20, fontWeight: 800, margin: 0, lineHeight: 1 }}>{vlogsCount}</p>
           </div>
@@ -276,23 +415,45 @@ function RankContent({ vlogsCount, calendarDays }: { vlogsCount: number; calenda
 
 export default function ProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isFetchingRef = useRef(false);
+
   const [activityTab, setActivityTab] = useState<ActivityTab>("vlogs");
   const [panel, setPanel] = useState<Panel>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("cached_profile");
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return null;
+  });
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const fetchProfile = async () => {
-    setLoading(true);
+    // Prevent multiple parallel executions
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    setRefreshing(true);
     const res = await getProfileData();
     if (res.success) {
       setProfile(res);
+      // Persist for instant next-load
+      if (typeof window !== "undefined") {
+        localStorage.setItem("cached_profile", JSON.stringify(res));
+      }
     }
-    setLoading(false);
+    setRefreshing(false);
+    setInitialLoad(false);
+    isFetchingRef.current = false;
   };
 
   useEffect(() => {
     fetchProfile();
+    console.log("Profile Mounted");
   }, []);
 
   const triggerAvatarSelection = () => {
@@ -346,13 +507,24 @@ export default function ProfilePage() {
   const settingsRows = [
     { icon: UserCircle, label: "Edit Profile",    sub: "Update your information",      panel: "editProfile" as const },
     { icon: IdCard,     label: "Account Details", sub: "Email, phone, password",       panel: "accountDetails" as const },
+    { icon: Bell,       label: "Push Notifications", sub: "Configure daily alerts",    panel: "notifications" as const },
   ];
 
-  if (loading || !profile) {
+  // Only block on very first load with no cached data
+  if (initialLoad && !profile) {
     return (
-      <div className="flex-1 flex flex-col justify-center items-center text-white/50">
-        <Loader2 size={32} className="animate-spin text-[#e07c30] mb-2" />
-        <span className="text-[12px] font-medium tracking-wide">Retrieving profile...</span>
+      <div className="flex-1 flex flex-col gap-4 px-4 pt-4 animate-pulse">
+        <div className="flex gap-4 items-start">
+          <div className="w-[100px] h-[100px] rounded-full bg-white/[0.05] flex-shrink-0" />
+          <div className="flex-1 flex flex-col gap-2 pt-2">
+            <div className="h-6 w-32 rounded-lg bg-white/[0.05]" />
+            <div className="h-4 w-20 rounded-lg bg-white/[0.03]" />
+            <div className="h-3 w-40 rounded-lg bg-white/[0.03]" />
+          </div>
+        </div>
+        <div className="h-[90px] rounded-[18px] bg-white/[0.04]" />
+        <div className="h-[160px] rounded-[18px] bg-white/[0.03]" />
+        <div className="flex-1 rounded-[18px] bg-white/[0.03]" />
       </div>
     );
   }
@@ -361,16 +533,18 @@ export default function ProfilePage() {
 
   return (
     <motion.div
-      key="profile-tab"
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.2 }}
-      style={{
-        flex: 1, display: "flex", flexDirection: "column" as const, minHeight: 0,
-        position: "relative", overflow: "hidden", margin: "-16px"
-      }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+      className="flex-1 flex flex-col relative overflow-hidden -mx-4 min-h-0"
     >
+      {/* Subtle background-refresh indicator */}
+      {refreshing && (
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full pointer-events-none" style={{ zIndex: 5 }}>
+          <span className="w-1.5 h-1.5 rounded-full bg-[#e07c30] animate-pulse" />
+          <span className="text-white/50 text-[9px] font-semibold tracking-wide">updating</span>
+        </div>
+      )}
       {/* Hidden File Input for Image Selection */}
       <input
         type="file"
@@ -382,10 +556,8 @@ export default function ProfilePage() {
       />
 
       <div
-        style={{
-          flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" as const,
-          scrollbarWidth: "none", msOverflowStyle: "none"
-        }}
+        className="flex-1 overflow-y-auto flex flex-col scrollbar-hide"
+        style={{ WebkitOverflowScrolling: "touch", msOverflowStyle: "none" }}
       >
         <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
 
@@ -512,6 +684,15 @@ export default function ProfilePage() {
             onSaveSuccess={fetchProfile}
             uploadingAvatar={uploadingAvatar}
             triggerAvatarSelection={triggerAvatarSelection}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {panel === "notifications" && (
+          <NotificationsPanel
+            key="np"
+            onBack={() => setPanel(null)}
           />
         )}
       </AnimatePresence>

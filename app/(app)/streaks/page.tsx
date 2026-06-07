@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Flame, Clapperboard, Loader2 } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
@@ -11,11 +11,29 @@ import { getStreaksData } from "@/actions/streaks";
 import { AchievementOverlay, AchievementConfig } from "@/components/achievements/achievement-overlay";
 import { ACHIEVEMENT_MOCKS } from "@/components/achievements/achievement-data";
 
+const getCachedStreaks = () => {
+  if (typeof window !== "undefined") {
+    try {
+      const groupId = localStorage.getItem("active_group_id");
+      if (!groupId) return null;
+      const cached = localStorage.getItem(`cached_streaks_${groupId}`);
+      if (cached) return JSON.parse(cached);
+    } catch { }
+  }
+  return null;
+};
+
 export default function StreaksPage() {
-  const [assignment, setAssignment] = useState<any>(null);
-  const [streaks, setStreaks] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const cachedData = getCachedStreaks();
+  const [assignment, setAssignment] = useState<any>(cachedData?.assignment || null);
+  const [streaks, setStreaks] = useState<any>(cachedData?.streaks || null);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [activeAchievement, setActiveAchievement] = useState<AchievementConfig | null>(null);
+
+  // Guard to prevent concurrent duplicate fetching
+  const isFetchingRef = useRef(false);
 
   const loadStreaks = async (targetGroupId?: any) => {
     let activeGroupId = typeof targetGroupId === "string" ? targetGroupId : null;
@@ -24,10 +42,14 @@ export default function StreaksPage() {
     }
     if (!activeGroupId) return;
 
-    setLoading(true);
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    setRefreshing(true);
     const assignmentRes = await getOrCreateTodayAssignment(activeGroupId);
     const statsRes = await getStreaksData(activeGroupId);
-    setLoading(false);
+    setRefreshing(false);
+    setInitialLoad(false);
 
     if (assignmentRes.success && assignmentRes.assignment) {
       setAssignment(assignmentRes.assignment);
@@ -35,6 +57,15 @@ export default function StreaksPage() {
     if (statsRes.success) {
       setStreaks(statsRes);
     }
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`cached_streaks_${activeGroupId}`, JSON.stringify({
+        assignment: assignmentRes.success ? assignmentRes.assignment : null,
+        streaks: statsRes.success ? statsRes : null
+      }));
+    }
+
+    isFetchingRef.current = false;
   };
 
   useEffect(() => {
@@ -51,11 +82,14 @@ export default function StreaksPage() {
     return () => window.removeEventListener("group-changed", handleGroupChange);
   }, []);
 
-  if (loading || !streaks) {
+  // Only block on first ever load with no cached data
+  if (initialLoad && !streaks) {
     return (
-      <div className="flex-1 flex flex-col justify-center items-center text-white/50">
-        <Loader2 size={32} className="animate-spin text-[#e07c30] mb-2" />
-        <span className="text-[12px] font-medium tracking-wide">Calculating active streaks...</span>
+      <div className="flex-1 flex flex-col gap-3 px-4 pt-6 animate-pulse">
+        <div className="h-8 w-32 rounded-xl bg-white/[0.05]" />
+        <div className="h-[120px] rounded-[24px] bg-white/[0.04]" />
+        <div className="h-[80px] rounded-[24px] bg-white/[0.03]" />
+        <div className="flex-1 rounded-[24px] bg-white/[0.03]" />
       </div>
     );
   }
@@ -73,6 +107,13 @@ export default function StreaksPage() {
         className="flex-1 h-full overflow-y-auto px-4 pt-6 pb-6 scrollbar-hide flex flex-col gap-4 relative z-0"
         style={{ WebkitOverflowScrolling: "touch", msOverflowStyle: "none", scrollbarWidth: "none" }}
       >
+        {/* Background refresh dot */}
+        {refreshing && (
+          <div className="absolute top-4 right-4 z-20 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full pointer-events-none">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#e07c30] animate-pulse" />
+            <span className="text-white/50 text-[9px] font-semibold tracking-wide">updating</span>
+          </div>
+        )}
         <style
           dangerouslySetInnerHTML={{
             __html: `
@@ -179,8 +220,8 @@ export default function StreaksPage() {
           <div className="flex justify-between items-center mb-1">
             <span className="text-white text-[14px] font-bold tracking-wide">Explore Achievements</span>
           </div>
-          
-          <div 
+
+          <div
             className="flex gap-2 overflow-x-auto scrollbar-hide -mx-5 px-5 pb-2"
             style={{ WebkitOverflowScrolling: "touch" }}
           >
@@ -208,7 +249,7 @@ export default function StreaksPage() {
             {["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
               <span key={day} className="text-white/40 text-[9px] font-medium tracking-wider mb-2">
                 {day
-              }
+                }
               </span>
             ))}
 
@@ -216,13 +257,12 @@ export default function StreaksPage() {
               <div key={i} className="flex justify-center relative">
                 <div
                   className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold transition-all
-                ${
-                  item.type === "vlogged"
-                    ? "bg-gradient-to-br from-[#ff9a44] to-[#e07c30] text-white shadow-[0_2px_10px_rgba(224,124,48,0.3)]"
-                    : item.type === "missed"
-                      ? "border border-white/5 bg-white/[0.03] text-white/50"
-                      : "text-white/20"
-                }
+                ${item.type === "vlogged"
+                      ? "bg-gradient-to-br from-[#ff9a44] to-[#e07c30] text-white shadow-[0_2px_10px_rgba(224,124,48,0.3)]"
+                      : item.type === "missed"
+                        ? "border border-white/5 bg-white/[0.03] text-white/50"
+                        : "text-white/20"
+                    }
               `}
                 >
                   {item.d}

@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
+import { sendPushToUser } from "@/actions/push";
 
 export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
   const now = new Date();
@@ -109,6 +110,37 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
       status: "active",
     },
   });
+
+  // Notify group participants of the assignment roll
+  try {
+    const groupMembers = await db.groupMember.findMany({
+      where: { groupId },
+      include: {
+        user: { select: { id: true, name: true, handle: true } },
+      },
+    });
+
+    const chosenUser = groupMembers.find((m) => m.userId === chosenMember.userId)?.user;
+    const vloggerName = chosenUser?.name || `@${chosenUser?.handle}` || "A group friend";
+
+    for (const member of groupMembers) {
+      if (member.userId === chosenMember.userId) {
+        await sendPushToUser(member.userId, {
+          title: "It's Your Turn! 🎥",
+          body: `You've been selected to vlog for "${group.name}" today! Tap to start recording.`,
+          url: "/record",
+        });
+      } else {
+        await sendPushToUser(member.userId, {
+          title: "Today's Vlogger Selected! 🍿",
+          body: `${vloggerName} has been chosen to vlog for "${group.name}" today. Stay tuned!`,
+          url: "/today",
+        });
+      }
+    }
+  } catch (pushErr) {
+    console.error("Failed to broadcast assignment roll notifications:", pushErr);
+  }
 
   return assignment;
 }
@@ -273,6 +305,37 @@ export async function createClip(data: {
       });
     }
 
+    // Notify other group members about the new post
+    try {
+      const poster = await db.user.findUnique({
+        where: { id: session.user.id },
+        select: { name: true, handle: true },
+      });
+      const posterName = poster?.name || `@${poster?.handle}` || "A friend";
+
+      const groupInfo = await db.group.findUnique({
+        where: { id: data.groupId },
+        select: { name: true },
+      });
+
+      const otherMembers = await db.groupMember.findMany({
+        where: {
+          groupId: data.groupId,
+          userId: { not: session.user.id },
+        },
+      });
+
+      for (const member of otherMembers) {
+        await sendPushToUser(member.userId, {
+          title: "New Vlog Post! 🎥",
+          body: `${posterName} posted a new moment in "${groupInfo?.name || "your group"}"!`,
+          url: "/today",
+        });
+      }
+    } catch (pushErr) {
+      console.error("Failed to send clip upload push alert:", pushErr);
+    }
+
     return { success: true, clip };
   } catch (error: any) {
     return { error: error?.message || "Failed to save clip details." };
@@ -321,6 +384,31 @@ export async function toggleReaction(clipId: string, emoji: string) {
       },
     });
 
+    // Notify the clip author about the reaction
+    try {
+      const targetClip = await db.clip.findUnique({
+        where: { id: clipId },
+        include: {
+          group: { select: { name: true } },
+        },
+      });
+
+      if (targetClip && targetClip.userId !== session.user.id) {
+        const reactor = await db.user.findUnique({
+          where: { id: session.user.id },
+          select: { name: true },
+        });
+
+        await sendPushToUser(targetClip.userId, {
+          title: "New Reaction! ❤️",
+          body: `${reactor?.name || "A friend"} reacted with ${emoji} to your vlog in "${targetClip.group.name}".`,
+          url: "/today",
+        });
+      }
+    } catch (pushErr) {
+      console.error("Failed to send reaction push alerts:", pushErr);
+    }
+
     return { success: true, reaction };
   } catch (error: any) {
     return { error: error?.message };
@@ -349,6 +437,33 @@ export async function addComment(clipId: string, text: string) {
         },
       },
     });
+
+    // Notify the clip author of the new comment
+    try {
+      const targetClip = await db.clip.findUnique({
+        where: { id: clipId },
+        include: {
+          group: { select: { name: true } },
+        },
+      });
+
+      if (targetClip && targetClip.userId !== session.user.id) {
+        const commenter = await db.user.findUnique({
+          where: { id: session.user.id },
+          select: { name: true },
+        });
+
+        const truncatedText = text.length > 60 ? `${text.substring(0, 57)}...` : text;
+
+        await sendPushToUser(targetClip.userId, {
+          title: "New Comment! 💬",
+          body: `${commenter?.name || "A friend"} commented: "${truncatedText}"`,
+          url: "/today",
+        });
+      }
+    } catch (pushErr) {
+      console.error("Failed to send comment push alerts:", pushErr);
+    }
 
     return { success: true, comment };
   } catch (error: any) {

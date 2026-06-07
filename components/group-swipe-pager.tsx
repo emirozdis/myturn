@@ -1,21 +1,17 @@
 "use client";
 
-import { useRef, useEffect, useCallback, type ReactNode } from "react";
-import type { MockGroup } from "@/components/shared/mock-data";
+import { useState, useEffect, ReactNode } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import type { Variants } from "framer-motion";
+import type { GroupConfig } from "@/app/(app)/layout";
 
 type GroupSwipePagerProps = {
-  groups: MockGroup[];
+  groups: GroupConfig[];
   activeIndex: number;
   onIndexChange: (index: number) => void;
-  children: (group: MockGroup, index: number) => ReactNode;
+  children: ReactNode;
   disabled?: boolean;
 };
-
-function scrollIndexAtHalf(el: HTMLDivElement) {
-  const { scrollLeft, clientWidth } = el;
-  if (clientWidth === 0) return 0;
-  return Math.round(scrollLeft / clientWidth);
-}
 
 export function GroupSwipePager({
   groups,
@@ -24,75 +20,82 @@ export function GroupSwipePager({
   children,
   disabled = false,
 }: GroupSwipePagerProps) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  const syncingRef = useRef(false);
-  const reportedIndexRef = useRef(activeIndex);
-
-  const scrollToIndex = useCallback((index: number, behavior: ScrollBehavior = "smooth") => {
-    const el = scrollerRef.current;
-    if (!el || el.clientWidth === 0) return;
-    syncingRef.current = true;
-    reportedIndexRef.current = index;
-    el.scrollTo({ left: index * el.clientWidth, behavior });
-    window.setTimeout(() => {
-      syncingRef.current = false;
-    }, behavior === "smooth" ? 320 : 0);
-  }, []);
+  const [prevIndex, setPrevIndex] = useState(activeIndex);
+  const [direction, setDirection] = useState(0);
 
   useEffect(() => {
-    reportedIndexRef.current = activeIndex;
-    const el = scrollerRef.current;
-    if (!el || el.clientWidth === 0) return;
-    if (scrollIndexAtHalf(el) !== activeIndex) {
-      scrollToIndex(activeIndex, "smooth");
+    if (activeIndex !== prevIndex) {
+      setDirection(activeIndex > prevIndex ? 1 : -1);
+      setPrevIndex(activeIndex);
     }
-  }, [activeIndex, scrollToIndex]);
+  }, [activeIndex, prevIndex]);
 
-  const handleScroll = () => {
-    if (syncingRef.current || disabled) return;
+  // Single group: no gesture container needed, just render children directly
+  if (groups.length <= 1) {
+    return <div className="flex-1 min-h-0 flex flex-col">{children}</div>;
+  }
 
-    const el = scrollerRef.current;
-    if (!el || el.clientWidth === 0) return;
-
-    const index = Math.max(0, Math.min(groups.length - 1, scrollIndexAtHalf(el)));
-    if (index !== reportedIndexRef.current) {
-      reportedIndexRef.current = index;
-      onIndexChange(index);
+  const handleDragEnd = (event: any, info: any) => {
+    if (disabled) return;
+    
+    const swipeThreshold = 50; // minimum swipe distance in pixels
+    const velocityThreshold = 200; // minimum velocity in px/sec
+    const { offset, velocity } = info;
+    
+    if (Math.abs(offset.x) > swipeThreshold || Math.abs(velocity.x) > velocityThreshold) {
+      if (offset.x > 0 && activeIndex > 0) {
+        // Swiped right -> navigate to the previous group
+        onIndexChange(activeIndex - 1);
+      } else if (offset.x < 0 && activeIndex < groups.length - 1) {
+        // Swiped left -> navigate to the next group
+        onIndexChange(activeIndex + 1);
+      }
     }
   };
 
-  if (groups.length <= 1) {
-    return <div className="flex-1 min-h-0 flex flex-col">{children(groups[0], 0)}</div>;
-  }
+  const slideVariants: Variants = {
+    enter: (dir: number) => ({
+      x: dir > 0 ? "100%" : dir < 0 ? "-100%" : 0,
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      transition: {
+        x: { type: "spring" as const, stiffness: 320, damping: 32 },
+        opacity: { duration: 0.2 },
+      },
+    },
+    exit: (dir: number) => ({
+      x: dir < 0 ? "100%" : dir > 0 ? "-100%" : 0,
+      opacity: 0,
+      transition: {
+        x: { type: "spring" as const, stiffness: 320, damping: 32 },
+        opacity: { duration: 0.2 },
+      },
+    }),
+  };
 
   return (
-    <div
-      ref={scrollerRef}
-      onScroll={handleScroll}
-      className={`flex flex-1 min-h-0 w-full overflow-y-hidden scrollbar-hide ${
-        disabled ? "overflow-x-hidden" : "overflow-x-auto snap-x snap-mandatory"
-      }`}
-      style={{
-        WebkitOverflowScrolling: "touch",
-        scrollSnapType: disabled ? "none" : "x mandatory",
-        overscrollBehaviorX: "contain",
-        touchAction: "manipulation",
-      }}
-    >
-      {groups.map((group, index) => (
-        <div
-          key={group.id}
-          className={`w-full flex-shrink-0 h-full min-h-0 flex flex-col ${
-            disabled ? "" : "snap-center"
-          }`}
-          style={{
-            scrollSnapAlign: disabled ? "none" : "center",
-            scrollSnapStop: disabled ? "normal" : "always",
-          }}
+    <div className="flex-1 min-h-0 w-full overflow-hidden flex flex-col relative">
+      <AnimatePresence initial={false} custom={direction} mode="popLayout">
+        <motion.div
+          key={groups[activeIndex]?.id || "group-pager"}
+          custom={direction}
+          variants={slideVariants}
+          initial={disabled ? "center" : "enter"}
+          animate="center"
+          exit={disabled ? "center" : "exit"}
+          drag={disabled ? false : "x"}
+          dragDirectionLock
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.4}
+          onDragEnd={handleDragEnd}
+          className="flex-1 min-h-0 w-full flex flex-col absolute inset-0 touch-pan-y select-none"
         >
-          {children(group, index)}
-        </div>
-      ))}
+          {children}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

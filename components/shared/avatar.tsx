@@ -4,6 +4,51 @@ import { useState, useEffect } from "react";
 import { User } from "lucide-react";
 import { getSignedReadUrl } from "@/actions/vlog";
 
+interface CacheEntry {
+  url: string;
+  expiresAt: number;
+}
+
+// Global memory cache to prevent repeated signed URL requests across renders
+const avatarCache = new Map<string, CacheEntry>();
+// Global tracker for in-flight requests to deduplicate concurrent renders of the same avatar
+const pendingRequests = new Map<string, Promise<string | null>>();
+
+async function resolveAvatarUrl(src: string): Promise<string | null> {
+  const now = Date.now();
+  const cached = avatarCache.get(src);
+
+  // Return cached URL if it exists and has more than 5 minutes until expiration
+  if (cached && cached.expiresAt > now + 5 * 60 * 1000) {
+    return cached.url;
+  }
+
+  // If a request for this exact avatar is already in flight, wait for it instead of starting a new one
+  if (pendingRequests.has(src)) {
+    return pendingRequests.get(src)!;
+  }
+
+  const promise = getSignedReadUrl("avatars", src)
+    .then((res) => {
+      if (res.success && res.url) {
+        avatarCache.set(src, {
+          url: res.url,
+          expiresAt: Date.now() + 3600 * 1000, // Matches the 1 hour expiry from the backend
+        });
+        return res.url;
+      }
+      return null;
+    })
+    .catch(() => null)
+    .finally(() => {
+      // Clean up the pending request tracker once complete
+      pendingRequests.delete(src);
+    });
+
+  pendingRequests.set(src, promise);
+  return promise;
+}
+
 export function Avatar({
   src,
   size = 44,
@@ -20,31 +65,28 @@ export function Avatar({
 
   useEffect(() => {
     setFailed(false);
+    let isMounted = true;
     
-    async function resolveSource() {
+    async function loadSource() {
       if (!src) {
-        setResolvedSrc(null);
+        if (isMounted) setResolvedSrc(null);
         return;
       }
       
       // If it is a relative Supabase storage path (pointing to our avatars bucket)
       if (!src.startsWith("http") && !src.startsWith("data:") && !src.startsWith("/")) {
-        try {
-          const res = await getSignedReadUrl("avatars", src);
-          if (res.success && res.url) {
-            setResolvedSrc(res.url);
-          } else {
-            setResolvedSrc(null);
-          }
-        } catch {
-          setResolvedSrc(null);
-        }
+        const url = await resolveAvatarUrl(src);
+        if (isMounted) setResolvedSrc(url);
       } else {
-        setResolvedSrc(src);
+        if (isMounted) setResolvedSrc(src);
       }
     }
 
-    resolveSource();
+    loadSource();
+
+    return () => {
+      isMounted = false;
+    };
   }, [src]);
 
   const hasImage = resolvedSrc && resolvedSrc.trim() !== "";
