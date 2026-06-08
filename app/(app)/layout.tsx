@@ -292,20 +292,72 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <Loader2 size={32} className="animate-spin text-[#e07c30]" />
               </div>
             ) : showNoGroupsScreen ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-4 animate-fade-in">
-                <Users size={48} className="text-[#e07c30] animate-pulse" />
-                <h3 className="text-white font-bold text-lg">No Active Groups</h3>
-                <p className="text-white/50 text-xs leading-relaxed max-w-[240px]">
-                  You are not currently enrolled in any groups. Join or create one in the Social tab
-                  to start your vlog journey!
-                </p>
-                <button
-                  onClick={() => router.push("/social")}
-                  style={{ background: ACCENT }}
-                  className="px-6 py-2.5 rounded-full text-black font-bold text-xs active:scale-[0.98] transition-transform"
+              <div className="flex-1 flex flex-col justify-center px-6 py-8 relative overflow-hidden animate-fade-in">
+                {/* Immersive background glow */}
+                <div 
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full pointer-events-none filter blur-[90px] opacity-20"
+                  style={{ background: `radial-gradient(circle, ${ACCENT} 0%, transparent 70%)` }}
+                />
+
+                <div 
+                  style={glassStyle(0.04, 24, 0.08)}
+                  className="relative z-10 w-full rounded-[36px] border border-white/5 p-6 flex flex-col items-center text-center shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
                 >
-                  Join / Create Group
-                </button>
+                  {/* Glowing custom icon container */}
+                  <div className="relative mb-6">
+                    <div 
+                      className="absolute inset-0 rounded-full blur-xl scale-125 opacity-30"
+                      style={{ background: ACCENT }}
+                    />
+                    <div 
+                      className="w-16 h-16 rounded-2xl flex items-center justify-center border border-white/10 shadow-lg relative z-10 bg-white/[0.03] backdrop-blur-md"
+                    >
+                      <Users size={32} style={{ color: ACCENT }} className="animate-pulse" />
+                    </div>
+                  </div>
+
+                  <h3 className="text-white font-extrabold text-xl tracking-tight mb-2">
+                    Create or Join a Group
+                  </h3>
+                  
+                  <p className="text-white/50 text-[13px] leading-relaxed max-w-[250px] mb-6">
+                    MyTurn is built for close friends. Share raw, daily moments and grow your streaks!
+                  </p>
+
+                  {/* iOS-inspired interactive step guide */}
+                  <div className="w-full flex flex-col gap-3 text-left mb-6">
+                    {[
+                      { step: "1", title: "Join with Invite Code", desc: "Use a shared code from your friends or create your own." },
+                      { step: "2", title: "Wait for Your Turn", desc: "A random daily vlogger is automatically rolled each morning." },
+                      { step: "3", title: "Vlog Your Day", desc: "Upload raw snippets of your day to keep the group streak alive." }
+                    ].map((item, idx) => (
+                      <div key={idx} className="flex gap-3.5 items-start p-3 rounded-2xl bg-white/[0.02] border border-white/5 shadow-inner">
+                        <div 
+                          className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-black flex-shrink-0"
+                          style={{ background: `${ACCENT}15`, color: ACCENT }}
+                        >
+                          {item.step}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-white font-bold text-xs leading-none mb-1">{item.title}</h4>
+                          <p className="text-white/40 text-[10px] leading-normal">{item.desc}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => router.push("/social")}
+                    style={{ 
+                      background: `linear-gradient(135deg, ${ACCENT}, #ff9a44)`,
+                      boxShadow: "0 6px 24px rgba(224,124,48,0.3)"
+                    }}
+                    className="w-full py-4 rounded-2xl text-black font-extrabold text-sm active:scale-[0.98] transition-all hover:opacity-95 flex items-center justify-center gap-2"
+                  >
+                    <span>Get Started</span>
+                    <Plus size={16} strokeWidth={2.5} />
+                  </button>
+                </div>
               </div>
             ) : (
               <>
