@@ -4,8 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera, Pencil, MapPin, Calendar, Clapperboard, Users,
-  LogOut, ChevronRight, UserCircle, IdCard, Lock, Bell, Palette,
-  Moon, Check, ChevronLeft, Star, Bookmark, Play, Crown, Loader2
+  LogOut, ChevronRight, UserCircle, IdCard, Bell, ChevronLeft, Play, Crown, Loader2, Check
 } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
@@ -14,9 +13,10 @@ import { signOut } from "next-auth/react";
 import { Avatar } from "@/components/shared/avatar";
 import { registerPushServiceWorker, subscribeToPush, getVapidPublicKey, urlBase64ToUint8Array } from "@/lib/push-client";
 import { saveSubscription } from "@/actions/push";
+import { getVibeBadgeStyle } from "@/lib/vibe";
 
-type ActivityTab = "vlogs" | "rank" | "groups" | "saved";
-type Panel = "editProfile" | "accountDetails" | "privacy" | "notifications" | "theme" | "logoutConfirm" | null;
+type ActivityTab = "vlogs" | "rank";
+type Panel = "editProfile" | "accountDetails" | "privacy" | "notifications" | "logoutConfirm" | null;
 
 const s = {
   row: {
@@ -59,7 +59,7 @@ function SlidePanel({ title, onBack, children }: { title: string; onBack: () => 
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
-      transition={{ type: "spring", damping: 28, stiffness: 300 }}
+ transition={{ type: "spring", damping: 28, stiffness: 300 }}
       style={{
         position: "absolute", inset: 0, background: "#111", zIndex: 10,
         display: "flex", flexDirection: "column" as const, overflowY: "auto" as const,
@@ -347,40 +347,61 @@ function VlogsGrid({ clips }: { clips: any[] }) {
   );
 }
 
-function RankContent({ vlogsCount, calendarDays }: { vlogsCount: number; calendarDays: any[] }) {
-  const nextRankGoal = 50;
-  const progressPercent = (vlogsCount / nextRankGoal) * 100;
+function RankContent({ user, vlogsCount, calendarDays }: { user: any; vlogsCount: number; calendarDays: any[] }) {
+  // Setup dynamic threshold matching user vibe xp limits
+  const xp = user.xp || 0;
+  let nextRankGoal = 100;
+  let prevRankGoal = 0;
+  if (xp > 100 && xp <= 400) {
+    prevRankGoal = 100;
+    nextRankGoal = 400;
+  } else if (xp > 400 && xp <= 1000) {
+    prevRankGoal = 400;
+    nextRankGoal = 1000;
+  } else if (xp > 1000 && xp <= 2500) {
+    prevRankGoal = 1000;
+    nextRankGoal = 2500;
+  } else if (xp > 2500) {
+    prevRankGoal = 2500;
+    nextRankGoal = 5000;
+  }
+
+  const range = nextRankGoal - prevRankGoal;
+  const currentProgress = xp - prevRankGoal;
+  const progressPercent = Math.min(100, Math.max(0, (currentProgress / range) * 100));
+
+  const vibeStyle = getVibeBadgeStyle(user.archetype);
 
   return (
     <div style={{ display: "flex", flexDirection: "column" as const, gap: 14 }}>
       <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, padding: "16px", display: "flex", flexDirection: "column" as const, gap: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 46, height: 46, borderRadius: 14, background: "linear-gradient(135deg, rgba(224,124,48,0.2) 0%, rgba(224,124,48,0.05) 100%)", border: "1px solid rgba(224,124,48,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Crown size={22} color={ACCENT} />
+            <div style={{ width: 46, height: 46, borderRadius: 14, background: vibeStyle.background, border: vibeStyle.border, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Crown size={22} color={vibeStyle.color} />
             </div>
             <div>
               <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>Current Level</p>
-              <p style={{ color: "#fff", fontSize: 20, fontWeight: 800, margin: 0, lineHeight: 1 }}>Epic</p>
+              <p style={{ color: vibeStyle.color, fontSize: 18, fontWeight: 800, margin: 0, lineHeight: 1 }}>{user.archetype}</p>
             </div>
           </div>
           <div style={{ textAlign: "right", marginLeft: "auto" }}>
-            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>Total Vlogs</p>
-            <p style={{ color: "#fff", fontSize: 20, fontWeight: 800, margin: 0, lineHeight: 1 }}>{vlogsCount}</p>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>Dynamic XP</p>
+            <p style={{ color: "#fff", fontSize: 20, fontWeight: 800, margin: 0, lineHeight: 1 }}>{user.xp}</p>
           </div>
         </div>
 
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 600 }}>Progress to Legendary</span>
-            <span style={{ color: ACCENT, fontSize: 11, fontWeight: 700 }}>{vlogsCount} / {nextRankGoal}</span>
+            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 600 }}>Progress to next tier</span>
+            <span style={{ color: vibeStyle.color, fontSize: 11, fontWeight: 700 }}>{user.xp} / {nextRankGoal} XP</span>
           </div>
           <div style={{ height: 8, background: "rgba(0,0,0,0.3)", borderRadius: 4, overflow: "hidden", border: "1px solid rgba(255,255,255,0.05)" }}>
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${progressPercent}%` }}
               transition={{ duration: 1, ease: "easeOut" }}
-              style={{ height: "100%", background: "linear-gradient(90deg, #ff9a44, #e07c30)", borderRadius: 4 }}
+              style={{ height: "100%", background: `linear-gradient(90deg, ${vibeStyle.color}, #ff9a44)`, borderRadius: 4 }}
             />
           </div>
         </div>
@@ -530,6 +551,7 @@ export default function ProfilePage() {
   }
 
   const { user, totalVlogs, groupsCount, friendsCount, clips, calendarDays } = profile;
+  const vibeStyle = getVibeBadgeStyle(user.archetype);
 
   return (
     <motion.div
@@ -578,11 +600,20 @@ export default function ProfilePage() {
             </button>
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
               <span style={{ color: "#fff", fontSize: 26, fontWeight: 800, letterSpacing: "-0.5px", lineHeight: 1 }}>{user.name || "User"}</span>
-              <div style={{ background: "linear-gradient(90deg, #ff9a44 0%, #e07c30 100%)", padding: "3px 8px", borderRadius: 8, display: "flex", alignItems: "center", gap: 4, boxShadow: "0 2px 8px rgba(224,124,48,0.3)" }}>
-                <Crown size={12} color="#000" fill="#000" />
-                <span style={{ color: "#000", fontSize: 10, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase" }}>Epic</span>
+              <div style={{ 
+                ...vibeStyle,
+                padding: "3px 8px", 
+                borderRadius: 10, 
+                display: "flex", 
+                alignItems: "center", 
+                gap: 4, 
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                border: vibeStyle.border
+              }}>
+                <Crown size={12} fill="currentColor" />
+                <span style={{ fontSize: 9, fontWeight: 900, letterSpacing: "0.05em", textTransform: "uppercase" }}>{user.archetype}</span>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -657,7 +688,7 @@ export default function ProfilePage() {
           <AnimatePresence mode="wait">
             <motion.div key={activityTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
               {activityTab === "vlogs"  && <VlogsGrid clips={clips} />}
-              {activityTab === "rank"   && <RankContent vlogsCount={totalVlogs} calendarDays={calendarDays} />}
+              {activityTab === "rank"   && <RankContent user={user} vlogsCount={totalVlogs} calendarDays={calendarDays} />}
             </motion.div>
           </AnimatePresence>
         </div>

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { NEUTRAL_PAGE_BG } from "../../lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { GroupSwipePager } from "@/components/group-swipe-pager";
@@ -14,6 +14,8 @@ import { glassStyle } from "@/components/shared/glass-style";
 import { ACCENT } from "@/lib/theme";
 import { Avatar } from "@/components/shared/avatar";
 import { VloggerRevealModal } from "@/components/vlogger-reveal-modal";
+import { AchievementOverlay, AchievementConfig } from "@/components/achievements/achievement-overlay";
+import { ACHIEVEMENT_MOCKS } from "@/components/achievements/achievement-data";
 import {
   registerPushServiceWorker,
   subscribeToPush,
@@ -81,6 +83,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const [showRevealModal, setShowRevealModal] = useState(false);
   const [revealAssignment, setRevealAssignment] = useState<any>(null);
+
+  // Global Level Up and Achievement overlays triggers
+  const [unlockedOverlay, setUnlockedOverlay] = useState<AchievementConfig | null>(null);
+  const [levelUpOverlay, setLevelUpOverlay] = useState<{ type: "group" | "individual"; from: string | number; to: string | number; name?: string } | null>(null);
 
   const checkRevealStatus = useCallback(async (groupId: string) => {
     try {
@@ -168,14 +174,31 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       setRecordStep(customEvent.detail);
     };
 
+    const handleShowAchievement = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      const found = ACHIEVEMENT_MOCKS.find((a) => a.id === customEvent.detail);
+      if (found) {
+        setUnlockedOverlay(found);
+      }
+    };
+
+    const handleShowLevelUp = (e: Event) => {
+      const customEvent = e as CustomEvent<any>;
+      setLevelUpOverlay(customEvent.detail);
+    };
+
     window.addEventListener("open-bottom-sheet" as any, handleOpenSheet);
     window.addEventListener("reload-groups", loadGroups);
     window.addEventListener("record-step-changed" as any, handleRecordStep);
+    window.addEventListener("show-achievement" as any, handleShowAchievement);
+    window.addEventListener("show-level-up" as any, handleShowLevelUp);
 
     return () => {
       window.removeEventListener("open-bottom-sheet" as any, handleOpenSheet);
       window.removeEventListener("reload-groups", loadGroups);
       window.removeEventListener("record-step-changed" as any, handleRecordStep);
+      window.removeEventListener("show-achievement" as any, handleShowAchievement);
+      window.removeEventListener("show-level-up" as any, handleShowLevelUp);
     };
   }, [loadGroups]);
 
@@ -220,6 +243,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       setCommentInput("");
       setCreateError("");
       window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
+
+      // Trigger achievement popup if newly unlocked
+      if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
+        res.newlyUnlocked.forEach((id: string) => {
+          window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
+        });
+      }
     } else if (res.error) {
       setCreateError(res.error);
     }
@@ -265,6 +295,37 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <div className="flex-1 w-full h-full flex flex-col min-h-0 relative">{children}</div>
     </div>
   );
+
+  // Convert Level Up metadata structurally into high-end standard AchievementConfig on the fly
+  const getLevelUpConfig = (): AchievementConfig | null => {
+    if (!levelUpOverlay) return null;
+    const isIndiv = levelUpOverlay.type === "individual";
+    return {
+      id: "level-up-overlay-id",
+      particles: "confetti",
+      topContent: {
+        title: isIndiv ? "New Tier Unlocked! 👑" : "Group Level Up! 🌟",
+        highlight: isIndiv ? "Unlocked!" : "Level Up!",
+      },
+      image: {
+        src: isIndiv ? "/assets/icons/crown.png" : "/assets/icons/fire.png",
+        value: isIndiv ? String(levelUpOverlay.to).charAt(0) : String(levelUpOverlay.to),
+      },
+      mainContent: {
+        title: isIndiv ? String(levelUpOverlay.to) : `Level ${levelUpOverlay.to} Reached`,
+        subtitle: isIndiv ? "Rank Promoted" : `Group: ${levelUpOverlay.name}`,
+        description: isIndiv
+          ? `You ascended from ${levelUpOverlay.from} to ${levelUpOverlay.to} in your group context! Keep up the amazing contribution!`
+          : `Your co-op group has reached Level ${levelUpOverlay.to}! Continue building those daily streaks together.`,
+      },
+      primaryAction: {
+        label: "Claim Rank Glory",
+        onClick: () => setLevelUpOverlay(null),
+      },
+    };
+  };
+
+  const activeLevelUpConfig = getLevelUpConfig();
 
   return (
     <div className="fixed inset-0 sm:relative sm:min-h-screen bg-black flex sm:items-center sm:justify-center p-0 sm:p-4 overflow-hidden select-none">
@@ -590,6 +651,27 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               />
             )}
           </AnimatePresence>
+
+          {/* Dynamic Achievement Unlock Overlay Popup */}
+          <AnimatePresence>
+            {unlockedOverlay && (
+              <AchievementOverlay
+                config={unlockedOverlay}
+                onClose={() => setUnlockedOverlay(null)}
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Dynamic Level Up Popup Modal - Re-routed to render with exact same high-end layout matching achievements */}
+          <AnimatePresence>
+            {levelUpOverlay && activeLevelUpConfig && (
+              <AchievementOverlay
+                config={activeLevelUpConfig}
+                onClose={() => setLevelUpOverlay(null)}
+              />
+            )}
+          </AnimatePresence>
+
         </div>
       </div>
     </div>

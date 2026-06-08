@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Flame, Clapperboard, Loader2 } from "lucide-react";
+import { Flame, Clapperboard, Lock } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
 import { Avatar } from "@/components/shared/avatar";
-import { getOrCreateTodayAssignment } from "@/actions/vlog";
+import { getOrCreateTodayAssignment, getUnlockedAchievements } from "@/actions/vlog";
 import { getStreaksData } from "@/actions/streaks";
+import { getVibeBadgeStyle } from "@/lib/vibe";
 
 import { AchievementOverlay, AchievementConfig } from "@/components/achievements/achievement-overlay";
 import { ACHIEVEMENT_MOCKS } from "@/components/achievements/achievement-data";
@@ -31,6 +32,7 @@ export default function StreaksPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [activeAchievement, setActiveAchievement] = useState<AchievementConfig | null>(null);
+  const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
 
   // Guard to prevent concurrent duplicate fetching
   const isFetchingRef = useRef(false);
@@ -48,6 +50,7 @@ export default function StreaksPage() {
     setRefreshing(true);
     const assignmentRes = await getOrCreateTodayAssignment(activeGroupId);
     const statsRes = await getStreaksData(activeGroupId);
+    const achievementsRes = await getUnlockedAchievements();
     setRefreshing(false);
     setInitialLoad(false);
 
@@ -56,6 +59,9 @@ export default function StreaksPage() {
     }
     if (statsRes.success) {
       setStreaks(statsRes);
+    }
+    if (achievementsRes.success && achievementsRes.unlocked) {
+      setUnlockedIds(achievementsRes.unlocked.map((u: any) => u.achievementId));
     }
 
     if (typeof window !== "undefined") {
@@ -216,6 +222,7 @@ export default function StreaksPage() {
           </div>
         </div>
 
+        {/* Dynamic Achievements mapping */}
         <div style={glassStyle(0.04, 20, 0.08)} className="rounded-[24px] p-5 flex flex-col gap-3">
           <div className="flex justify-between items-center mb-1">
             <span className="text-white text-[14px] font-bold tracking-wide">Explore Achievements</span>
@@ -225,15 +232,21 @@ export default function StreaksPage() {
             className="flex gap-2 overflow-x-auto scrollbar-hide -mx-5 px-5 pb-2"
             style={{ WebkitOverflowScrolling: "touch" }}
           >
-            {ACHIEVEMENT_MOCKS.map((mock) => (
-              <button
-                key={mock.id}
-                onClick={() => setActiveAchievement(mock)}
-                className="flex-shrink-0 py-2.5 px-3 rounded-[14px] bg-white/5 border border-white/10 text-white/80 text-[11px] font-semibold hover:bg-white/10 transition-colors text-center whitespace-nowrap"
-              >
-                {mock.id.replace(/-/g, ' ').toUpperCase()}
-              </button>
-            ))}
+            {ACHIEVEMENT_MOCKS.map((mock) => {
+              const isUnlocked = unlockedIds.includes(mock.id);
+              return (
+                <button
+                  key={mock.id}
+                  onClick={() => setActiveAchievement(mock)}
+                  className="flex-shrink-0 py-2.5 px-3 rounded-[14px] bg-white/5 border border-white/10 text-white/80 text-[11px] font-semibold hover:bg-white/10 transition-colors text-center whitespace-nowrap flex items-center gap-1.5"
+                >
+                  {!isUnlocked && <Lock size={10} className="text-white/40" />}
+                  <span style={{ opacity: isUnlocked ? 1 : 0.6 }}>
+                    {mock.id.replace(/-/g, ' ').toUpperCase()}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -300,8 +313,26 @@ export default function StreaksPage() {
 
                 <div className="flex flex-col items-center text-center gap-0.5">
                   <span className="text-white text-[11px] font-bold tracking-tight">{friend.name}</span>
+                  
+                  {/* Dynamic vibe style mini pill rendering */}
+                  <span 
+                    style={{
+                      ...getVibeBadgeStyle(friend.archetype),
+                      fontSize: "8px",
+                      fontWeight: 800,
+                      padding: "1.5px 6px",
+                      borderRadius: "6px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                      marginTop: "2.5px",
+                      display: "inline-block"
+                    }}
+                  >
+                    {friend.archetype}
+                  </span>
+
                   <span
-                    className={`text-[10px] font-medium ${friend.isMe ? "text-[#e07c30]" : "text-white/60"}`}
+                    className={`text-[10px] font-bold mt-1 ${friend.isMe ? "text-[#e07c30]" : "text-white/60"}`}
                   >
                     {friend.streak} days
                   </span>

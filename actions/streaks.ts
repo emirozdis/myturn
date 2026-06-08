@@ -2,6 +2,7 @@
 
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
+import { getVibeArchetype } from "@/lib/vibe";
 
 export async function getStreaksData(groupId: string) {
   try {
@@ -28,16 +29,18 @@ export async function getStreaksData(groupId: string) {
       return { error: "Group not found" };
     }
 
-    // Sort group members by dynamic streak ranks
+    // Sort group members by dynamic streak ranks and member XP values
     const friendsStreaks = group.members
-      .map((member, i) => ({
+      .map((member) => ({
         name: member.user.name || "User",
         streak: member.streak,
         img: member.user.image,
         isMe: member.userId === session.user.id,
-        rank: i + 1,
+        xp: member.xp,
+        archetype: getVibeArchetype(member.xp),
+        rank: 1,
       }))
-      .sort((a, b) => b.streak - a.streak)
+      .sort((a, b) => b.xp - a.xp)
       .map((item, idx) => ({ ...item, rank: idx + 1 }));
 
     // Fetch daily assignments for streaks calendar mapping

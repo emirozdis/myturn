@@ -8,7 +8,7 @@ import {
   ChevronRight, Check, Clock, Target, User, X, ArrowLeft
 } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
-import { getOrCreateTodayAssignment, getSignedUploadUrls, createClip, addComment } from "@/actions/vlog";
+import { getOrCreateTodayAssignment, getSignedUploadUrls, createClip } from "@/actions/vlog";
 import { getUserGroups } from "@/actions/group";
 import { PROMPTS, ACCENT } from "@/lib/theme";
 
@@ -485,9 +485,30 @@ export default function RecordPage() {
 
       if (clipRes.error) throw new Error(clipRes.error);
 
-      // Auto-publish the written caption as the very first commentary row under the post
-      if (caption.trim() && clipRes.clip?.id) {
-        await addComment(clipRes.clip.id, caption.trim());
+      // Trigger dynamic popups immediately if there are newly unlocked achievements or tier promotions!
+      if (clipRes.newlyUnlocked && clipRes.newlyUnlocked.length > 0) {
+        clipRes.newlyUnlocked.forEach((id: string) => {
+          window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
+        });
+      }
+
+      if (clipRes.individualTierUp) {
+        window.dispatchEvent(new CustomEvent("show-level-up", {
+          detail: {
+            type: "individual",
+            from: clipRes.individualTierUp.from,
+            to: clipRes.individualTierUp.to,
+          }
+        }));
+      } else if (clipRes.groupLevelUp) {
+        window.dispatchEvent(new CustomEvent("show-level-up", {
+          detail: {
+            type: "group",
+            from: clipRes.groupLevelUp.from,
+            to: clipRes.groupLevelUp.to,
+            name: selectedGroup?.name || "your group"
+          }
+        }));
       }
 
       clearInterval(progressInterval);
@@ -681,7 +702,7 @@ export default function RecordPage() {
                 className="flex items-center justify-between px-4 pb-3.5 border-b border-white/5 bg-neutral-900/60 backdrop-blur-md relative z-10 flex-shrink-0"
               >
                 <button 
-                  onClick={() => { handleStepChange("CAMERA"); setCaption(""); setError(""); }} 
+                  onClick={() => { handleStepChange("CAMERA"); setRecordedBlob(null); setCaption(""); setError(""); }} 
                   disabled={isUploading} 
                   className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors text-xs font-semibold"
                 >

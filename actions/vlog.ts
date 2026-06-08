@@ -4,6 +4,81 @@ import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 import { sendPushToUser } from "@/actions/push";
+import { calculateGroupLevel, getVibeArchetype } from "@/lib/vibe";
+
+function getSecondsUntilMidnightInTz(timezone: string): number {
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+    const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+    const second = parseInt(parts.find((p) => p.type === "second")?.value || "0", 10);
+    const currentSeconds = hour * 3600 + minute * 60 + second;
+    return Math.max(0, 24 * 3600 - currentSeconds);
+  } catch (e) {
+    const now = new Date();
+    const currentSeconds = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+    return Math.max(0, 24 * 3600 - currentSeconds);
+  }
+}
+
+export async function checkAndUnlockAchievement(userId: string, achievementId: string, groupId: string = "global"): Promise<boolean> {
+  try {
+    const existing = await db.unlockedAchievement.findUnique({
+      where: {
+        userId_achievementId_groupId: {
+          userId,
+          achievementId,
+          groupId,
+        },
+      },
+    });
+
+    if (!existing) {
+      await db.unlockedAchievement.create({
+        data: {
+          userId,
+          achievementId,
+          groupId,
+        },
+      });
+      return true; // Newly unlocked!
+    }
+    return false;
+  } catch (err) {
+    console.error("Failed to unlock achievement:", err);
+    return false;
+  }
+}
+
+export async function getUnlockedAchievements() {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) {
+      return { error: "Unauthorized" };
+    }
+
+    const unlocked = await db.unlockedAchievement.findMany({
+      where: { userId: session.user.id },
+    });
+
+    return { success: true, unlocked };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to query unlocked achievements." };
+  }
+}
+
+// --- CORE VLOG FUNCTIONS ---
 
 export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
   const now = new Date();
@@ -24,7 +99,8 @@ export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
 
 /**
  * Sweeps and transitions stale active assignments into missed status,
- * resetting the associated user's streak in that group.
+ * resetting the associated user's streak in that group and applying
+ * harsh progressive deranking penalty.
  */
 export async function processGroupDayTransition(groupId: string, localDate: Date) {
   const missedAssignments = await db.dailyAssignment.findMany({
@@ -49,6 +125,53 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
         userId: asg.userId,
       },
       data: { streak: 0 },
+    });
+
+    // HARSH DERANKING: Deduct -150 XP on turn lapses
+    const member = await db.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId,
+          userId: asg.userId,
+        },
+      },
+    });
+
+    if (member) {
+      const newXp = Math.max(0, member.xp - 150);
+      await db.groupMember.update({
+        where: { id: member.id },
+        data: { xp: newXp },
+      });
+    }
+  }
+
+  // HARSH INACTIVITY DECAY:
+  // Starts after 5 days of zero activity, -20 XP daily.
+  // After 14 days of inactivity, extra -50 XP penalty applied daily (Total -70 XP/day).
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+  const inactiveMembers = await db.groupMember.findMany({
+    where: {
+      groupId,
+      lastActiveAt: {
+        lt: fiveDaysAgo,
+      },
+    },
+  });
+
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+  for (const member of inactiveMembers) {
+    let decayAmount = 20;
+    const lastActiveTime = new Date(member.lastActiveAt).getTime();
+    if (lastActiveTime < fourteenDaysAgo.getTime()) {
+      decayAmount += 50; // Heavy inactivity decay trigger
+    }
+
+    const newXp = Math.max(0, member.xp - decayAmount);
+    await db.groupMember.update({
+      where: { id: member.id },
+      data: { xp: newXp },
     });
   }
 }
@@ -176,6 +299,8 @@ export async function getOrCreateTodayAssignment(groupId: string) {
         group: {
           select: {
             timezone: true,
+            xp: true,
+            level: true,
           },
         },
         user: {
@@ -271,6 +396,14 @@ export async function createClip(data: {
       return { error: "It is not your turn to vlog today!" };
     }
 
+    const group = await db.group.findUnique({
+      where: { id: data.groupId },
+    });
+
+    if (!group) {
+      return { error: "Group parameters unresolved" };
+    }
+
     const isFirstClip = assignment.status === "active";
 
     const clip = await db.clip.create({
@@ -284,25 +417,116 @@ export async function createClip(data: {
       },
     });
 
+    // XP CALCULATIONS
+    let individualXpGain = 100; // Duty Bonus
+    let groupXpGain = 100;
+
+    // Check First Light: Uploaded in first 2 hours of assignment selection
+    const twoHours = 2 * 60 * 60 * 1000;
+    if (Date.now() - new Date(assignment.createdAt).getTime() < twoHours) {
+      individualXpGain += 50;
+      groupXpGain += 50;
+    }
+
+    const newlyUnlocked: string[] = [];
+    let groupLevelUp: { from: number; to: number } | null = null;
+    let individualTierUp: { from: string; to: string } | null = null;
+
+    // Check Savior Bonus: Uploaded in final hour of timezone countdown with active streak >= 10
+    const memberRecord = await db.groupMember.findUnique({
+      where: {
+        groupId_userId: {
+          groupId: data.groupId,
+          userId: session.user.id,
+        },
+      },
+    });
+    const streakCount = memberRecord?.streak || 0;
+    if (getSecondsUntilMidnightInTz(group.timezone) < 3600 && streakCount >= 10) {
+      individualXpGain += 150;
+      groupXpGain += 150;
+      const isNew = await checkAndUnlockAchievement(session.user.id, "the-savior", data.groupId);
+      if (isNew) newlyUnlocked.push("the-savior");
+    }
+
+    // Unlock zero-hour if posted within 30 minutes of assignment roll
+    if (Date.now() - new Date(assignment.createdAt).getTime() < 30 * 60 * 1000) {
+      const isNew = await checkAndUnlockAchievement(session.user.id, "zero-hour", data.groupId);
+      if (isNew) newlyUnlocked.push("zero-hour");
+    }
+
+    // Update dynamic statistics with newly computed XP
+    if (memberRecord) {
+      const nextStreakValue = isFirstClip ? streakCount + 1 : streakCount;
+      const prevArchetype = getVibeArchetype(memberRecord.xp);
+      const finalXp = memberRecord.xp + individualXpGain;
+      const currArchetype = getVibeArchetype(finalXp);
+
+      if (prevArchetype !== currArchetype) {
+        individualTierUp = { from: prevArchetype, to: currArchetype };
+      }
+
+      await db.groupMember.update({
+        where: { id: memberRecord.id },
+        data: {
+          xp: finalXp,
+          lastActiveAt: new Date(),
+          streak: nextStreakValue,
+        },
+      });
+
+      // Unlock sequential streaks milestones
+      if (nextStreakValue >= 5) {
+        const isNew = await checkAndUnlockAchievement(session.user.id, "on-duty", data.groupId);
+        if (isNew) newlyUnlocked.push("on-duty");
+      }
+      if (nextStreakValue >= 15) {
+        const isNew = await checkAndUnlockAchievement(session.user.id, "the-guardian", data.groupId);
+        if (isNew) newlyUnlocked.push("the-guardian");
+      }
+    }
+
+    const updatedGroupXp = group.xp + groupXpGain;
+    const calculatedLevel = calculateGroupLevel(updatedGroupXp);
+
+    if (calculatedLevel > group.level) {
+      groupLevelUp = { from: group.level, to: calculatedLevel };
+    }
+
+    await db.group.update({
+      where: { id: group.id },
+      data: {
+        xp: updatedGroupXp,
+        level: calculatedLevel,
+      },
+    });
+
     if (isFirstClip) {
       // Update daily assignment status to completed if successfully posted
       await db.dailyAssignment.update({
         where: { id: data.assignmentId },
         data: { status: "completed" },
       });
+    }
 
-      // Increment user's streak in the group
-      await db.groupMember.updateMany({
-        where: {
-          groupId: data.groupId,
-          userId: session.user.id,
-        },
-        data: {
-          streak: {
-            increment: 1,
-          },
-        },
-      });
+    // Dynamic checks for long-term upload achievements
+    const clipsCount = await db.clip.count({
+      where: { userId: session.user.id },
+    });
+    if (clipsCount >= 50) {
+      const isNew = await checkAndUnlockAchievement(session.user.id, "silver-screen");
+      if (isNew) newlyUnlocked.push("silver-screen");
+    }
+    if (clipsCount >= 150) {
+      const isNew = await checkAndUnlockAchievement(session.user.id, "gold-standard");
+      if (isNew) newlyUnlocked.push("gold-standard");
+    }
+
+    // Night-owl: clip created between 1 AM and 5 AM local server hour
+    const serverHour = new Date().getHours();
+    if (serverHour >= 1 && serverHour < 5) {
+      const isNew = await checkAndUnlockAchievement(session.user.id, "night-owl", data.groupId);
+      if (isNew) newlyUnlocked.push("night-owl");
     }
 
     // Notify other group members about the new post
@@ -336,7 +560,13 @@ export async function createClip(data: {
       console.error("Failed to send clip upload push alert:", pushErr);
     }
 
-    return { success: true, clip };
+    return {
+      success: true,
+      clip,
+      newlyUnlocked,
+      groupLevelUp,
+      individualTierUp,
+    };
   } catch (error: any) {
     return { error: error?.message || "Failed to save clip details." };
   }
@@ -384,6 +614,17 @@ export async function toggleReaction(clipId: string, emoji: string) {
       },
     });
 
+    const newlyUnlocked: string[] = [];
+
+    // Check Hype-man achievement
+    const totalReactions = await db.reaction.count({
+      where: { userId: session.user.id },
+    });
+    if (totalReactions >= 100) {
+      const isNew = await checkAndUnlockAchievement(session.user.id, "hype-man");
+      if (isNew) newlyUnlocked.push("hype-man");
+    }
+
     // Notify the clip author about the reaction
     try {
       const targetClip = await db.clip.findUnique({
@@ -409,7 +650,7 @@ export async function toggleReaction(clipId: string, emoji: string) {
       console.error("Failed to send reaction push alerts:", pushErr);
     }
 
-    return { success: true, reaction };
+    return { success: true, reaction, newlyUnlocked };
   } catch (error: any) {
     return { error: error?.message };
   }
@@ -425,6 +666,15 @@ export async function addComment(clipId: string, text: string) {
       return { error: "Unauthorized" };
     }
 
+    const clip = await db.clip.findUnique({
+      where: { id: clipId },
+      select: { groupId: true },
+    });
+
+    if (!clip) {
+      return { error: "Target clip parameters unresolved" };
+    }
+
     const comment = await db.comment.create({
       data: {
         clipId,
@@ -437,6 +687,66 @@ export async function addComment(clipId: string, text: string) {
         },
       },
     });
+
+    const newlyUnlocked: string[] = [];
+
+    // SPECTATOR COMMENTARY BONUS: (Capped at 30 XP daily per user)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const commentsWrittenToday = await db.comment.count({
+      where: {
+        userId: session.user.id,
+        createdAt: {
+          gte: today,
+        },
+      },
+    });
+
+    if (commentsWrittenToday * 10 <= 30) {
+      const groupMember = await db.groupMember.findUnique({
+        where: {
+          groupId_userId: {
+            groupId: clip.groupId,
+            userId: session.user.id,
+          },
+        },
+      });
+
+      if (groupMember) {
+        await db.groupMember.update({
+          where: { id: groupMember.id },
+          data: {
+            xp: groupMember.xp + 10,
+            lastActiveAt: new Date(),
+          },
+        });
+
+        const targetGroup = await db.group.findUnique({
+          where: { id: clip.groupId },
+        });
+
+        if (targetGroup) {
+          const nextGroupXp = targetGroup.xp + 5;
+          await db.group.update({
+            where: { id: targetGroup.id },
+            data: {
+              xp: nextGroupXp,
+              level: calculateGroupLevel(nextGroupXp),
+            },
+          });
+        }
+      }
+    }
+
+    // Trigger director's commentary achievement check
+    const totalComments = await db.comment.count({
+      where: { userId: session.user.id },
+    });
+    if (totalComments >= 50) {
+      const isNew = await checkAndUnlockAchievement(session.user.id, "directors-commentary");
+      if (isNew) newlyUnlocked.push("directors-commentary");
+    }
 
     // Notify the clip author of the new comment
     try {
@@ -465,7 +775,7 @@ export async function addComment(clipId: string, text: string) {
       console.error("Failed to send comment push alerts:", pushErr);
     }
 
-    return { success: true, comment };
+    return { success: true, comment, newlyUnlocked };
   } catch (error: any) {
     return { error: error?.message || "Failed to publish comment." };
   }
@@ -479,6 +789,15 @@ export async function trackView(clipId: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) {
       return { error: "Unauthorized" };
+    }
+
+    const clip = await db.clip.findUnique({
+      where: { id: clipId },
+      select: { groupId: true, views: true },
+    });
+
+    if (!clip) {
+      return { error: "Clip details unresolved" };
     }
 
     const existing = await db.view.findUnique({
@@ -501,7 +820,82 @@ export async function trackView(clipId: string) {
       },
     });
 
-    return { success: true, view };
+    const newlyUnlocked: string[] = [];
+
+    // SPECTATOR VIEW BONUS: (Capped at 15 XP daily per user)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const viewsRegisteredToday = await db.view.count({
+      where: {
+        userId: session.user.id,
+        createdAt: {
+          gte: today,
+        },
+      },
+    });
+
+    if (viewsRegisteredToday * 5 <= 15) {
+      const groupMember = await db.groupMember.findUnique({
+        where: {
+          groupId_userId: {
+            groupId: clip.groupId,
+            userId: session.user.id,
+          },
+        },
+      });
+
+      if (groupMember) {
+        await db.groupMember.update({
+          where: { id: groupMember.id },
+          data: {
+            xp: groupMember.xp + 5,
+            lastActiveAt: new Date(),
+          },
+        });
+
+        const targetGroup = await db.group.findUnique({
+          where: { id: clip.groupId },
+        });
+
+        if (targetGroup) {
+          const nextGroupXp = targetGroup.xp + 2;
+          await db.group.update({
+            where: { id: targetGroup.id },
+            data: {
+              xp: nextGroupXp,
+              level: calculateGroupLevel(nextGroupXp),
+            },
+          });
+        }
+      }
+    }
+
+    // First responder trigger: Be the first to view a vlog post 10 times
+    const viewsOnThisClip = await db.view.count({
+      where: { clipId },
+    });
+    if (viewsOnThisClip === 1) {
+      // Find how many times this user has been the first view
+      const firstViewsCount = await db.view.count({
+        where: {
+          userId: session.user.id,
+          clip: {
+            views: {
+              some: {
+                userId: session.user.id,
+              },
+            },
+          },
+        },
+      });
+      if (firstViewsCount >= 10) {
+        const isNew = await checkAndUnlockAchievement(session.user.id, "first-responder", clip.groupId);
+        if (isNew) newlyUnlocked.push("first-responder");
+      }
+    }
+
+    return { success: true, view, newlyUnlocked };
   } catch (error: any) {
     return { error: error?.message || "Failed to track view." };
   }

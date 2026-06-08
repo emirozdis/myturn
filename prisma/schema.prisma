@@ -58,13 +58,14 @@ model User {
   sessions          Session[]
   
   // App Relations
-  groupMembers      GroupMember[]
-  dailyAssignments  DailyAssignment[]
-  clips             Clip[]
-  reactions         Reaction[]
-  pushSubscriptions PushSubscription[]
-  comments          Comment[]
-  views             View[]
+  groupMembers         GroupMember[]
+  dailyAssignments     DailyAssignment[]
+  clips                Clip[]
+  reactions            Reaction[]
+  pushSubscriptions    PushSubscription[]
+  comments             Comment[]
+  views                View[]
+  unlockedAchievements UnlockedAchievement[]
 
   @@map("users")
 }
@@ -88,6 +89,10 @@ model Group {
   timezone    String   @default("UTC")
   createdAt   DateTime @default(now())
 
+  // Proposed Additions:
+  xp          Int      @default(0)      // Cumulative group activity XP
+  level       Int      @default(1)      // Co-op group level
+
   members          GroupMember[]
   dailyAssignments DailyAssignment[]
   clips            Clip[]
@@ -102,6 +107,10 @@ model GroupMember {
   role      String   @default("member") // "admin" | "member"
   streak    Int      @default(0)
   joinedAt  DateTime @default(now())
+
+  // Proposed Additions:
+  xp             Int      @default(0)      // Individual XP earned within THIS group
+  lastActiveAt   DateTime @default(now())  // Tracked for decay/deranking triggers
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -211,4 +220,18 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+model UnlockedAchievement {
+  id            String   @id @default(cuid())
+  userId        String
+  achievementId String
+  groupId       String   @default("global")
+  unlockedAt    DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId, groupId])
+  @@index([userId])
+  @@map("unlocked_achievements")
 }

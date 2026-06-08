@@ -169,6 +169,13 @@ export default function TodayPage() {
         const res = await trackView(activeClip.id);
         if (res.success && !res.alreadyViewed) {
           setClips(prev => prev.map(c => c.id === activeClip.id ? { ...c, views: [...(c.views || []), { id: "temp-view" }] } : c));
+          
+          // Show popup immediately on first responder achievement unlock
+          if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
+            res.newlyUnlocked.forEach((id: string) => {
+              window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
+            });
+          }
         }
       };
       recordViewEvent();
@@ -186,7 +193,14 @@ export default function TodayPage() {
     setLiked((v) => !v);
     setLikeCount((c) => (liked ? c - 1 : c + 1));
 
-    await toggleReaction(activeClip.id, "❤️");
+    const res = await toggleReaction(activeClip.id, "❤️");
+    
+    // Trigger popup immediately if hype-man is unlocked on reaction click
+    if (res.success && res.newlyUnlocked && res.newlyUnlocked.length > 0) {
+      res.newlyUnlocked.forEach((id: string) => {
+        window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
+      });
+    }
   }, [liked, activeClip]);
 
   const handleSendComment = async (e: React.FormEvent) => {
@@ -200,6 +214,13 @@ export default function TodayPage() {
     if (res.success && res.comment) {
       setCommentList((prev) => [...prev, res.comment]);
       setClips(prev => prev.map(c => c.id === activeClip.id ? { ...c, comments: [...(c.comments || []), res.comment] } : c));
+      
+      // Trigger commentary achievements popups immediately
+      if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
+        res.newlyUnlocked.forEach((id: string) => {
+          window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
+        });
+      }
     }
   };
 

@@ -127,6 +127,9 @@ export async function getUserGroups() {
       inviteCode: m.group.inviteCode,
       memberCount: m.group._count.members,
       role: m.role,
+      xp: m.group.xp,
+      level: m.group.level,
+      memberXp: m.xp,
     }));
 
     return { success: true, groups };

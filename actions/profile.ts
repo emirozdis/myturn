@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
+import { getVibeArchetype } from "@/lib/vibe";
 
 export async function uploadAvatar(base64Data: string) {
   try {
@@ -143,9 +144,27 @@ export async function getProfileData() {
       }
     }
 
+    // Fetch highest member XP to compute actual user vibe archetype level
+    const highestMemberXp = await db.groupMember.findFirst({
+      where: { userId: user.id },
+      orderBy: { xp: "desc" },
+    });
+    const totalXp = highestMemberXp?.xp || 0;
+    const archetype = getVibeArchetype(totalXp);
+
+    // Query Unlocked achievements matching the user ID
+    const unlocked = await db.unlockedAchievement.findMany({
+      where: { userId: user.id },
+      select: { achievementId: true },
+    });
+    const unlockedIds = unlocked.map((u) => u.achievementId);
+
     const userWithSignedImage = {
       ...user,
       image: avatarUrl,
+      xp: totalXp,
+      archetype,
+      unlockedIds,
     };
 
     // Generate monthly calendar data showing vlogged history
