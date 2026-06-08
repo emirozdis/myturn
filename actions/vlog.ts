@@ -169,7 +169,7 @@ export async function getOrCreateTodayAssignment(groupId: string) {
       return { error: "No members in group to assign" };
     }
 
-    // Fetch fully populated assignment context with group timezone and user handles
+    // Fetch fully populated assignment context with group timezone and user details
     const fullyPopulatedAssignment = await db.dailyAssignment.findFirst({
       where: { id: assignment.id },
       include: {
@@ -179,7 +179,7 @@ export async function getOrCreateTodayAssignment(groupId: string) {
           },
         },
         user: {
-          select: { id: true, name: true, image: true, handle: true },
+          select: { id: true, name: true, image: true, handle: true, bio: true, location: true },
         },
         clips: {
           orderBy: { recordedAt: "asc" },

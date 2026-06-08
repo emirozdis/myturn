@@ -239,6 +239,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const showBottomNav = activeTab !== "record" || recordStep === "CAMERA";
   const hasNoGroups = groups.length === 0 && !groupsLoading;
 
+  // Bypasses the blocker screen if they are specifically navigating to Social or Profile to onboard or adjust settings
+  const isBypassPage = pathname === "/social" || pathname === "/profile";
+  const showNoGroupsScreen = hasNoGroups && !isBypassPage;
+
   if (typeof window !== "undefined" && groups[activeGroupIndex]) {
     localStorage.setItem("active_group_id", groups[activeGroupIndex].id);
   }
@@ -287,8 +291,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-4">
                 <Loader2 size={32} className="animate-spin text-[#e07c30]" />
               </div>
-            ) : hasNoGroups ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-4">
+            ) : showNoGroupsScreen ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-4 animate-fade-in">
                 <Users size={48} className="text-[#e07c30] animate-pulse" />
                 <h3 className="text-white font-bold text-lg">No Active Groups</h3>
                 <p className="text-white/50 text-xs leading-relaxed max-w-[240px]">
@@ -298,7 +302,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <button
                   onClick={() => router.push("/social")}
                   style={{ background: ACCENT }}
-                  className="px-6 py-2.5 rounded-full text-black font-bold text-xs"
+                  className="px-6 py-2.5 rounded-full text-black font-bold text-xs active:scale-[0.98] transition-transform"
                 >
                   Join / Create Group
                 </button>

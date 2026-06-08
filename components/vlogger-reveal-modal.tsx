@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Sparkles } from "lucide-react";
+import { X, Flame, PartyPopper, MapPin } from "lucide-react";
 import { getGroupDetails } from "@/actions/group";
 import { Avatar } from "@/components/shared/avatar";
+import { glassStyle } from "@/components/shared/glass-style";
 
 interface VloggerRevealModalProps {
   groupId: string;
@@ -12,104 +13,121 @@ interface VloggerRevealModalProps {
   onClose: () => void;
 }
 
-const FALLBACK_PROFILES = [
-  { name: "Sarah", image: null },
-  { name: "John", image: null },
-  { name: "Emma", image: null },
-  { name: "Michael", image: null },
-  { name: "Sophia", image: null },
-];
+// "syncing" phase ensures motion.divs mount at exact rotation coords before springing
+type Phase = "idle" | "spinning" | "syncing" | "converging" | "revealed";
 
-type Phase = "idle" | "spinning" | "converging" | "landed" | "revealed";
-
-const ORBIT_RADIUS = 112;
-const MEMBER_COUNT = 5;
+const ORBIT_RADIUS = 160;
 
 export function VloggerRevealModal({
   groupId,
   assignment,
   onClose,
 }: VloggerRevealModalProps) {
-  const [members, setMembers]           = useState<any[]>([]);
-  const [groupName, setGroupName]       = useState<string>("");
-  const [animationPhase, setPhase]      = useState<Phase>("idle");
-  const [orbitAngle, setOrbitAngle]     = useState(0);
+  const [members, setMembers] = useState<any[]>([]);
+  const [groupName, setGroupName] = useState<string>("");
+  const [animationPhase, setPhase] = useState<Phase>("idle");
+  const [orbitAngle, setOrbitAngle] = useState(0);
   const [highlightedIndex, setHighlighted] = useState(-1);
+  
   const [avatarPositions, setPositions] = useState<
     { x: number; y: number; scale: number; opacity: number }[]
-  >(
-    Array.from({ length: MEMBER_COUNT }).map((_, i) => {
-      const a = ((i * 72 - 90) * Math.PI) / 180;
-      return { x: Math.cos(a) * ORBIT_RADIUS, y: Math.sin(a) * ORBIT_RADIUS, scale: 1, opacity: 0.35 };
-    })
-  );
-  const [driftOffsets, setDriftOffsets] = useState<{ x: number; y: number }[]>(
-    Array.from({ length: MEMBER_COUNT }).map(() => ({ x: 0, y: 0 }))
-  );
+  >([]);
+  
+  const [driftOffsets, setDriftOffsets] = useState<{ x: number; y: number }[]>([]);
 
   const orbitAngleRef = useRef(0);
-  const rafRef        = useRef<number | null>(null);
-  const speedRef      = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const speedRef = useRef(0);
+
+  const isSpinning = animationPhase === "spinning";
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+  const handleClose = () => {
+    localStorage.setItem(`revealed_vlogger_${assignment.id}`, "true");
+    onClose();
+  };
 
   // ── Fetch members ─────────────────────────────────────────────────────────
   useEffect(() => {
     const fetch = async () => {
       const res = await getGroupDetails(groupId);
       if (res.success && res.group) {
-        if (res.group.name) {
-          setGroupName(res.group.name);
-        }
+        setGroupName(res.group.name);
         if (res.group.members) {
-          setMembers(
-            res.group.members
-              .filter((m: any) => m.userId !== assignment.userId)
-              .map((m: any) => m.user)
-          );
+          setMembers(res.group.members.map((m: any) => m.user));
         }
       }
     };
     fetch();
-  }, [groupId, assignment.userId]);
+  }, [groupId]);
+
+  // ── Map unique group members without any duplication padding ──────────────
+  const finalMembers = useMemo(() => {
+    return members.length > 0 
+      ? members 
+      : (assignment?.user ? [assignment.user] : [{ id: "fallback", name: "User", image: null }]);
+  }, [members, assignment]);
+
+  const count = finalMembers.length;
+  const angleStep = 360 / count;
+
+  // ── Synchronize dynamic avatar layout boundaries ──────────────────────────
+  useEffect(() => {
+    if (count === 0) return;
+    setPositions(
+      Array.from({ length: count }).map((_, i) => {
+        const a = ((i * angleStep + 90) * Math.PI) / 180;
+        return {
+          x: Math.cos(a) * ORBIT_RADIUS,
+          y: Math.sin(a) * ORBIT_RADIUS,
+          scale: 1,
+          opacity: 0.85,
+        };
+      })
+    );
+    setDriftOffsets(Array.from({ length: count }).map(() => ({ x: 0, y: 0 })));
+  }, [count, angleStep]);
 
   // ── Idle drift ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (animationPhase !== "idle") return;
+    if (animationPhase !== "idle" || count === 0) return;
     const id = setInterval(() => {
       setDriftOffsets(
-        Array.from({ length: MEMBER_COUNT }).map(() => ({
+        Array.from({ length: count }).map(() => ({
           x: Math.random() * 10 - 5,
           y: Math.random() * 10 - 5,
         }))
       );
-    }, 2800);
+    }, 3000);
     return () => clearInterval(id);
-  }, [animationPhase]);
+  }, [animationPhase, count]);
 
   useEffect(() => {
-    if (animationPhase !== "idle") return;
+    if (animationPhase !== "idle" || count === 0) return;
     setPositions(
-      Array.from({ length: MEMBER_COUNT }).map((_, i) => {
-        const a = ((i * 72 - 90) * Math.PI) / 180;
+      Array.from({ length: count }).map((_, i) => {
+        const a = ((i * angleStep + 90) * Math.PI) / 180;
+        const drift = driftOffsets[i] || { x: 0, y: 0 };
         return {
-          x: Math.cos(a) * ORBIT_RADIUS + driftOffsets[i].x,
-          y: Math.sin(a) * ORBIT_RADIUS + driftOffsets[i].y,
+          x: Math.cos(a) * ORBIT_RADIUS + drift.x,
+          y: Math.sin(a) * ORBIT_RADIUS + drift.y,
           scale: 1,
-          opacity: 0.35,
+          opacity: 0.85,
         };
       })
     );
-  }, [driftOffsets, animationPhase]);
+  }, [driftOffsets, animationPhase, count, angleStep]);
 
   // ── Spinning rAF ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (animationPhase !== "spinning") return;
+    if (animationPhase !== "spinning" || count === 0) return;
 
     speedRef.current = 1.2;
-    const MAX_SPEED   = 16;
-    const ACCEL       = 1.08;
-    const DECEL       = 0.982;
-    let accelerating  = true;
-    let accelFrames   = 0;
+    const MAX_SPEED = 18;
+    const ACCEL = 1.08;
+    const DECEL = 0.982;
+    let accelerating = true;
+    let accelFrames = 0;
     const ACCEL_FRAMES = 55;
 
     const tick = () => {
@@ -124,345 +142,486 @@ export function VloggerRevealModal({
       orbitAngleRef.current += speedRef.current;
       setOrbitAngle(orbitAngleRef.current);
 
-      const norm    = ((orbitAngleRef.current % 360) + 360) % 360;
-      const topDeg  = ((-90 - norm) % 360 + 360) % 360;
-      setHighlighted(Math.round(topDeg / 72) % MEMBER_COUNT);
+      const norm = ((-orbitAngleRef.current % 360) + 360) % 360;
+      setHighlighted(Math.round(norm / angleStep) % count);
 
       if (speedRef.current > 0.25) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
         rafRef.current = null;
-        setPhase("converging");
-        setHighlighted(-1);
+        
+        // SYNC PHASE: Freeze exact position to avoid snap when switching to motion.div
+        const finalNorm = ((-orbitAngleRef.current % 360) + 360) % 360;
+        const hl = Math.round(finalNorm / angleStep) % count;
+
+        setPositions(
+          Array.from({ length: count }).map((_, i) => {
+            const a = (i * angleStep + 90) * (Math.PI / 180) + (orbitAngleRef.current * Math.PI) / 180;
+            return {
+              x: Math.cos(a) * ORBIT_RADIUS,
+              y: Math.sin(a) * ORBIT_RADIUS,
+              scale: hl === i ? 1.15 : 1,
+              opacity: hl === i ? 1 : 0.6,
+            };
+          })
+        );
+        
+        setPhase("syncing");
       }
     };
 
     rafRef.current = requestAnimationFrame(tick);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [animationPhase]);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [animationPhase, angleStep, count]);
 
-  // ── Converging ────────────────────────────────────────────────────────────
+  // ── Smooth Handoff -> Converging ──────────────────────────────────────────
   useEffect(() => {
-    if (animationPhase !== "converging") return;
-    setPositions(Array.from({ length: MEMBER_COUNT }).map(() => ({
-      x: 0, y: 0, scale: 0.3, opacity: 0,
-    })));
-    const t = setTimeout(() => setPhase("landed"), 700);
+    if (animationPhase !== "syncing") return;
+    // Allow 1 frame for motion.div to mount at synced coords
+    const t = setTimeout(() => {
+      setHighlighted(-1);
+      setPhase("converging");
+    }, 50);
     return () => clearTimeout(t);
   }, [animationPhase]);
 
-  // ── Landed → scatter ──────────────────────────────────────────────────────
+  // ── Converging (Gather Phase) ─────────────────────────────────────────────
   useEffect(() => {
-    if (animationPhase !== "landed") return;
-    const R = 210;
+    if (animationPhase !== "converging" || count === 0) return;
     setPositions(
-      Array.from({ length: MEMBER_COUNT }).map((_, i) => {
-        const a = (i * 72 - 90) * (Math.PI / 180) + (orbitAngleRef.current * Math.PI) / 180;
-        return { x: Math.cos(a) * R, y: Math.sin(a) * R, scale: 0.5, opacity: 0 };
+      Array.from({ length: count }).map(() => ({
+        x: 0,
+        y: 0,
+        scale: 0.15, // Smooth, quick pull-in
+        opacity: 0.8, // Retain high opacity throughout the gather
+      }))
+    );
+    // Skips "landed" splash entirely and unfolds straight to "revealed" positions
+    const t = setTimeout(() => setPhase("revealed"), 300); 
+    return () => clearTimeout(t);
+  }, [animationPhase, count]);
+
+  // ── Revealed → cluster smoothly ───────────────────────────────────────────
+  useEffect(() => {
+    if (animationPhase !== "revealed") return;
+    const winnerId = assignment?.user?.id;
+    
+    // Only real non-winner group members are clustered under the winner
+    const realOthers = finalMembers.filter(
+      (m) => m.id !== winnerId && !String(m.id).startsWith("duplicate-") && !String(m.id).startsWith("fallback")
+    );
+    const othersCount = realOthers.length;
+
+    let otherIndex = 0;
+    
+    setPositions(
+      finalMembers.map((member) => {
+        if (member.id === winnerId) {
+          return {
+            x: 0,
+            y: -20, // Centered perfectly between title block and bottom avatars
+            scale: 2.0, // Scale up natively to exact size match (84px * 2.0 = 168px)
+            opacity: 1,
+          };
+        }
+
+        // Drop out the padded duplicate/fallback avatars seamlessly
+        if (String(member.id).startsWith("duplicate-") || String(member.id).startsWith("fallback")) {
+          return {
+            x: 0,
+            y: 155, 
+            scale: 0,
+            opacity: 0,
+          };
+        }
+        
+        const offset = otherIndex - (othersCount - 1) / 2;
+        otherIndex++;
+        const SPACING = 42;
+        
+        return {
+          x: offset * SPACING,
+          y: 155, // Tuck safely beneath the massive winner avatar without disappearing in between
+          scale: 0.45,
+          opacity: 0.9,
+        };
       })
     );
-    const t = setTimeout(() => setPhase("revealed"), 800);
-    return () => clearTimeout(t);
-  }, [animationPhase]);
-
-  const handleClose = () => {
-    localStorage.setItem(`revealed_vlogger_${assignment.id}`, "true");
-    onClose();
-  };
-
-  // Fill to 5
-  const displayMembers = [...members];
-  while (displayMembers.length < MEMBER_COUNT) {
-    const fb = FALLBACK_PROFILES[displayMembers.length % FALLBACK_PROFILES.length];
-    displayMembers.push({ id: `fallback-${displayMembers.length}`, ...fb });
-  }
-  const finalMembers = displayMembers.slice(0, MEMBER_COUNT);
-
-  const isSpinning = animationPhase === "spinning";
+  }, [animationPhase, assignment, finalMembers]);
 
   const avatarTransition = (phase: Phase) => {
-    if (phase === "idle")       return { type: "spring" as const, stiffness: 22, damping: 9 };
-    if (phase === "converging") return { type: "spring" as const, stiffness: 260, damping: 28 };
-    if (phase === "landed")     return { type: "spring" as const, stiffness: 50,  damping: 10 };
-    return                             { type: "spring" as const, stiffness: 70,  damping: 12 };
+    if (phase === "idle" || phase === "syncing")
+      return { type: "spring" as const, stiffness: 22, damping: 9 };
+    if (phase === "converging")
+      return { type: "spring" as const, stiffness: 450, damping: 32 };
+    if (phase === "revealed")
+      return { type: "spring" as const, stiffness: 100, damping: 16 };
+    return { type: "spring" as const, stiffness: 70, damping: 12 };
   };
 
+  const baseGlass = glassStyle(0.08, 20, 0.15);
+  const winnerId = assignment?.user?.id;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden select-none"
-      style={{ background: "radial-gradient(ellipse 80% 60% at 50% 0%, #1c1108 0%, #0d0d0f 50%, #080809 100%)" }}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.4, ease: "easeInOut" }}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden select-none bg-[#0a0a0a]"
     >
-      {/* Subtle vignette */}
-      <div className="absolute inset-0 pointer-events-none"
-        style={{ background: "radial-gradient(ellipse 70% 70% at 50% 50%, transparent 40%, rgba(0,0,0,0.55) 100%)" }}
+      {/* Subtle background noise/vignette */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-40"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 80% at 50% 50%, rgba(255,255,255,0.02) 0%, transparent 100%)",
+        }}
       />
 
-      {/* Close */}
-      <button
-        onClick={handleClose}
-        className="absolute top-6 right-6 z-50 w-9 h-9 rounded-full flex items-center justify-center transition-all hover:bg-white/10"
-        style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}
-      >
-        <X size={16} className="text-white/50" />
-      </button>
+      {/* Close Button - Smoothly disappears after idle state */}
+      <AnimatePresence>
+        {animationPhase === "idle" && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.5, filter: "blur(4px)" }}
+            transition={{ duration: 0.3 }}
+            onClick={handleClose}
+            className="absolute top-6 right-6 z-50 w-10 h-10 rounded-full flex items-center justify-center transition-all hover:bg-white/10 bg-[#161618] border border-white/5"
+          >
+            <X size={18} className="text-white/60" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
-      <motion.div 
-        layout
-        className="relative w-full max-w-[390px] h-full max-h-[812px] flex flex-col items-center justify-center z-10 px-6 py-10"
-      >
+      <div className="relative w-full max-w-[420px] h-full flex flex-col items-center z-10 px-4 pt-12 pb-8">
+        
         {/* ── Header ─────────────────────────────────────────────────────── */}
-        <AnimatePresence>
-          {animationPhase !== "revealed" && (
-            <motion.div
-              initial={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -30, height: 0, overflow: "hidden", marginBottom: 0 }}
-              transition={{ duration: 0.5, ease: "easeInOut" }}
-              className="flex flex-col items-center gap-2 text-center mb-auto"
-            >
-              <motion.img
-                src="/assets/icons/camera.png"
-                alt="camera"
-                className="w-24 h-24 object-contain"
-                animate={{ scale: [1, 1.08, 1] }}
-                transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-              />
-              <div className="mt-1 flex flex-col gap-1">
-                <h1 style={{ fontFamily: "'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif", fontWeight: 700, fontSize: 22, letterSpacing: -0.5, color: "#fff" }}>
-                  {animationPhase === "idle"
-                    ? <>Who&apos;s today&apos;s <span style={{ color: "#e08040" }}>vlogger?</span></>
-                    : <>Finding today&apos;s <span style={{ color: "#e08040" }}>vlogger…</span></>
-                  }
+        <div className="relative w-full h-[220px] flex-shrink-0 mt-2 mb-2">
+          <AnimatePresence>
+            {animationPhase !== "revealed" ? (
+              <motion.div
+                key="header-picking"
+                initial={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
+                exit={{ opacity: 0, y: -20, filter: "blur(8px)", scale: 0.95 }}
+                transition={{ duration: 0.4, ease: "easeOut" }}
+                className="absolute inset-0 flex flex-col items-center justify-center text-center z-20"
+              >
+                <div className="relative mb-5 mt-2">
+                  <div className="absolute inset-0 bg-[#e07c30]/30 blur-2xl rounded-full" />
+                  <img 
+                    src="/assets/icons/fire.png" 
+                    alt="Fire" 
+                    className="w-16 h-16 object-contain relative z-10 drop-shadow-[0_4px_16px_rgba(224,124,48,0.5)]" 
+                    onError={(e) => { 
+                      e.currentTarget.style.display='none'; 
+                      e.currentTarget.nextElementSibling?.classList.remove('hidden'); 
+                    }} 
+                  />
+                  <Flame className="hidden w-12 h-12 text-[#e07c30] fill-[#e07c30] relative z-10" />
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <h1 className="font-bold text-[30px] sm:text-[34px] tracking-tight leading-tight flex items-center gap-2">
+                    <span className="text-white">Who's vlogging</span>
+                    <span className="text-[#e07c30]">today?</span>
+                  </h1>
+                  <p className="text-white/50 text-[14px] sm:text-[15px] font-medium leading-relaxed">
+                    We pick one person at random each day.<br />
+                    Let's find out...
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="header-revealed"
+                initial={{ opacity: 0, y: 20, filter: "blur(8px)", scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
+                transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
+                className="absolute inset-0 flex flex-col items-center justify-center text-center z-20"
+              >
+                <div className="relative mb-4 mt-2">
+                  <div className="absolute inset-0 bg-[#e07c30]/30 blur-3xl rounded-full" />
+                  <img 
+                    src="/assets/icons/camera.png" 
+                    alt="Camera" 
+                    className="w-24 h-24 object-contain relative z-10 drop-shadow-[0_10px_20px_rgba(0,0,0,0.6)]" 
+                  />
+                </div>
+
+                <span className="px-5 py-2 rounded-full bg-gradient-to-b from-[#e07c30]/90 to-[#b85b1c]/90 border border-[#ffb880]/50 shadow-[0_4px_16px_rgba(224,124,48,0.5),inset_0_2px_4px_rgba(255,255,255,0.4)] text-white text-[11px] font-extrabold uppercase tracking-widest mb-4 flex items-center gap-2 backdrop-blur-md">
+                  <Flame size={14} className="fill-white" />
+                  Today's vlogger for {groupName || "your group"}
+                </span>
+
+                <h1 className="text-[34px] font-bold text-white mb-1 leading-none tracking-tight drop-shadow-md">
+                  {assignment.user?.name}
                 </h1>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.38)", fontWeight: 500, letterSpacing: 0.1 }}>
-                  {animationPhase === "idle" ? "One person. Chosen at random." : "Choosing someone at random"}
+                <p className="text-white/60 font-medium text-[15px] mb-3 tracking-wide">
+                  @{assignment.user?.handle}
                 </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+
+                {assignment.user?.bio ? (
+                  <p className="text-white/40 text-[13px] max-w-[280px] italic line-clamp-2">
+                    "{assignment.user.bio}"
+                  </p>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-white/40 text-[13px]">
+                    <MapPin size={12} />
+                    <span>{assignment.user?.location || "Earth"}</span>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {/* ── Center Area / Transition Layout ────────────────────────────── */}
         <motion.div
           layout="position"
-          transition={{ type: "spring", stiffness: 120, damping: 20 }}
-          className="relative flex items-center justify-center w-full my-auto"
+          className="relative flex items-center justify-center w-full my-auto z-10"
+          style={{ height: 400 }}
         >
-          <AnimatePresence mode="wait">
-            {animationPhase !== "revealed" ? (
-              <motion.div
-                key="orbit-wheel"
-                initial={{ opacity: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                transition={{ duration: 0.5 }}
-                className="relative flex items-center justify-center"
-                style={{ width: 280, height: 280 }}
-              >
-                {/* Thin orbit ring */}
-                <motion.div
-                  className="absolute rounded-full pointer-events-none"
-                  style={{ width: ORBIT_RADIUS * 2, height: ORBIT_RADIUS * 2, border: "1px solid rgba(255,255,255,0.06)", borderRadius: "50%" }}
-                />
-
-                {/* Spinning sweep line */}
-                <AnimatePresence>
-                  {(isSpinning || animationPhase === "converging") && (
-                    <motion.div
-                      className="absolute pointer-events-none"
-                      style={{ width: ORBIT_RADIUS * 2 + 2, height: ORBIT_RADIUS * 2 + 2 }}
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
-                      exit={{ opacity: 0, transition: { duration: 0.5 } }}
-                    >
-                      <svg width="100%" height="100%" viewBox="0 0 230 230" fill="none">
-                        <defs>
-                          <linearGradient id="sweep" x1="115" y1="0" x2="230" y2="115" gradientUnits="userSpaceOnUse">
-                            <stop offset="0%" stopColor="#e08040" stopOpacity="0.7" />
-                            <stop offset="100%" stopColor="#e08040" stopOpacity="0" />
-                          </linearGradient>
-                        </defs>
-                        <path
-                          d="M115,2 A113,113 0 0,1 228,115"
-                          stroke="url(#sweep)"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Orbit Avatars */}
-                {finalMembers.map((member, i) => {
-                  if (isSpinning) {
-                    const a    = (i * 72 - 90) * (Math.PI / 180) + (orbitAngle * Math.PI) / 180;
-                    const isHi = highlightedIndex === i;
-                    const spd  = Math.min(speedRef.current / 16, 1);
-                    const op   = isHi ? 1 : 0.18 + (1 - spd) * 0.32;
-
-                    return (
-                      <div
-                        key={member.id}
-                        style={{
-                          position: "absolute",
-                          transform: `translate(${Math.cos(a) * ORBIT_RADIUS}px, ${Math.sin(a) * ORBIT_RADIUS}px) scale(${isHi ? 1.15 : 1})`,
-                          opacity: op,
-                          transition: "opacity 0.12s ease, transform 0.06s linear",
-                          zIndex: isHi ? 15 : 10,
-                        }}
-                      >
-                        <div
-                          style={{
-                            borderRadius: "50%",
-                            boxShadow: isHi ? "0 0 0 2px rgba(224,128,64,0.9), 0 0 16px rgba(224,128,64,0.4)" : "none",
-                            transition: "box-shadow 0.15s ease",
-                          }}
-                        >
-                          <Avatar src={member.image} name={member.name} size={44} />
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  const pos = avatarPositions[i] ?? { x: 0, y: 0, scale: 1, opacity: 0.35 };
-                  return (
-                    <motion.div
-                      key={member.id}
-                      initial={false}
-                      animate={{ x: pos.x, y: pos.y, scale: pos.scale, opacity: pos.opacity }}
-                      transition={avatarTransition(animationPhase)}
-                      style={{ position: "absolute", zIndex: 10, borderRadius: "50%" }}
-                    >
-                      <Avatar src={member.image} name={member.name} size={44} />
-                    </motion.div>
-                  );
-                })}
-
-                {/* Winner Avatar (Landed Phase) */}
-                <AnimatePresence>
-                  {animationPhase === "landed" && (
-                    <motion.div
-                      layoutId="winner-avatar"
-                      initial={{ scale: 0.4, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.4, opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 180, damping: 22, mass: 1.1 }}
-                      style={{ position: "absolute", zIndex: 20 }}
-                      className="flex flex-col items-center justify-center"
-                    >
-                      <div className="absolute -inset-6 bg-gradient-to-r from-orange-500/10 to-amber-500/10 rounded-full blur-2xl animate-pulse pointer-events-none" />
-                      <div className="p-1 rounded-full bg-gradient-to-tr from-orange-500 via-amber-400 to-yellow-300 shadow-xl">
-                        <div className="rounded-full overflow-hidden bg-neutral-900 p-1">
-                          <Avatar src={assignment.user?.image} name={assignment.user?.name} size={128} />
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Premium Reveal Button (Idle Phase) */}
-                <AnimatePresence>
-                  {animationPhase === "idle" && (
-                    <motion.div
-                      key="tap-btn-wrapper"
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.8, opacity: 0 }}
-                      transition={{ type: "spring", stiffness: 240, damping: 20 }}
-                      style={{ position: "absolute", zIndex: 20 }}
-                    >
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => setPhase("spinning")}
-                        className="relative group overflow-hidden rounded-full p-[2px] focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-                      >
-                        {/* Shimmer glowing backdrop */}
-                        <span className="absolute inset-0 rounded-full bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-400 p-[2px] opacity-75 group-hover:opacity-100 transition-opacity blur-sm" />
-                        
-                        <div className="relative px-7 py-3 rounded-full bg-neutral-950/90 text-white font-semibold text-sm transition-colors group-hover:bg-neutral-950/80 flex items-center gap-2.5 shadow-xl">
-                          <motion.div
-                            animate={{ rotate: 360 }}
-                            transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-                          >
-                            <Sparkles className="w-4.5 h-4.5 text-amber-400" />
-                          </motion.div>
-                          <span className="tracking-wide bg-gradient-to-r from-white via-neutral-100 to-neutral-200 bg-clip-text text-transparent">
-                            Reveal Vlogger
-                          </span>
-                        </div>
-                      </motion.button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            ) : (
-              /* Profile Card & Bottom details (Revealed Phase) */
-              <motion.div
-                key="profile-card"
-                initial={{ opacity: 0, scale: 0.93, y: 15 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ type: "spring", stiffness: 140, damping: 20 }}
-                className="w-full bg-white/[0.02] border border-white/[0.08] backdrop-blur-2xl rounded-[32px] p-6 flex flex-col items-center text-center shadow-2xl relative overflow-hidden"
-              >
-                {/* Embedded dynamic light glows inside card */}
-                <div className="absolute -top-24 -left-24 w-48 h-48 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                {/* Winner Avatar with layout id matching orbit center */}
-                <motion.div
-                  layoutId="winner-avatar"
-                  className="relative mb-5"
+          <div className="relative flex items-center justify-center w-[400px] h-[400px]">
+            {/* Dotted orbit ring */}
+            <AnimatePresence>
+              {animationPhase !== "revealed" && (
+                <motion.svg
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }}
+                  transition={{ duration: 0.6, ease: "easeOut" }}
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  viewBox="0 0 400 400"
                 >
-                  <div className="absolute -inset-4 bg-gradient-to-r from-orange-500/20 to-amber-500/20 rounded-full blur-xl animate-pulse" />
-                  
-                  <div className="relative p-[3px] rounded-full bg-gradient-to-tr from-orange-500 via-amber-400 to-yellow-300 shadow-xl">
-                    <div className="rounded-full overflow-hidden bg-neutral-900 p-[2px]">
-                      <Avatar src={assignment.user?.image} name={assignment.user?.name} size={128} />
+                  <circle
+                    cx="200"
+                    cy="200"
+                    r={ORBIT_RADIUS}
+                    fill="none"
+                    stroke="#e07c30"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 8"
+                    opacity="0.5"
+                  />
+                  {/* Spinning trails */}
+                  {isSpinning &&
+                    finalMembers.map((_, i) => (
+                      <circle
+                        key={i}
+                        cx="200"
+                        cy="200"
+                        r={ORBIT_RADIUS}
+                        fill="none"
+                        stroke="#e07c30"
+                        strokeWidth="2.5"
+                        strokeDasharray="30 1000"
+                        strokeLinecap="round"
+                        style={{
+                          transform: `rotate(${i * angleStep + 90 + orbitAngle}deg)`,
+                          transformOrigin: "200px 200px",
+                          opacity: 0.9,
+                        }}
+                      />
+                    ))}
+                </motion.svg>
+              )}
+            </AnimatePresence>
+
+            {/* Triangle Pointer pointing DOWNwards */}
+            <AnimatePresence>
+              {(isSpinning ||
+                animationPhase === "idle" ||
+                animationPhase === "syncing" ||
+                animationPhase === "converging") && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, scale: 0.5, filter: "blur(4px)" }}
+                  transition={{ duration: 0.4 }}
+                  className="absolute z-20"
+                  style={{ transform: "translateY(116px)" }}
+                >
+                  <svg width="16" height="14" viewBox="0 0 14 12" fill="none">
+                    <path d="M0 0H14L7 12L0 0Z" fill="#e07c30" />
+                  </svg>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Orbit / Clustered Avatars */}
+            {finalMembers.map((member, i) => {
+              const isWinner = member.id === winnerId;
+              const showWinnerState = isWinner && (animationPhase === "revealed");
+              
+              const offset = i - (count - 1) / 2;
+              const zIndexValue = showWinnerState ? 30 : (animationPhase === "revealed" ? 20 - Math.abs(offset) : 10);
+
+              // ── Dynamic spring settings for a cascading horizontal unfold ─────
+              const itemTransition = {
+                ...(animationPhase === "revealed"
+                  ? {
+                      type: "spring" as const,
+                      stiffness: isWinner ? 90 : 110,
+                      damping: isWinner ? 15 : 11, // Bouncier damping for more kinetic action
+                      mass: isWinner ? 1 : 0.7,
+                      delay: isWinner ? 0.1 : Math.abs(offset) * 0.06, // Cascades outwards from center
+                    }
+                  : avatarTransition(animationPhase)),
+              };
+
+              if (isSpinning) {
+                const a =
+                  (i * angleStep + 90) * (Math.PI / 180) +
+                  (orbitAngle * Math.PI) / 180;
+                const isHi = highlightedIndex === i;
+                const spd = Math.min(speedRef.current / 16, 1);
+                const op = isHi ? 1 : 0.6 + (1 - spd) * 0.4;
+
+                return (
+                  <div
+                    key={`spin-${member.id}`}
+                    style={{
+                      position: "absolute",
+                      transform: `translate(${Math.cos(a) * ORBIT_RADIUS}px, ${
+                        Math.sin(a) * ORBIT_RADIUS
+                      }px) scale(${isHi ? 1.15 : 1})`,
+                      opacity: op,
+                      transition: "opacity 0.1s ease, transform 0.05s linear",
+                      zIndex: isHi ? 15 : zIndexValue,
+                    }}
+                  >
+                    <div
+                      className={`rounded-full transition-all duration-150 p-[4px] shadow-2xl ${
+                        isHi
+                          ? "border-2 border-[#e07c30]"
+                          : "border border-white/10"
+                      }`}
+                      style={{
+                        ...baseGlass,
+                        background: isHi
+                          ? "rgba(224,124,48,0.25)"
+                          : baseGlass.background,
+                        boxShadow: "inset 0 2px 4px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5), 0 10px 20px rgba(0,0,0,0.4)",
+                      }}
+                    >
+                      <div className="rounded-full overflow-hidden bg-neutral-900 border border-black/50 shadow-[inset_0_4px_10px_rgba(0,0,0,0.6)]">
+                        <Avatar
+                          src={member.image}
+                          name={member.name}
+                          size={84}
+                        />
+                      </div>
                     </div>
                   </div>
+                );
+              }
 
-                  <div className="absolute bottom-0 right-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white p-1.5 rounded-full border-2 border-neutral-950 shadow-md">
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </div>
+              const pos = avatarPositions[i] ?? {
+                x: 0,
+                y: 0,
+                scale: 1,
+                opacity: 0.85,
+              };
+              
+              return (
+                <motion.div
+                  key={`motion-${member.id}`}
+                  initial={{ x: pos.x, y: pos.y, scale: pos.scale, opacity: pos.opacity }} // Explicit start for smooth handoff
+                  animate={{
+                    x: pos.x,
+                    y: pos.y,
+                    scale: pos.scale,
+                    opacity: pos.opacity,
+                  }}
+                  transition={itemTransition}
+                  style={{
+                    position: "absolute",
+                    zIndex: zIndexValue,
+                    borderRadius: "50%",
+                  }}
+                >
+                  <motion.div
+                    animate={{
+                      padding: showWinnerState ? "5px" : "4px",
+                      background: showWinnerState
+                        ? "linear-gradient(135deg, #e07c30, #ffb880)"
+                        : "linear-gradient(135deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.08) 100%)",
+                      boxShadow: showWinnerState
+                        ? "0 0 50px rgba(224,124,48,0.5)"
+                        : "inset 0 2px 4px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5), 0 10px 20px rgba(0,0,0,0.4)",
+                    }}
+                    className="rounded-full shadow-2xl transition-all"
+                    style={{
+                      backdropFilter: showWinnerState ? "none" : "blur(20px)",
+                      border: showWinnerState ? "none" : "1px solid rgba(255,255,255,0.1)",
+                    }}
+                  >
+                    <motion.div
+                      animate={{
+                        borderWidth: showWinnerState ? "6px" : "1px",
+                        borderColor: showWinnerState ? "#0a0a0a" : "rgba(0,0,0,0.5)",
+                      }}
+                      className="rounded-full overflow-hidden bg-neutral-900 border"
+                      style={{
+                        boxShadow: showWinnerState ? "none" : "inset 0 4px 10px rgba(0,0,0,0.6)",
+                      }}
+                    >
+                      <Avatar src={member.image} name={member.name} size={84} />
+                    </motion.div>
+                  </motion.div>
                 </motion.div>
+              );
+            })}
 
-                {/* Badge */}
-                <span className="px-3 py-1 rounded-full text-[10px] font-bold tracking-widest text-amber-400 bg-amber-500/10 border border-amber-500/20 uppercase mb-3">
-                  Today&apos;s Vlogger
-                </span>
+            {/* Center Reveal Button '?' (Idle) */}
+            <AnimatePresence>
+              {animationPhase === "idle" && (
+                <motion.button
+                  key="reveal-btn"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.5, filter: "blur(10px)" }}
+                  transition={{ duration: 0.4 }}
+                  onClick={() => setPhase("spinning")}
+                  className="absolute z-30 w-[130px] h-[130px] rounded-full flex items-center justify-center bg-[#0a0a0a] border-[3px] border-[#e07c30] text-[#e07c30] font-bold text-[64px] hover:bg-[#e07c30]/10 transition-colors shadow-[0_0_40px_rgba(224,124,48,0.15)]"
+                >
+                  ?
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
+        </motion.div>
 
-                {/* Name */}
-                <h2 className="text-2xl font-bold text-white tracking-tight leading-none mb-1.5">
-                  {assignment.user?.name || "Alex Rivera"}
-                </h2>
-
-                {/* Username */}
-                <p className="text-sm text-neutral-400 font-medium mb-4">
-                  @{assignment.user?.username || assignment.user?.name?.toLowerCase().replace(/\s+/g, '') || "alex_vlogs"}
+        {/* ── Bottom Fixed Height Wrapper ─────────────────────────────────── */}
+        <div className="w-full h-[180px] mt-auto flex-shrink-0 flex items-end">
+          <AnimatePresence>
+            {animationPhase === "revealed" && (
+              <motion.div
+                initial={{ opacity: 0, y: 40, filter: "blur(8px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ type: "spring", stiffness: 150, damping: 22, delay: 0.4 }}
+                className="w-full bg-[#161618] border border-white/5 rounded-3xl p-6 pb-8 flex flex-col items-center text-center shadow-2xl"
+              >
+                <h2 className="text-white text-[22px] font-bold mb-2">Ready for action!</h2>
+                <p className="text-white/50 text-[13px] leading-relaxed max-w-[260px] mb-6">
+                  Check back throughout the day to see all their captured moments.
                 </p>
-
-                {/* Group Context */}
-                {groupName && (
-                  <div className="px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.05] text-[11px] text-neutral-400 mb-6 flex items-center gap-1.5 justify-center">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Selected from <span className="text-neutral-200 font-semibold">{groupName}</span>
-                  </div>
-                )}
-
-                {/* Divider */}
-                <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/[0.08] to-transparent mb-5" />
-
-                {/* Bottom Card text context */}
-                <div className="flex flex-col items-center text-center">
-                  <p className="text-xs text-neutral-400 leading-relaxed max-w-[240px]">
-                    Check back throughout the day to see their moments.
-                  </p>
-                </div>
+                
+                <button
+                  onClick={handleClose}
+                  className="w-full py-4 rounded-2xl bg-[#e07c30] text-black font-bold text-[16px] active:scale-[0.98] transition-all"
+                >
+                  Awesome!
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
 
-      </motion.div>
-    </div>
+      </div>
+    </motion.div>
   );
 }
