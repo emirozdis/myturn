@@ -2,7 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, EyeOff, Eye, Camera, User, Loader2, Bell, Check, Sparkles, MapPin } from "lucide-react";
+import { 
+  ArrowLeft, EyeOff, Eye, Camera, User, Loader2, Bell, Check, Sparkles, MapPin, 
+  Share, PlusSquare, MoreVertical, MonitorDown, Info, ShieldCheck, Copy 
+} from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { useRouter } from "next/navigation";
@@ -17,9 +20,10 @@ import {
 } from "@/lib/push-client";
 import { saveSubscription } from "@/actions/push";
 import { updateProfile, uploadAvatar } from "@/actions/profile";
+import { listenForInstallPrompt, promptPwaInstall, BeforeInstallPromptEvent } from "@/lib/pwa-install";
 
 // --- Types ---
-type Step = "intro1" | "intro2" | "intro3" | "signin" | "signup" | "permissions" | "customizeProfile" | "join";
+type Step = "intro1" | "intro2" | "intro3" | "installPwa" | "signin" | "signup" | "permissions" | "customizeProfile" | "join";
 
 // --- Assets / SVGs ---
 const GoogleIcon = () => (
@@ -223,6 +227,236 @@ function Intro3() {
         </p>
       </div>
     </div>
+  );
+}
+
+// --- Strict Universal PWA Enforcer Screen ---
+function InstallEnforcerScreen() {
+  const [os, setOs] = useState<"ios" | "android" | "desktop" | "unknown">("unknown");
+  const [browser, setBrowser] = useState<"safari" | "chrome" | "other">("other");
+  const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [showStoreModal, setShowStoreModal] = useState(false);
+  const [dismissedWarning, setDismissedWarning] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const ua = window.navigator.userAgent || "";
+      const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isAndroid = /Android/i.test(ua);
+      const nav = window.navigator as any;
+      const isBrave = (nav.brave !== undefined && nav.brave.isBrave?.name === 'isBrave') || /Brave/i.test(ua);
+
+      if (isIOS) {
+        setOs("ios");
+        const isSafari = /Safari/i.test(ua) && /Version/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Focus|YaBrowser|Aloha|Instagram|FBAV|FBAN/i.test(ua) && !isBrave;
+        setBrowser(isSafari ? "safari" : "other");
+      } else if (isAndroid) {
+        setOs("android");
+        const isChrome = /Chrome/i.test(ua) && !/Edg|OPR|SamsungBrowser|DuckDuckGo|Firefox|FxiOS|YaBrowser|Instagram|FBAV|FBAN/i.test(ua) && !isBrave;
+        setBrowser(isChrome ? "chrome" : "other");
+      } else {
+        setOs("desktop");
+        const isChrome = /Chrome/i.test(ua) && !/Edg|OPR|DuckDuckGo|Firefox|YaBrowser|Brave/i.test(ua);
+        setBrowser(isChrome ? "chrome" : "other");
+      }
+
+      const cleanup = listenForInstallPrompt((e) => setPromptEvent(e));
+      return cleanup;
+    }
+  }, []);
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const isWrongBrowser = (os === "ios" && browser !== "safari") || (os === "android" && browser !== "chrome");
+  const showRecommendBrowser = isWrongBrowser && !dismissedWarning;
+  const storeName = os === "android" ? "Play Store" : "App Store";
+  const isApple = os === "ios";
+
+  // Variation 1: Recommend Browser
+  if (showRecommendBrowser) {
+    const recommendedBrowser = os === "ios" ? "Safari" : "Chrome";
+    const browserIcon = os === "ios" ? "/assets/icons/safari.png" : "/assets/icons/chrome.png";
+
+    return (
+      <div className="flex-1 flex flex-col pt-6 min-h-0 w-full relative z-10">
+        <div className="flex-1 flex flex-col justify-center items-center text-center pb-8 overflow-y-auto scrollbar-hide px-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="flex flex-col items-center w-full max-w-[320px] mx-auto"
+          >
+            <div className="relative mb-6 mt-2">
+              <div className="absolute inset-0 bg-white/5 blur-3xl rounded-full" />
+              <img src={browserIcon} className="w-28 h-28 object-contain relative z-10 drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]" alt={recommendedBrowser} />
+            </div>
+            
+            <h2 className="text-white text-[28px] font-bold mb-3 tracking-tight">Open in {recommendedBrowser}</h2>
+            <p className="text-white/60 text-[15px] leading-relaxed mb-8">
+              We recommend using <strong>{recommendedBrowser}</strong> to ensure camera and notification features work flawlessly.
+            </p>
+
+            <button
+              onClick={copyLink}
+              style={glassStyle(0.04, 16, 0.08)}
+              className="w-full py-4 rounded-[20px] text-white font-bold text-[16px] active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-white/10 hover:bg-white/5 shadow-lg"
+            >
+              <Copy size={18} className={copied ? "text-emerald-400" : "text-white/70"} />
+              {copied ? "Link Copied!" : "Copy App Link"}
+            </button>
+
+            <button
+              onClick={() => setDismissedWarning(true)}
+              className="mt-8 text-white/30 hover:text-white/60 text-[13px] font-medium underline underline-offset-4 transition-colors cursor-pointer text-center pb-2"
+            >
+              Continue in current browser anyway
+            </button>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  // Variation 2: PWA Install (No Bypass Options)
+  return (
+    <>
+      <div className="flex-1 flex flex-col pt-6 min-h-0 w-full relative z-10">
+        <div className="flex-1 flex flex-col justify-center items-center pb-8 overflow-y-auto scrollbar-hide px-2">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="flex flex-col items-center w-full max-w-[320px] mx-auto mt-4"
+          >
+            <div className="w-24 h-24 rounded-[28px] bg-gradient-to-br from-[#e07c30] to-[#b85b1c] p-[2px] mb-6 shadow-[0_10px_30px_rgba(0,0,0,0.5)] relative">
+              <div className="absolute inset-0 bg-[#e07c30]/10 blur-2xl rounded-full" />
+              <div className="w-full h-full bg-[#111] rounded-[26px] flex items-center justify-center relative z-10">
+                <img src="/logo.png" className="w-24 h-24 object-contain" alt="Logo" />
+              </div>
+            </div>
+
+            <h2 className="text-white text-[28px] font-bold mb-3 tracking-tight text-center">Install App</h2>
+            <p className="text-white/60 text-[15px] leading-relaxed mb-8 text-center">
+              MyTurn is a PWA app. Install it to your home screen to use it.
+            </p>
+
+            {promptEvent ? (
+              <button
+                onClick={() => promptPwaInstall(promptEvent)}
+                style={{ background: ACCENT }}
+                className="w-full py-4 rounded-[20px] text-black font-bold text-[16px] shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+              >
+                <MonitorDown size={20} />
+                Install MyTurn
+              </button>
+            ) : (
+              <div className="flex flex-col gap-3 w-full">
+                {isApple ? (
+                  <>
+                    <div style={glassStyle(0.04, 16, 0.08)} className="p-4 rounded-[20px] flex items-center gap-4 relative overflow-hidden border border-white/5">
+                      <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0 text-white shadow-inner"><Share size={18} /></div>
+                      <p className="text-white/80 text-[14px] font-medium leading-relaxed">Tap the <strong className="text-white">Share</strong> button below.</p>
+                    </div>
+                    <div style={glassStyle(0.04, 16, 0.08)} className="p-4 rounded-[20px] flex items-center gap-4 relative overflow-hidden border border-white/5">
+                      <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0 text-white shadow-inner"><PlusSquare size={18} /></div>
+                      <p className="text-white/80 text-[14px] font-medium leading-relaxed">Select <strong className="text-white">Add to Home Screen</strong>.</p>
+                    </div>
+                  </>
+                ) : os === "android" ? (
+                  <>
+                    <div style={glassStyle(0.04, 16, 0.08)} className="p-4 rounded-[20px] flex items-center gap-4 relative overflow-hidden border border-white/5">
+                      <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0 text-white shadow-inner"><MoreVertical size={18} /></div>
+                      <p className="text-white/80 text-[14px] font-medium leading-relaxed">Tap the <strong className="text-white">Menu</strong> (three dots) in the top right.</p>
+                    </div>
+                    <div style={glassStyle(0.04, 16, 0.08)} className="p-4 rounded-[20px] flex items-center gap-4 relative overflow-hidden border border-white/5">
+                      <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0 text-white shadow-inner"><MonitorDown size={18} /></div>
+                      <p className="text-white/80 text-[14px] font-medium leading-relaxed">Select <strong className="text-white">Install app</strong>.</p>
+                    </div>
+                  </>
+                ) : (
+                  <div style={glassStyle(0.04, 16, 0.08)} className="p-4 rounded-[20px] flex items-center gap-4 relative overflow-hidden border border-white/5">
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center flex-shrink-0 text-white shadow-inner"><MonitorDown size={18} /></div>
+                    <p className="text-white/80 text-[14px] font-medium leading-relaxed">Click the <strong className="text-white">Install</strong> icon in your browser's address bar.</p>
+                  </div>
+                )}
+                
+                <div className="mt-6 text-center bg-[#e07c30]/10 border border-[#e07c30]/20 py-3.5 rounded-2xl shadow-inner">
+                  <span className="text-[#e07c30] text-[14px] font-semibold flex items-center justify-center gap-2">
+                    <Sparkles size={16} />
+                    Launch from home screen to continue!
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setShowStoreModal(true)}
+              className="mt-8 text-white/40 hover:text-white/60 text-[13px] font-semibold underline underline-offset-4 transition-colors cursor-pointer text-center"
+            >
+              Why isn't MyTurn in the {storeName}?
+            </button>
+          </motion.div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {showStoreModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute -inset-6 bg-black/80 backdrop-blur-xl z-50 flex items-center justify-center p-8 sm:p-10"
+            onClick={() => setShowStoreModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 15, opacity: 0 }}
+              transition={{ type: "spring", damping: 26, stiffness: 320 }}
+              className="w-full max-w-[340px] rounded-[32px] p-6 text-left flex flex-col bg-[#0a0a0a] border border-white/10 max-h-[90%] overflow-y-auto scrollbar-hide shadow-[0_30px_60px_rgba(0,0,0,0.8)] relative z-50"
+              style={glassStyle(0.08, 20, 0.15)}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-5 flex-shrink-0">
+                <Info size={22} className="text-[#e07c30]" />
+                <h3 className="text-white text-xl font-bold tracking-tight">Why No {storeName}?</h3>
+              </div>
+              
+              <div className="flex-1 space-y-4 text-[13px] leading-relaxed text-white/70 overflow-y-auto scrollbar-hide mb-6">
+                <div>
+                  <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-1 text-[#e07c30]/90">Store Costs & Barriers</h4>
+                  <p>Publishing on the Apple App Store and Google Play Store requires yearly paid developer accounts ($99/year for Apple, plus substantial setup hurdles). These ongoing platform fees artificially inflate development and operation costs, which are typically passed down to you through mandatory subscriptions.</p>
+                </div>
+                <div>
+                  <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-1 text-[#e07c30]/90">Solo Developer Mission</h4>
+                  <p>As a solo developer, my mission is simple: keep the core features of MyTurn accessible to as many close friends and family circles as possible, completely free of charge. Cutting out corporate store fees keeps operating costs zero-paywall sustainable.</p>
+                </div>
+                <div className="pt-3 border-t border-white/5">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <ShieldCheck size={16} className="text-emerald-400" />
+                    <h4 className="text-white font-bold text-xs uppercase tracking-wider text-emerald-400">Is it safe?</h4>
+                  </div>
+                  <p>Absolutely. Progressive Web Apps (PWAs) use native, sandboxed web browsers. It runs securely via HTTPS, cannot access your private system files, and includes no background trackers. It is 100% compliant with standard privacy and device security rules.</p>
+                </div>
+              </div>
+
+              <button 
+                onClick={() => setShowStoreModal(false)}
+                style={{ background: ACCENT }}
+                className="w-full py-3.5 rounded-[18px] text-black font-extrabold text-sm active:scale-[0.98] transition-all hover:opacity-95 shadow-md flex items-center justify-center flex-shrink-0"
+              >
+                Understood
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
@@ -473,7 +707,11 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
       }
     } catch (err: any) {
       console.warn("Notification request failed:", err);
-      setNotifyError(err?.message || "Failed to configure push alerts.");
+      let msg = err?.message || "Failed to configure push alerts.";
+      if (msg.includes("Registration failed - push service error") || msg.includes("push service error")) {
+        msg = "Push service error. If you are using Brave Browser, please enable 'Use Google services for push messaging' in brave://settings/privacy and reload. Otherwise, ensure your browser has a connection to Google push servers.";
+      }
+      setNotifyError(msg);
     } finally {
       setLoadingNotify(false);
     }
@@ -574,7 +812,7 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
                 <p className="text-white/40 text-[11px] leading-tight mt-0.5">Alerts when it is your turn or friends upload.</p>
               </div>
             </div>
-            {notifyError && <p className="text-red-500 text-[11px] font-semibold">{notifyError}</p>}
+            {notifyError && <p className="text-red-500 text-[11px] font-semibold leading-relaxed whitespace-pre-line">{notifyError}</p>}
             <button
               onClick={handleNotificationRequest}
               disabled={notificationGranted || loadingNotify}
@@ -950,11 +1188,42 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<Step>("intro1");
   const [direction, setDirection] = useState(1);
   const [signUpName, setSignUpName] = useState("");
+  const [warningOs, setWarningOs] = useState<"ios" | "android" | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const ua = window.navigator.userAgent || "";
+      const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isAndroid = /Android/i.test(ua);
+
+      const nav = window.navigator as any;
+      const isStandalone = window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true;
+
+      let detectedWarningOs: "ios" | "android" | null = null;
+
+      if (!isStandalone) {
+        const isBrave = (nav.brave !== undefined && nav.brave.isBrave?.name === 'isBrave') || /Brave/i.test(ua);
+
+        if (isIOS) {
+          const isSafari = /Safari/i.test(ua) && /Version/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo|Focus|YaBrowser|Aloha|Instagram|FBAV|FBAN/i.test(ua) && !isBrave;
+          if (!isSafari) {
+            detectedWarningOs = "ios";
+          }
+        } else if (isAndroid) {
+          const isChrome = /Chrome/i.test(ua) && !/Edg|OPR|SamsungBrowser|DuckDuckGo|Firefox|FxiOS|YaBrowser|Instagram|FBAV|FBAN/i.test(ua) && !isBrave;
+          if (!isChrome) {
+            detectedWarningOs = "android";
+          }
+        }
+      }
+
+      setWarningOs(detectedWarningOs);
+    }
+  }, []);
 
   useEffect(() => {
     if (status === "authenticated" && session) {
-      // Only auto-redirect if they are not in onboarding sub-steps
-      if (["intro1", "intro2", "intro3", "signin", "signup"].includes(step)) {
+      if (["intro1", "intro2", "intro3", "installPwa", "browserWarning", "signin", "signup"].includes(step)) {
         router.push("/today");
       }
     }
@@ -965,12 +1234,25 @@ export default function OnboardingPage() {
       intro1: 0,
       intro2: 1,
       intro3: 2,
-      signin: 3,
-      signup: 3,
-      permissions: 4,
-      customizeProfile: 5,
-      join: 6
+      installPwa: 3,
+      browserWarning: 4,
+      signin: 5,
+      signup: 5,
+      permissions: 6,
+      customizeProfile: 7,
+      join: 8
     };
+
+    if (typeof window !== "undefined") {
+      const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
+
+      if (!isStandalone && (newStep === "signin" || newStep === "signup")) {
+        setDirection(order["installPwa"] >= order[step] ? 1 : -1);
+        setStep("installPwa");
+        return;
+      }
+    }
+
     setDirection(order[newStep] >= order[step] ? 1 : -1);
     setStep(newStep);
   };
@@ -1000,6 +1282,8 @@ export default function OnboardingPage() {
         return <Intro2 />;
       case "intro3":
         return <Intro3 />;
+      case "installPwa":
+        return <InstallEnforcerScreen />;
       case "signin":
         return <SignIn onNavigate={navigate} />;
       case "signup":

@@ -23,7 +23,7 @@ export function BottomNavRouter() {
 
   return (
     <div
-      className="h-[calc(74px+env(safe-area-inset-bottom,0px))] bg-black/95 backdrop-blur-3xl flex items-center justify-around px-2  flex-shrink-0 z-20"
+      className="h-[calc(74px+env(safe-area-inset-bottom,0px))] bg-black/95 backdrop-blur-3xl flex items-center justify-around px-2 flex-shrink-0 z-20 overflow-visible relative"
       style={{
         borderTop: "1px solid rgba(255,255,255,0.15)",
         boxShadow: "inset 0 1px 2px rgba(255,255,255,0.05)",

@@ -19,13 +19,13 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: "cover",
+  themeColor: "#080808", // Safely moved themeColor into viewport export
 };
 
 export const metadata: Metadata = {
   title: "MyTurn",
   description: "Never miss your turn to vlog with your group.",
   manifest: "/manifest.webmanifest",
-  themeColor: "#080808",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",

@@ -31,8 +31,8 @@ const s = {
     display: "flex", alignItems: "center" as const, justifyContent: "center" as const, flexShrink: 0,
   }),
   label: { color: "#fff", fontWeight: 600, fontSize: 14, margin: 0 },
-  sub:   { color: "rgba(255,255,255,0.40)", fontSize: 11, margin: "1px 0 0" },
-  card:  { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, overflow: "hidden" as const },
+  sub: { color: "rgba(255,255,255,0.40)", fontSize: 11, margin: "1px 0 0" },
+  card: { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18, overflow: "hidden" as const },
   input: {
     width: "100%", background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.12)",
     borderRadius: 12, color: "#fff", fontSize: 14, padding: "11px 14px", outline: "none",
@@ -59,7 +59,7 @@ function SlidePanel({ title, onBack, children }: { title: string; onBack: () => 
       initial={{ x: "100%" }}
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
- transition={{ type: "spring", damping: 28, stiffness: 300 }}
+      transition={{ type: "spring", damping: 28, stiffness: 300 }}
       style={{
         position: "absolute", inset: 0, background: "#111", zIndex: 10,
         display: "flex", flexDirection: "column" as const, overflowY: "auto" as const,
@@ -83,15 +83,15 @@ function SlidePanel({ title, onBack, children }: { title: string; onBack: () => 
   );
 }
 
-function EditProfilePanel({ 
-  user, 
-  onBack, 
+function EditProfilePanel({
+  user,
+  onBack,
   onSaveSuccess,
   uploadingAvatar,
   triggerAvatarSelection
-}: { 
-  user: any; 
-  onBack: () => void; 
+}: {
+  user: any;
+  onBack: () => void;
   onSaveSuccess: () => void;
   uploadingAvatar: boolean;
   triggerAvatarSelection: () => void;
@@ -129,8 +129,8 @@ function EditProfilePanel({
               </div>
             )}
             <Avatar src={user.image} name={user.name} size={90} ring />
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={triggerAvatarSelection}
               style={{ position: "absolute", bottom: 2, right: 2, width: 26, height: 26, borderRadius: "50%", background: ACCENT, display: "flex", alignItems: "center" as const, justifyContent: "center" as const, border: "2px solid #111", cursor: "pointer" }}
             >
@@ -288,20 +288,20 @@ function NotificationsPanel({ onBack }: { onBack: () => void }) {
             type="button"
             onClick={handleRequestPermission}
             disabled={subscribing || !isSupported}
-            style={{ 
-              width: "100%", 
-              background: isSupported ? ACCENT : "rgba(255,255,255,0.05)", 
-              border: isSupported ? "none" : "1px solid rgba(255,255,255,0.08)", 
-              borderRadius: 14, 
-              color: isSupported ? "#000" : "rgba(255,255,255,0.3)", 
-              fontWeight: 700, 
-              fontSize: 15, 
-              padding: "13px 0", 
-              cursor: isSupported ? "pointer" : "not-allowed", 
-              display: permission === "granted" ? "none" : "flex", 
-              alignItems: "center" as const, 
-              justifyContent: "center" as const, 
-              gap: 8 
+            style={{
+              width: "100%",
+              background: isSupported ? ACCENT : "rgba(255,255,255,0.05)",
+              border: isSupported ? "none" : "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 14,
+              color: isSupported ? "#000" : "rgba(255,255,255,0.3)",
+              fontWeight: 700,
+              fontSize: 15,
+              padding: "13px 0",
+              cursor: isSupported ? "pointer" : "not-allowed",
+              display: permission === "granted" ? "none" : "flex",
+              alignItems: "center" as const,
+              justifyContent: "center" as const,
+              gap: 8
             }}
           >
             {subscribing ? (
@@ -412,7 +412,7 @@ function RankContent({ user, vlogsCount, calendarDays }: { user: any; vlogsCount
           <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Vlogging History</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px 4px", textAlign: "center" as const }}>
-          {["M","T","W","T","F","S","S"].map((d, i) => (
+          {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
             <span key={i} style={{ color: "rgba(255,255,255,0.35)", fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", marginBottom: 4 }}>{d}</span>
           ))}
           {calendarDays.map((item, i) => (
@@ -445,13 +445,22 @@ export default function ProfilePage() {
       try {
         const cached = localStorage.getItem("cached_profile");
         if (cached) return JSON.parse(cached);
-      } catch {}
+      } catch { }
     }
     return null;
   });
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const handleLogout = () => {
+    if (typeof window !== "undefined") {
+      localStorage.clear();
+      sessionStorage.clear();
+    }
+
+    signOut({ callbackUrl: "/" });
+  };
 
   const fetchProfile = async () => {
     // Prevent multiple parallel executions
@@ -495,19 +504,19 @@ export default function ProfilePage() {
         canvas.width = SIZE;
         canvas.height = SIZE;
         const ctx = canvas.getContext("2d");
-        
+
         if (ctx) {
           const minDim = Math.min(img.width, img.height);
           const sx = (img.width - minDim) / 2;
           const sy = (img.height - minDim) / 2;
           ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, SIZE, SIZE);
-          
+
           const base64 = canvas.toDataURL("image/jpeg", 0.85);
-          
+
           setUploadingAvatar(true);
           const res = await uploadAvatar(base64);
           setUploadingAvatar(false);
-          
+
           if (res.success) {
             fetchProfile();
           } else if (res.error) {
@@ -526,9 +535,9 @@ export default function ProfilePage() {
   ];
 
   const settingsRows = [
-    { icon: UserCircle, label: "Edit Profile",    sub: "Update your information",      panel: "editProfile" as const },
-    { icon: IdCard,     label: "Account Details", sub: "Email, phone, password",       panel: "accountDetails" as const },
-    { icon: Bell,       label: "Push Notifications", sub: "Configure daily alerts",    panel: "notifications" as const },
+    { icon: UserCircle, label: "Edit Profile", sub: "Update your information", panel: "editProfile" as const },
+    { icon: IdCard, label: "Account Details", sub: "Email, phone, password", panel: "accountDetails" as const },
+    { icon: Bell, label: "Push Notifications", sub: "Configure daily alerts", panel: "notifications" as const },
   ];
 
   // Only block on very first load with no cached data
@@ -591,9 +600,9 @@ export default function ProfilePage() {
               </div>
             )}
             <Avatar src={user.image} name={user.name} size={100} ring />
-            <button 
-              type="button" 
-              onClick={triggerAvatarSelection} 
+            <button
+              type="button"
+              onClick={triggerAvatarSelection}
               style={{ position: "absolute", bottom: 2, right: 2, width: 28, height: 28, borderRadius: "50%", background: ACCENT, display: "flex", alignItems: "center" as const, justifyContent: "center" as const, border: "2px solid #111", cursor: "pointer" }}
             >
               <Camera size={13} color="#000" />
@@ -602,13 +611,13 @@ export default function ProfilePage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
               <span style={{ color: "#fff", fontSize: 26, fontWeight: 800, letterSpacing: "-0.5px", lineHeight: 1 }}>{user.name || "User"}</span>
-              <div style={{ 
+              <div style={{
                 ...vibeStyle,
-                padding: "3px 8px", 
-                borderRadius: 10, 
-                display: "flex", 
-                alignItems: "center", 
-                gap: 4, 
+                padding: "3px 8px",
+                borderRadius: 10,
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
                 boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
                 border: vibeStyle.border
               }}>
@@ -639,8 +648,8 @@ export default function ProfilePage() {
           <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, display: "flex", alignItems: "stretch" }}>
             {[
               { icon: Clapperboard, value: totalVlogs, label: "Total Vlogs" },
-              { icon: Users,        value: friendsCount, label: "Friends"     },
-              { icon: Users,        value: groupsCount,  label: "Groups"      },
+              { icon: Users, value: friendsCount, label: "Friends" },
+              { icon: Users, value: groupsCount, label: "Groups" },
             ].map((stat, i, arr) => (
               <div key={stat.label} style={{ flex: 1, display: "flex", flexDirection: "row" as const, alignItems: "stretch" }}>
                 <StatPill icon={stat.icon} value={stat.value} label={stat.label} />
@@ -687,8 +696,8 @@ export default function ProfilePage() {
           </div>
           <AnimatePresence mode="wait">
             <motion.div key={activityTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
-              {activityTab === "vlogs"  && <VlogsGrid clips={clips} />}
-              {activityTab === "rank"   && <RankContent user={user} vlogsCount={totalVlogs} calendarDays={calendarDays} />}
+              {activityTab === "vlogs" && <VlogsGrid clips={clips} />}
+              {activityTab === "rank" && <RankContent user={user} vlogsCount={totalVlogs} calendarDays={calendarDays} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -753,13 +762,13 @@ export default function ProfilePage() {
               <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-5 flex-shrink-0" />
 
               <div className="flex flex-col items-center text-center gap-4">
-                <div 
+                <div
                   className="w-14 h-14 rounded-full flex items-center justify-center border border-[#e07c30]/20 shadow-sm"
                   style={{ background: `${ACCENT}15` }}
                 >
                   <LogOut size={24} className="text-[#e07c30]" />
                 </div>
-                
+
                 <div className="flex flex-col gap-1.5">
                   <h3 className="text-white text-lg font-bold">Log out?</h3>
                   <p className="text-white/50 text-xs leading-relaxed max-w-[280px]">
@@ -777,7 +786,7 @@ export default function ProfilePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => signOut({ callbackUrl: "/" })}
+                    onClick={handleLogout}
                     className="flex-1 py-3.5 rounded-xl text-black font-bold text-sm active:scale-[0.98] transition-all"
                     style={{ background: ACCENT }}
                   >

@@ -150,7 +150,7 @@ export function VloggerRevealModal({
       } else {
         rafRef.current = null;
         
-        // SYNC PHASE: Freeze exact position to avoid snap when switching to motion.div
+        // SYNC PHASE: Freeze exact position to avoid snap
         const finalNorm = ((-orbitAngleRef.current % 360) + 360) % 360;
         const hl = Math.round(finalNorm / angleStep) % count;
 
@@ -179,7 +179,6 @@ export function VloggerRevealModal({
   // ── Smooth Handoff -> Converging ──────────────────────────────────────────
   useEffect(() => {
     if (animationPhase !== "syncing") return;
-    // Allow 1 frame for motion.div to mount at synced coords
     const t = setTimeout(() => {
       setHighlighted(-1);
       setPhase("converging");
@@ -194,11 +193,10 @@ export function VloggerRevealModal({
       Array.from({ length: count }).map(() => ({
         x: 0,
         y: 0,
-        scale: 0.15, // Smooth, quick pull-in
-        opacity: 0.8, // Retain high opacity throughout the gather
+        scale: 0.15,
+        opacity: 0.8,
       }))
     );
-    // Skips "landed" splash entirely and unfolds straight to "revealed" positions
     const t = setTimeout(() => setPhase("revealed"), 300); 
     return () => clearTimeout(t);
   }, [animationPhase, count]);
@@ -208,7 +206,6 @@ export function VloggerRevealModal({
     if (animationPhase !== "revealed") return;
     const winnerId = assignment?.user?.id;
     
-    // Only real non-winner group members are clustered under the winner
     const realOthers = finalMembers.filter(
       (m) => m.id !== winnerId && !String(m.id).startsWith("duplicate-") && !String(m.id).startsWith("fallback")
     );
@@ -221,13 +218,12 @@ export function VloggerRevealModal({
         if (member.id === winnerId) {
           return {
             x: 0,
-            y: -20, // Centered perfectly between title block and bottom avatars
-            scale: 2.0, // Scale up natively to exact size match (84px * 2.0 = 168px)
+            y: -20,
+            scale: 2.0,
             opacity: 1,
           };
         }
 
-        // Drop out the padded duplicate/fallback avatars seamlessly
         if (String(member.id).startsWith("duplicate-") || String(member.id).startsWith("fallback")) {
           return {
             x: 0,
@@ -243,7 +239,7 @@ export function VloggerRevealModal({
         
         return {
           x: offset * SPACING,
-          y: 155, // Tuck safely beneath the massive winner avatar without disappearing in between
+          y: 155, 
           scale: 0.45,
           opacity: 0.9,
         };
@@ -272,7 +268,6 @@ export function VloggerRevealModal({
       transition={{ duration: 0.4, ease: "easeInOut" }}
       className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden select-none bg-[#0a0a0a]"
     >
-      {/* Subtle background noise/vignette */}
       <div
         className="absolute inset-0 pointer-events-none opacity-40"
         style={{
@@ -281,7 +276,6 @@ export function VloggerRevealModal({
         }}
       />
 
-      {/* Close Button - Smoothly disappears after idle state */}
       <AnimatePresence>
         {animationPhase === "idle" && (
           <motion.button
@@ -410,7 +404,7 @@ export function VloggerRevealModal({
                   {isSpinning &&
                     finalMembers.map((_, i) => (
                       <circle
-                        key={i}
+                        key={`trail-${i}`}
                         cx="200"
                         cy="200"
                         r={ORBIT_RADIUS}
@@ -422,6 +416,7 @@ export function VloggerRevealModal({
                         style={{
                           transform: `rotate(${i * angleStep + 90 + orbitAngle}deg)`,
                           transformOrigin: "200px 200px",
+                          willChange: "transform",
                           opacity: 0.9,
                         }}
                       />
@@ -442,7 +437,7 @@ export function VloggerRevealModal({
                   exit={{ opacity: 0, scale: 0.5, filter: "blur(4px)" }}
                   transition={{ duration: 0.4 }}
                   className="absolute z-20"
-                  style={{ transform: "translateY(116px)" }}
+                  style={{ transform: "translateY(116px)", willChange: "transform, opacity" }}
                 >
                   <svg width="16" height="14" viewBox="0 0 14 12" fill="none">
                     <path d="M0 0H14L7 12L0 0Z" fill="#e07c30" />
@@ -451,123 +446,122 @@ export function VloggerRevealModal({
               )}
             </AnimatePresence>
 
-            {/* Orbit / Clustered Avatars */}
+            {/* Orbit / Clustered Avatars - Unified Node to prevent mobile layout thrashing */}
             {finalMembers.map((member, i) => {
               const isWinner = member.id === winnerId;
               const showWinnerState = isWinner && (animationPhase === "revealed");
               
               const offset = i - (count - 1) / 2;
-              const zIndexValue = showWinnerState ? 30 : (animationPhase === "revealed" ? 20 - Math.abs(offset) : 10);
+              let zIndexValue = showWinnerState ? 30 : (animationPhase === "revealed" ? 20 - Math.abs(offset) : 10);
 
-              // ── Dynamic spring settings for a cascading horizontal unfold ─────
               const itemTransition = {
                 ...(animationPhase === "revealed"
                   ? {
                       type: "spring" as const,
                       stiffness: isWinner ? 90 : 110,
-                      damping: isWinner ? 15 : 11, // Bouncier damping for more kinetic action
+                      damping: isWinner ? 15 : 11,
                       mass: isWinner ? 1 : 0.7,
-                      delay: isWinner ? 0.1 : Math.abs(offset) * 0.06, // Cascades outwards from center
+                      delay: isWinner ? 0.1 : Math.abs(offset) * 0.06,
                     }
                   : avatarTransition(animationPhase)),
               };
 
+              let currentX, currentY, currentScale, currentOpacity;
+              let currentBg, currentBoxShadow, currentBorderWidth, currentBorderColor, currentPadding, currentBackdrop;
+              let innerBorderWidth, innerBorderColor, innerBoxShadow;
+
               if (isSpinning) {
-                const a =
-                  (i * angleStep + 90) * (Math.PI / 180) +
-                  (orbitAngle * Math.PI) / 180;
+                const a = (i * angleStep + 90) * (Math.PI / 180) + (orbitAngle * Math.PI) / 180;
                 const isHi = highlightedIndex === i;
                 const spd = Math.min(speedRef.current / 16, 1);
-                const op = isHi ? 1 : 0.6 + (1 - spd) * 0.4;
 
-                return (
-                  <div
-                    key={`spin-${member.id}`}
-                    style={{
-                      position: "absolute",
-                      transform: `translate(${Math.cos(a) * ORBIT_RADIUS}px, ${
-                        Math.sin(a) * ORBIT_RADIUS
-                      }px) scale(${isHi ? 1.15 : 1})`,
-                      opacity: op,
-                      transition: "opacity 0.1s ease, transform 0.05s linear",
-                      zIndex: isHi ? 15 : zIndexValue,
-                    }}
-                  >
-                    <div
-                      className={`rounded-full transition-all duration-150 p-[4px] shadow-2xl ${
-                        isHi
-                          ? "border-2 border-[#e07c30]"
-                          : "border border-white/10"
-                      }`}
-                      style={{
-                        ...baseGlass,
-                        background: isHi
-                          ? "rgba(224,124,48,0.25)"
-                          : baseGlass.background,
-                        boxShadow: "inset 0 2px 4px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5), 0 10px 20px rgba(0,0,0,0.4)",
-                      }}
-                    >
-                      <div className="rounded-full overflow-hidden bg-neutral-900 border border-black/50 shadow-[inset_0_4px_10px_rgba(0,0,0,0.6)]">
-                        <Avatar
-                          src={member.image}
-                          name={member.name}
-                          size={84}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
+                currentX = Math.cos(a) * ORBIT_RADIUS;
+                currentY = Math.sin(a) * ORBIT_RADIUS;
+                currentScale = isHi ? 1.15 : 1;
+                currentOpacity = isHi ? 1 : 0.6 + (1 - spd) * 0.4;
+                zIndexValue = isHi ? 15 : zIndexValue;
+
+                currentBg = isHi ? "rgba(224,124,48,0.25)" : (baseGlass.background || "rgba(255,255,255,0.08)");
+                currentBoxShadow = "inset 0 2px 4px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5), 0 10px 20px rgba(0,0,0,0.4)";
+                currentBorderWidth = isHi ? "2px" : "1px";
+                currentBorderColor = isHi ? "#e07c30" : "rgba(255,255,255,0.1)";
+                currentPadding = "4px";
+                currentBackdrop = "blur(20px)";
+
+                innerBorderWidth = "1px";
+                innerBorderColor = "rgba(0,0,0,0.5)";
+                innerBoxShadow = "inset 0 4px 10px rgba(0,0,0,0.6)";
+              } else {
+                const pos = avatarPositions[i] ?? { x: 0, y: 0, scale: 1, opacity: 0.85 };
+                currentX = pos.x;
+                currentY = pos.y;
+                currentScale = pos.scale;
+                currentOpacity = pos.opacity;
+
+                currentBg = showWinnerState
+                  ? "linear-gradient(135deg, #e07c30, #ffb880)"
+                  : "linear-gradient(135deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.08) 100%)";
+                currentBoxShadow = showWinnerState
+                  ? "0 0 50px rgba(224,124,48,0.5)"
+                  : "inset 0 2px 4px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5), 0 10px 20px rgba(0,0,0,0.4)";
+                currentBorderWidth = showWinnerState ? "0px" : "1px";
+                currentBorderColor = showWinnerState ? "transparent" : "rgba(255,255,255,0.1)";
+                currentPadding = showWinnerState ? "5px" : "4px";
+                currentBackdrop = showWinnerState ? "none" : "blur(20px)";
+
+                innerBorderWidth = showWinnerState ? "6px" : "1px";
+                innerBorderColor = showWinnerState ? "#0a0a0a" : "rgba(0,0,0,0.5)";
+                innerBoxShadow = showWinnerState ? "none" : "inset 0 4px 10px rgba(0,0,0,0.6)";
               }
 
-              const pos = avatarPositions[i] ?? {
-                x: 0,
-                y: 0,
-                scale: 1,
-                opacity: 0.85,
-              };
-              
               return (
                 <motion.div
-                  key={`motion-${member.id}`}
-                  initial={{ x: pos.x, y: pos.y, scale: pos.scale, opacity: pos.opacity }} // Explicit start for smooth handoff
-                  animate={{
-                    x: pos.x,
-                    y: pos.y,
-                    scale: pos.scale,
-                    opacity: pos.opacity,
-                  }}
-                  transition={itemTransition}
+                  key={`member-${member.id}`}
+                  initial={{ x: currentX, y: currentY, scale: currentScale, opacity: currentOpacity }}
+                  animate={{ x: currentX, y: currentY, scale: currentScale, opacity: currentOpacity }}
+                  transition={
+                    isSpinning
+                      ? {
+                          x: { duration: 0 },
+                          y: { duration: 0 },
+                          scale: { duration: 0.05, ease: "linear" },
+                          opacity: { duration: 0.1, ease: "easeOut" },
+                        }
+                      : itemTransition
+                  }
                   style={{
                     position: "absolute",
                     zIndex: zIndexValue,
                     borderRadius: "50%",
+                    willChange: "transform, opacity",
                   }}
                 >
                   <motion.div
+                    initial={false}
                     animate={{
-                      padding: showWinnerState ? "5px" : "4px",
-                      background: showWinnerState
-                        ? "linear-gradient(135deg, #e07c30, #ffb880)"
-                        : "linear-gradient(135deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.08) 100%)",
-                      boxShadow: showWinnerState
-                        ? "0 0 50px rgba(224,124,48,0.5)"
-                        : "inset 0 2px 4px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.5), 0 10px 20px rgba(0,0,0,0.4)",
+                      padding: currentPadding,
+                      background: currentBg,
+                      boxShadow: currentBoxShadow,
+                      borderWidth: currentBorderWidth,
+                      borderColor: currentBorderColor,
                     }}
-                    className="rounded-full shadow-2xl transition-all"
+                    transition={isSpinning ? { duration: 0.15 } : itemTransition}
+                    className="rounded-full shadow-2xl border-solid"
                     style={{
-                      backdropFilter: showWinnerState ? "none" : "blur(20px)",
-                      border: showWinnerState ? "none" : "1px solid rgba(255,255,255,0.1)",
+                      backdropFilter: currentBackdrop,
+                      WebkitBackdropFilter: currentBackdrop,
+                      willChange: "background, box-shadow",
                     }}
                   >
                     <motion.div
+                      initial={false}
                       animate={{
-                        borderWidth: showWinnerState ? "6px" : "1px",
-                        borderColor: showWinnerState ? "#0a0a0a" : "rgba(0,0,0,0.5)",
+                        borderWidth: innerBorderWidth,
+                        borderColor: innerBorderColor,
+                        boxShadow: innerBoxShadow,
                       }}
-                      className="rounded-full overflow-hidden bg-neutral-900 border"
-                      style={{
-                        boxShadow: showWinnerState ? "none" : "inset 0 4px 10px rgba(0,0,0,0.6)",
-                      }}
+                      transition={isSpinning ? { duration: 0.15 } : itemTransition}
+                      className="rounded-full overflow-hidden bg-neutral-900 border-solid"
                     >
                       <Avatar src={member.image} name={member.name} size={84} />
                     </motion.div>

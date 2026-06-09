@@ -447,7 +447,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             )}
 
             <div
-              className="transition-all duration-300 ease-in-out overflow-hidden flex-shrink-0"
+              className={`transition-all duration-300 ease-in-out flex-shrink-0 z-20 relative ${
+                showBottomNav ? "overflow-visible" : "overflow-hidden"
+              }`}
               style={{
                 height: showBottomNav ? "auto" : "0px",
                 opacity: showBottomNav ? 1 : 0,

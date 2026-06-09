@@ -222,34 +222,6 @@ export default function StreaksPage() {
           </div>
         </div>
 
-        {/* Dynamic Achievements mapping */}
-        <div style={glassStyle(0.04, 20, 0.08)} className="rounded-[24px] p-5 flex flex-col gap-3">
-          <div className="flex justify-between items-center mb-1">
-            <span className="text-white text-[14px] font-bold tracking-wide">Explore Achievements</span>
-          </div>
-
-          <div
-            className="flex gap-2 overflow-x-auto scrollbar-hide -mx-5 px-5 pb-2"
-            style={{ WebkitOverflowScrolling: "touch" }}
-          >
-            {ACHIEVEMENT_MOCKS.map((mock) => {
-              const isUnlocked = unlockedIds.includes(mock.id);
-              return (
-                <button
-                  key={mock.id}
-                  onClick={() => setActiveAchievement(mock)}
-                  className="flex-shrink-0 py-2.5 px-3 rounded-[14px] bg-white/5 border border-white/10 text-white/80 text-[11px] font-semibold hover:bg-white/10 transition-colors text-center whitespace-nowrap flex items-center gap-1.5"
-                >
-                  {!isUnlocked && <Lock size={10} className="text-white/40" />}
-                  <span style={{ opacity: isUnlocked ? 1 : 0.6 }}>
-                    {mock.id.replace(/-/g, ' ').toUpperCase()}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         <div
           style={glassStyle(0.04, 20, 0.08)}
           className="rounded-[24px] p-5 flex flex-col gap-4"
