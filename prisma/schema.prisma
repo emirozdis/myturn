@@ -66,12 +66,16 @@ model User {
   comments             Comment[]
   views                View[]
   unlockedAchievements UnlockedAchievement[]
+  pokes                Poke[]
+  
+  friendRequestsSent     Friendship[] @relation("FriendRequestsSent")
+  friendRequestsReceived Friendship[] @relation("FriendRequestsReceived")
 
   @@map("users")
 }
 
 model VerificationToken {
-  id         String   @id @default(cuid()) // Adding an ID for simpler adapter parsing if needed
+  id         String   @id @default(cuid()) 
   identifier String
   token      String   @unique
   expires    DateTime
@@ -89,9 +93,8 @@ model Group {
   timezone    String   @default("UTC")
   createdAt   DateTime @default(now())
 
-  // Proposed Additions:
-  xp          Int      @default(0)      // Cumulative group activity XP
-  level       Int      @default(1)      // Co-op group level
+  xp          Int      @default(0)      
+  level       Int      @default(1)      
 
   members          GroupMember[]
   dailyAssignments DailyAssignment[]
@@ -104,13 +107,12 @@ model GroupMember {
   id        String   @id @default(cuid())
   groupId   String
   userId    String
-  role      String   @default("member") // "admin" | "member"
+  role      String   @default("member") 
   streak    Int      @default(0)
   joinedAt  DateTime @default(now())
 
-  // Proposed Additions:
-  xp             Int      @default(0)      // Individual XP earned within THIS group
-  lastActiveAt   DateTime @default(now())  // Tracked for decay/deranking triggers
+  xp             Int      @default(0)      
+  lastActiveAt   DateTime @default(now())  
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -122,22 +124,54 @@ model GroupMember {
 }
 
 model DailyAssignment {
-  id        String   @id @default(cuid())
-  groupId   String
-  userId    String
-  date      DateTime @db.Date
-  status    String   @default("active") // "active" | "completed" | "missed"
-  createdAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  groupId       String
+  userId        String
+  date          DateTime @db.Date
+  status        String   @default("active") 
+  recapNotified Boolean  @default(false)
+  createdAt     DateTime @default(now())
 
   group Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   clips Clip[]
+  pokes Poke[]
 
-  @@unique([groupId, date]) // Ensures only 1 vlogger per group per day
+  @@unique([groupId, date]) 
   @@index([groupId])
   @@index([userId])
   @@index([date])
   @@map("daily_assignments")
+}
+
+model Poke {
+  id           String   @id @default(cuid())
+  assignmentId String
+  pokerId      String
+  createdAt    DateTime @default(now())
+
+  assignment DailyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  poker      User            @relation(fields: [pokerId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([pokerId])
+  @@map("pokes")
+}
+
+model Friendship {
+  id          String   @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status      String   @default("pending") // "pending" | "accepted"
+  createdAt   DateTime @default(now())
+
+  requester User @relation("FriendRequestsSent", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("FriendRequestsReceived", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([requesterId])
+  @@index([addresseeId])
+  @@map("friendships")
 }
 
 model Clip {

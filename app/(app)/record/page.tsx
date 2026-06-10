@@ -30,17 +30,17 @@ function getDailyPrompt(): string {
 export default function RecordPage() {
   const { data: session } = useSession();
   const [step, setStep] = useState<"CAMERA" | "PREVIEW">("CAMERA");
-  const [cameraFilter, setCameraFilter] = useState("Raw");
   const [isRecording, setIsRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [cameraZoom, setCameraZoom] = useState("1x");
+  const [zoomSupported, setZoomSupported] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [recordedFacingMode, setRecordedFacingMode] = useState<"user" | "environment">("user");
   const [videoTrack, setVideoTrack] = useState<MediaStreamTrack | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [locationName, setLocationName] = useState("Earth");
 
-  // Stable URL memory allocation reference
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [error, setError] = useState("");
@@ -50,7 +50,6 @@ export default function RecordPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  // Instagram-style Publish Flow states
   const [userGroups, setUserGroups] = useState<any[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [isTurnAuthorized, setIsTurnAuthorized] = useState(true);
@@ -59,22 +58,18 @@ export default function RecordPage() {
   const [caption, setCaption] = useState("");
   const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
 
-  // Live Playbar state tracking
   const miniVideoRef = useRef<HTMLVideoElement>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);
   const [miniProgress, setMiniProgress] = useState(0);
   const [fullProgress, setFullProgress] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Guard to prevent concurrent duplicate turn checking
   const isCheckingTurnRef = useRef(false);
 
-  // Handle single-allocation, self-cleaning object URLs to prevent render-loop flashes
   useEffect(() => {
     if (recordedBlob) {
       const url = URL.createObjectURL(recordedBlob);
@@ -87,7 +82,6 @@ export default function RecordPage() {
     }
   }, [recordedBlob]);
 
-  // Custom step changer to trigger layout transitions globally on parent frames
   const handleStepChange = (newStep: "CAMERA" | "PREVIEW") => {
     setStep(newStep);
     window.dispatchEvent(new CustomEvent("record-step-changed", { detail: newStep }));
@@ -107,7 +101,6 @@ export default function RecordPage() {
     }
   };
 
-  // Check turn constraints dynamically for the chosen group
   const checkGroupTurn = async (groupId: string) => {
     setCheckingTurn(true);
     setError("");
@@ -119,7 +112,6 @@ export default function RecordPage() {
         setAssignment(null);
       } else if (res.success && res.assignment) {
         setAssignment(res.assignment);
-        // Verify if today's turn belongs to current user
         const isAuthorized = res.assignment.userId === session?.user?.id;
         setIsTurnAuthorized(isAuthorized);
         if (!isAuthorized) {
@@ -135,20 +127,17 @@ export default function RecordPage() {
     }
   };
 
-  // Fetch all of the user's groups when Preview opens
   const loadGroupsList = async () => {
     try {
       const res = await getUserGroups();
       if (res.success && res.groups && res.groups.length > 0) {
         setUserGroups(res.groups);
         
-        // Find if current local active group exists, default to that
         const storedGroupId = localStorage.getItem("active_group_id");
         const matched = res.groups.find((g: any) => g.id === storedGroupId);
         const initialGroup = matched || res.groups[0];
         setSelectedGroup(initialGroup);
         
-        // Check turn constraints for the initial group selection
         await checkGroupTurn(initialGroup.id);
       } else {
         setUserGroups([]);
@@ -165,25 +154,24 @@ export default function RecordPage() {
     }
   }, [step, recordedBlob]);
 
-  // Request camera access and get live location
   useEffect(() => {
     let active = true;
-    let currentStream: MediaStream | null = null;
 
     async function setupCamera() {
       if (step === "CAMERA") {
         try {
-          // Clear any stale stream tracks before spinning up a new session
           if (streamRef.current) {
             streamRef.current.getTracks().forEach((track) => track.stop());
             streamRef.current = null;
           }
 
+          // Request high performance stream, optimized for low latency tracking without chunk delay.
           const stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode,
-              width: { ideal: 1920 },
-              height: { ideal: 1080 }
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30 }
             },
             audio: true,
           });
@@ -193,14 +181,27 @@ export default function RecordPage() {
             return;
           }
 
-          currentStream = stream;
           streamRef.current = stream;
-          setActiveStream(stream);
+
+          // Directly assign stream to the ref completely bypassing React state re-rendering queues
+          if (videoRef.current) {
+            videoRef.current.srcObject = null;
+            videoRef.current.srcObject = stream;
+            videoRef.current.play().catch((e) => console.warn("Video playback was interrupted:", e));
+          }
 
           const track = stream.getVideoTracks()[0];
           setVideoTrack(track);
 
-          // Attempt getting location async
+          try {
+            const capabilities = track.getCapabilities();
+            if ('zoom' in capabilities) {
+              setZoomSupported(true);
+            } else {
+              setZoomSupported(false);
+            }
+          } catch(e) {}
+
           if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition(async (position) => {
               try {
@@ -222,8 +223,6 @@ export default function RecordPage() {
           }
         }
       } else {
-        // Explicitly tear down visual hardware feed when active view shifts to background
-        if (active) setActiveStream(null);
         if (streamRef.current) {
           streamRef.current.getTracks().forEach((track) => track.stop());
           streamRef.current = null;
@@ -235,9 +234,6 @@ export default function RecordPage() {
 
     return () => {
       active = false;
-      if (currentStream) {
-        currentStream.getTracks().forEach((track) => track.stop());
-      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -245,32 +241,14 @@ export default function RecordPage() {
     };
   }, [step, facingMode]);
 
-  // Bind the active video stream dynamically to the camera video elements whenever stream updates
-  useEffect(() => {
-    if (videoRef.current) {
-      if (activeStream) {
-        videoRef.current.srcObject = activeStream;
-        videoRef.current.play().catch((e) => console.warn("Video playback was interrupted:", e));
-      } else {
-        videoRef.current.srcObject = null;
-      }
-    }
-  }, [activeStream]);
-
-  // Callback ref to cleanly mount video elements and attach active state streams immediately on render
   const setVideoRef = (el: HTMLVideoElement | null) => {
     videoRef.current = el;
-    if (el) {
-      if (activeStream) {
-        el.srcObject = activeStream;
-        el.play().catch((e) => console.warn("Video mount playback was interrupted:", e));
-      } else {
-        el.srcObject = null;
-      }
+    if (el && streamRef.current) {
+      el.srcObject = streamRef.current;
+      el.play().catch((e) => console.warn("Video mount playback was interrupted:", e));
     }
   };
 
-  // Initial turn check logic on standby
   useEffect(() => {
     const checkInitialTurn = async () => {
       let activeGroupId = localStorage.getItem("active_group_id");
@@ -318,7 +296,6 @@ export default function RecordPage() {
     return () => window.removeEventListener("group-changed", handleGroupChange);
   }, []);
 
-  // Handle maximum 60s recording threshold timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isRecording) {
@@ -367,14 +344,17 @@ export default function RecordPage() {
     if (!streamRef.current) return;
     chunksRef.current = [];
     
+    // Save current camera side so we can identically mirror the generated preview clip.
+    setRecordedFacingMode(facingMode);
+
     let mimeType = "video/webm;codecs=vp8,opus";
     if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("video/mp4")) {
-      mimeType = "video/mp4"; // MP4 fallback target for iOS Safari compatibility
+      mimeType = "video/mp4"; 
     }
 
     const mediaRecorder = new MediaRecorder(streamRef.current, {
       mimeType,
-      videoBitsPerSecond: 3000000, // Boost video quality threshold limit to 3 Mbps target
+      videoBitsPerSecond: 3000000, 
     });
 
     mediaRecorder.ondataavailable = (e) => {
@@ -409,21 +389,47 @@ export default function RecordPage() {
       video.src = URL.createObjectURL(videoBlob);
       video.muted = true;
       video.playsInline = true;
+
+      const timeout = setTimeout(() => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 720;
+        canvas.height = 1280;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#111";
+          ctx.fillRect(0, 0, 720, 1280);
+        }
+        canvas.toBlob((b) => b ? resolve(b) : reject(new Error("Timeout toBlob")), "image/jpeg", 0.8);
+      }, 3000);
+
       video.onloadedmetadata = () => {
         video.currentTime = Math.min(0.5, video.duration / 2);
       };
+      
       video.onseeked = () => {
+        clearTimeout(timeout);
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth || 720;
         canvas.height = video.videoHeight || 1280;
         const ctx = canvas.getContext("2d");
+        
+        // Flip canvas exactly as standard mirrors do when encoding image thumbnail
+        if (recordedFacingMode === "user" && ctx) {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
+
         ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
         canvas.toBlob((b) => {
           if (b) resolve(b);
           else reject(new Error("Canvas toBlob failed"));
         }, "image/jpeg", 0.8);
       };
-      video.onerror = reject;
+
+      video.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error("Video error"));
+      };
     });
   };
 
@@ -432,7 +438,6 @@ export default function RecordPage() {
       setIsUploading(true);
       setUploadProgress(15);
       
-      // Animate progress smoothly in parallel with file transfer actions
       const progressInterval = setInterval(() => {
         setUploadProgress((p) => {
           if (p >= 85) {
@@ -455,7 +460,6 @@ export default function RecordPage() {
         throw new Error(res.error || "Failed to generate signed urls.");
       }
 
-      // Execute Direct Chunk Video Upload mapping against Cloud Node Signed Links
       const videoUploadRes = await fetch(res.video.url, {
         method: "PUT",
         body: recordedBlob,
@@ -464,7 +468,6 @@ export default function RecordPage() {
 
       if (!videoUploadRes.ok) throw new Error("Failed to save video clip.");
 
-      // Intercept blob matrix to fetch static frame thumbnail canvas references
       const thumbBlob = await generateThumbnail(recordedBlob);
       const thumbUploadRes = await fetch(res.thumbnail.url, {
         method: "PUT",
@@ -474,18 +477,17 @@ export default function RecordPage() {
 
       if (!thumbUploadRes.ok) throw new Error("Failed to save frame thumbnail.");
 
-      // Record Clip database entry linking assignments and distinct bucket URLs
       const clipRes = await createClip({
         groupId: activeGroupId,
         assignmentId: assignment.id,
         videoUrl: res.video.path,
         thumbnailUrl: res.thumbnail.path,
         location: locationName,
+        caption: caption,
       });
 
       if (clipRes.error) throw new Error(clipRes.error);
 
-      // Trigger dynamic popups immediately if there are newly unlocked achievements or tier promotions!
       if (clipRes.newlyUnlocked && clipRes.newlyUnlocked.length > 0) {
         clipRes.newlyUnlocked.forEach((id: string) => {
           window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
@@ -516,7 +518,6 @@ export default function RecordPage() {
       setIsUploading(false);
       setUploadSuccess(true);
       
-      // Delay and reset back to camera
       setTimeout(() => {
         setUploadSuccess(false);
         setRecordedBlob(null);
@@ -553,7 +554,6 @@ export default function RecordPage() {
     >
       <div className="absolute inset-0 z-0 bg-neutral-900/40 flex flex-col justify-between p-0">
 
-        {/* Dynamic crossfade step rendering without mode="wait" for concurrent transitions */}
         <AnimatePresence>
           {step === "CAMERA" ? (
             <motion.div
@@ -562,19 +562,18 @@ export default function RecordPage() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.25 }}
-              className="absolute inset-0 flex flex-col justify-between z-10"
+              className="absolute inset-0 flex flex-col justify-between z-10 bg-black/20"
             >
               <video
                 ref={setVideoRef}
                 autoPlay
                 playsInline
                 muted
-                className="absolute inset-0 w-full h-full object-cover z-0"
+                className={`absolute inset-0 w-full h-full object-cover z-0 transition-transform ${facingMode === "user" ? "-scale-x-100" : ""}`}
               />
               
               <div className="absolute inset-x-8 inset-y-12 border border-white/5 border-dashed pointer-events-none z-10" />
 
-              {/* Subdued notice top-banner if it is not their turn */}
               {!isTurnAuthorized && error && (
                 <div 
                   style={{ marginTop: "max(12px, env(safe-area-inset-top, 12px))" }}
@@ -620,35 +619,29 @@ export default function RecordPage() {
                 })}
               </div>
 
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center z-10 pointer-events-none">
-                <Camera size={26} className="text-white/40 mb-1" />
-                <span className="text-[10px] text-white/50 tracking-wide bg-black/20 px-2 py-0.5 rounded-full uppercase font-mono">
-                  Lens {cameraFilter}
-                </span>
-              </div>
-
               <div className="flex items-center justify-between mt-auto z-10 w-full p-4">
-                <div className="flex gap-1.5 bg-black/40 backdrop-blur-md p-1 rounded-full border border-white/10 shadow-md">
-                  {["0.5x", "1x", "2x"].map((zoom) => (
-                    <button
-                      key={zoom}
-                      onClick={() => handleZoom(zoom)}
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors"
-                      style={{
-                        background: cameraZoom === zoom ? "#e07c30" : "transparent",
-                        color: cameraZoom === zoom ? "#000" : "#fff",
-                      }}
-                    >
-                      {zoom}
-                    </button>
-                  ))}
-                </div>
+                {zoomSupported ? (
+                  <div className="flex gap-1.5 bg-black/40 backdrop-blur-md p-1 rounded-full border border-white/10 shadow-md">
+                    {["0.5x", "1x", "2x"].map((zoom) => (
+                      <button
+                        key={zoom}
+                        onClick={() => handleZoom(zoom)}
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold transition-colors"
+                        style={{
+                          background: cameraZoom === zoom ? "#e07c30" : "transparent",
+                          color: cameraZoom === zoom ? "#000" : "#fff",
+                        }}
+                      >
+                        {zoom}
+                      </button>
+                    ))}
+                  </div>
+                ) : <div className="w-[84px]"></div>}
 
-                {/* Shutter button disabled if not authorized turn */}
                 <button
                   onClick={isRecording ? stopRecording : startRecording}
                   disabled={!isTurnAuthorized || isUploading}
-                  className="w-14 h-14 rounded-full border-[3px] border-white flex items-center justify-center bg-black/40 disabled:opacity-30 shadow-xl"
+                  className="w-14 h-14 rounded-full border-[3px] border-white flex items-center justify-center bg-black/40 disabled:opacity-30 shadow-xl relative focus:outline-none"
                 >
                   <motion.div
                     animate={{
@@ -659,21 +652,7 @@ export default function RecordPage() {
                   />
                 </button>
 
-                <div className="flex gap-1 bg-black/40 backdrop-blur-md p-1 rounded-full border border-white/10 shadow-md">
-                  {["Raw", "Vivid", "Noir"].map((filter) => (
-                    <button
-                      key={filter}
-                      onClick={() => setCameraFilter(filter)}
-                      className="text-[9px] font-semibold px-2 py-1.5 rounded-full text-white/70 transition-colors"
-                      style={{
-                        background: cameraFilter === filter ? "rgba(255,255,255,0.15)" : "transparent",
-                        color: cameraFilter === filter ? "#fff" : "rgba(255,255,255,0.5)",
-                      }}
-                    >
-                      {filter}
-                    </button>
-                  ))}
-                </div>
+                <div className="w-[84px]"></div>
               </div>
             </motion.div>
           ) : (
@@ -685,7 +664,6 @@ export default function RecordPage() {
               transition={{ type: "spring", damping: 26, stiffness: 220 }}
               className="absolute inset-0 z-20 bg-neutral-950 flex flex-col justify-between overflow-hidden"
             >
-              {/* Instagram-Style Top Progress Bar */}
               {isUploading && (
                 <div className="absolute top-0 left-0 right-0 h-1 bg-neutral-800 z-50 overflow-hidden">
                   <motion.div 
@@ -696,7 +674,6 @@ export default function RecordPage() {
                 </div>
               )}
 
-              {/* Header Bar */}
               <div 
                 style={{ paddingTop: "max(14px, env(safe-area-inset-top, 14px))" }}
                 className="flex items-center justify-between px-4 pb-3.5 border-b border-white/5 bg-neutral-900/60 backdrop-blur-md relative z-10 flex-shrink-0"
@@ -713,13 +690,10 @@ export default function RecordPage() {
                 <div className="w-12 h-6" />
               </div>
 
-              {/* Scrollable Publishing Panel Body */}
               <div className="flex-1 overflow-y-auto scrollbar-hide p-4 flex flex-col gap-6">
                 
-                {/* Visual split section: Mini preview & caption text field */}
                 <div className="flex gap-4 items-start">
                   
-                  {/* Visual Video Container - styled exactly like Today UI */}
                   <div className="flex flex-col items-center flex-shrink-0">
                     <div 
                       onClick={() => setIsPreviewFullscreen(true)}
@@ -733,10 +707,9 @@ export default function RecordPage() {
                         muted
                         playsInline
                         onTimeUpdate={handleMiniTimeUpdate}
-                        className="absolute inset-0 w-full h-full object-cover"
+                        className={`absolute inset-0 w-full h-full object-cover transition-transform ${recordedFacingMode === "user" ? "-scale-x-100" : ""}`}
                       />
 
-                      {/* Today UI glazing frame, glare highlights, and inset shadows */}
                       <div
                         style={{
                           borderTop: "1px solid rgba(255,255,255,0.45)",
@@ -748,7 +721,6 @@ export default function RecordPage() {
                         className="absolute inset-0 rounded-2xl pointer-events-none z-10"
                       />
 
-                      {/* Miniature live playbar matching Today UI requirements */}
                       <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20 overflow-hidden">
                         <div 
                           className="h-full bg-[#e07c30] transition-all duration-100 ease-linear"
@@ -761,7 +733,6 @@ export default function RecordPage() {
                       </div>
                     </div>
 
-                    {/* Clean text label directly below preview box */}
                     <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-2 block text-center select-none">
                       Tap to preview
                     </span>
@@ -781,7 +752,6 @@ export default function RecordPage() {
 
                 <hr className="border-t border-white/5" />
 
-                {/* Dynamic Group Select Panel */}
                 <div className="flex flex-col gap-3">
                   <div className="flex justify-between items-center px-1">
                     <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Post Destination</span>
@@ -810,7 +780,6 @@ export default function RecordPage() {
                   </div>
                 </div>
 
-                {/* Dynamic Turn Detail Information Panel */}
                 <div className="flex flex-col gap-3">
                   <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">Vlogging Context</span>
                   
@@ -846,7 +815,6 @@ export default function RecordPage() {
                   </div>
                 </div>
 
-                {/* Authorization Warning Banner */}
                 {checkingTurn ? (
                   <div className="flex items-center gap-2 px-1 text-[10px] text-white/50 animate-pulse">
                     <Loader2 size={12} className="animate-spin text-[#e07c30]" />
@@ -864,7 +832,6 @@ export default function RecordPage() {
                   )
                 )}
 
-                {/* Location Input */}
                 <div className="flex flex-col gap-3">
                   <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">Location details</span>
                   <div 
@@ -885,7 +852,6 @@ export default function RecordPage() {
 
               </div>
 
-              {/* Immersive Large Footer Trigger Share Button - Restored */}
               <div className="p-4 border-t border-white/5 bg-neutral-900/40 backdrop-blur-md flex-shrink-0">
                 <button
                   onClick={handlePublish}
@@ -903,7 +869,6 @@ export default function RecordPage() {
                 </button>
               </div>
 
-              {/* Dynamic sliding group picker sheet overlay */}
               <AnimatePresence>
                 {showGroupDrawer && (
                   <>
@@ -961,7 +926,6 @@ export default function RecordPage() {
                 )}
               </AnimatePresence>
 
-              {/* Immersive full-screen playback mode on preview click */}
               <AnimatePresence>
                 {isPreviewFullscreen && (
                   <motion.div
@@ -977,15 +941,13 @@ export default function RecordPage() {
                       src={previewUrl || ""}
                       autoPlay
                       loop
-                      muted={false} // Unmuted with audio!
+                      muted={false} 
                       playsInline
                       onTimeUpdate={handleFullTimeUpdate}
-                      className="absolute inset-0 w-full h-full object-cover z-0"
+                      className={`absolute inset-0 w-full h-full object-cover z-0 transition-transform ${recordedFacingMode === "user" ? "-scale-x-100" : ""}`}
                     />
-                    {/* Backdrop Gradient overlay */}
                     <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/60 pointer-events-none z-10" />
 
-                    {/* Dynamic playbar for Fullscreen Mode */}
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20 overflow-hidden">
                       <div 
                         className="h-full bg-[#e07c30] transition-all duration-100 ease-linear"
@@ -1008,7 +970,6 @@ export default function RecordPage() {
                 )}
               </AnimatePresence>
 
-              {/* High-end spring popped iOS Success screen */}
               <AnimatePresence>
                 {uploadSuccess && (
                   <motion.div

@@ -8,9 +8,10 @@ type ParticleType = "confetti" | "sparks" | "none";
 
 interface ParticleEffectProps {
   type?: ParticleType;
+  active?: boolean;
 }
 
-export function ParticleEffect({ type = "none" }: ParticleEffectProps) {
+export function ParticleEffect({ type = "none", active = true }: ParticleEffectProps) {
   const [particles, setParticles] = useState<any[]>([]);
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export function ParticleEffect({ type = "none" }: ParticleEffectProps) {
             duration: p.duration,
             delay: p.delay,
             ease: "linear",
-            repeat: Infinity,
+            repeat: active ? Infinity : 0, // Stop generating/looping new ones when active is false
           }}
           style={{
             position: "absolute",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, ReactNode } from "react";
+import { useState, ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Variants } from "framer-motion";
 import type { GroupConfig } from "@/app/(app)/layout";
@@ -20,15 +20,22 @@ export function GroupSwipePager({
   children,
   disabled = false,
 }: GroupSwipePagerProps) {
-  const [prevIndex, setPrevIndex] = useState(activeIndex);
-  const [direction, setDirection] = useState(0);
+  // Synchronous state calculation to align active and previous slide directions immediately on render
+  const [state, setState] = useState({
+    activeIndex,
+    prevIndex: activeIndex,
+    direction: 0,
+  });
 
-  useEffect(() => {
-    if (activeIndex !== prevIndex) {
-      setDirection(activeIndex > prevIndex ? 1 : -1);
-      setPrevIndex(activeIndex);
-    }
-  }, [activeIndex, prevIndex]);
+  if (activeIndex !== state.activeIndex) {
+    setState({
+      activeIndex,
+      prevIndex: state.activeIndex,
+      direction: activeIndex > state.activeIndex ? 1 : -1,
+    });
+  }
+
+  const direction = state.direction;
 
   // Single group: no gesture container needed, just render children directly
   if (groups.length <= 1) {

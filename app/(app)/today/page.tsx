@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   MapPin,
   Heart,
@@ -14,13 +16,17 @@ import {
   MessageCircle,
   Send,
   X,
+  Trash2,
+  AlertCircle,
+  Camera,
+  Hand
 } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
 import { CountdownTimer } from "@/components/shared/countdown-timer";
 import { Avatar } from "@/components/shared/avatar";
 import { ACCENT } from "@/lib/theme";
 import { TimelineTracker } from "@/components/timeline-tracker";
-import { getOrCreateTodayAssignment, getSignedReadUrl, toggleReaction, addComment, trackView } from "@/actions/vlog";
+import { getOrCreateTodayAssignment, getSignedReadUrl, toggleReaction, addComment, trackView, deleteComment, pokeVlogger } from "@/actions/vlog";
 
 function getSlotForClip(recordedAt: Date | string): number {
   const date = new Date(recordedAt);
@@ -46,6 +52,8 @@ const getCachedToday = () => {
 };
 
 export default function TodayPage() {
+  const router = useRouter();
+  const { data: session } = useSession();
   const [isVideoExpanded, setIsVideoExpanded] = useState(false);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
@@ -66,16 +74,22 @@ export default function TodayPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
 
-  // Comments and Views Drawer Integration States
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isViewsOpen, setIsViewsOpen] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [commentList, setCommentList] = useState<any[]>([]);
+  const [poking, setPoking] = useState(false);
+  const [pokeCooldown, setPokeCooldown] = useState(0);
 
-  // Guard to prevent concurrent duplicate fetching
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
   const isFetchingRef = useRef(false);
 
-  // Load initial group config on mount — never blocks UI after first load
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   const loadTodayVlogs = async (targetGroupId?: any) => {
     let activeGroupId = typeof targetGroupId === "string" ? targetGroupId : null;
     if (!activeGroupId && typeof window !== "undefined") {
@@ -96,7 +110,6 @@ export default function TodayPage() {
       const fetchedClips = res.assignment.clips || [];
       setClips(fetchedClips);
 
-      // Default to the timeline slot of the latest uploaded clip if clips exist
       if (fetchedClips.length > 0) {
         const latestClip = fetchedClips[fetchedClips.length - 1];
         setCurrentHourIndex(getSlotForClip(latestClip.recordedAt));
@@ -104,7 +117,6 @@ export default function TodayPage() {
         setCurrentHourIndex(getSlotForClip(new Date()));
       }
 
-      // Resolve pre-signed read URLs from Supabase Storage
       const urls: Record<string, string> = {};
       for (const clip of fetchedClips) {
         const urlRes = await getSignedReadUrl("vlogs", clip.videoUrl);
@@ -130,7 +142,6 @@ export default function TodayPage() {
     isFetchingRef.current = false;
   };
 
-  // Load initial group config on mount
   useEffect(() => {
     loadTodayVlogs();
 
@@ -153,24 +164,23 @@ export default function TodayPage() {
     };
   }, []);
 
-  // Sync like count, views, comments and status whenever active clip changes
-  const activeClip = clips.find((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+  // Searches backward from the chronologically sorted clips array to always display the newest upload inside this time window
+  const activeClip = [...clips].reverse().find((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
   const activeClipUrl = activeClip ? resolvedClipUrls[activeClip.id] : null;
   const uploadedSlots = clips.map((clip) => getSlotForClip(clip.recordedAt));
+  const isCurrentUserVlogger = assignment?.userId === session?.user?.id;
 
   useEffect(() => {
     if (activeClip) {
       setLikeCount(activeClip.reactions?.length || 0);
-      setLiked(false); // Match backend reaction context
+      setLiked(false);
       setCommentList(activeClip.comments || []);
 
-      // Fire view tracking dynamically on load
       const recordViewEvent = async () => {
         const res = await trackView(activeClip.id);
         if (res.success && !res.alreadyViewed) {
           setClips(prev => prev.map(c => c.id === activeClip.id ? { ...c, views: [...(c.views || []), { id: "temp-view" }] } : c));
           
-          // Show popup immediately on first responder achievement unlock
           if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
             res.newlyUnlocked.forEach((id: string) => {
               window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
@@ -186,6 +196,29 @@ export default function TodayPage() {
     }
   }, [activeClip]);
 
+  useEffect(() => {
+    if (assignment?.pokes?.[0]) {
+      const lastPokeTime = new Date(assignment.pokes[0].createdAt).getTime();
+      const diff = Date.now() - lastPokeTime;
+      if (diff < 30 * 60 * 1000) {
+        setPokeCooldown(Math.floor((30 * 60 * 1000 - diff) / 1000));
+      } else {
+        setPokeCooldown(0);
+      }
+    } else {
+      setPokeCooldown(0);
+    }
+  }, [assignment]);
+
+  useEffect(() => {
+    if (pokeCooldown > 0) {
+      const interval = setInterval(() => {
+        setPokeCooldown(prev => Math.max(0, prev - 1));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [pokeCooldown]);
+
   const handleLike = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!activeClip) return;
@@ -195,7 +228,6 @@ export default function TodayPage() {
 
     const res = await toggleReaction(activeClip.id, "❤️");
     
-    // Trigger popup immediately if hype-man is unlocked on reaction click
     if (res.success && res.newlyUnlocked && res.newlyUnlocked.length > 0) {
       res.newlyUnlocked.forEach((id: string) => {
         window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
@@ -215,7 +247,6 @@ export default function TodayPage() {
       setCommentList((prev) => [...prev, res.comment]);
       setClips(prev => prev.map(c => c.id === activeClip.id ? { ...c, comments: [...(c.comments || []), res.comment] } : c));
       
-      // Trigger commentary achievements popups immediately
       if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
         res.newlyUnlocked.forEach((id: string) => {
           window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
@@ -224,7 +255,28 @@ export default function TodayPage() {
     }
   };
 
-  // Show a skeleton/empty state only on the very first load with no cached data
+  const handleDeleteComment = async (id: string) => {
+    const res = await deleteComment(id);
+    if (res.success) {
+      setCommentList(prev => prev.filter(c => c.id !== id));
+      setClips(prev => prev.map(c => c.id === activeClip?.id ? { ...c, comments: c.comments.filter((com: any) => com.id !== id) } : c));
+    }
+  };
+
+  const handlePoke = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (pokeCooldown > 0 || !assignment?.id) return;
+    setPoking(true);
+    const res = await pokeVlogger(assignment.id);
+    setPoking(false);
+    if (res.success) {
+      setPokeCooldown(30 * 60);
+      showToast("Poke sent! We notified the vlogger.", "success");
+    } else {
+      showToast(res.error || "Failed to send poke.", "error");
+    }
+  };
+
   if (initialLoad && !assignment) {
     return (
       <div className="flex-1 flex flex-col gap-3 animate-pulse">
@@ -245,14 +297,29 @@ export default function TodayPage() {
       transition={{ duration: 0.2 }}
       className="flex-1 flex flex-col justify-between min-h-0 gap-3 relative"
     >
-      {/* Subtle background-refresh indicator */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: -20, x: "-50%" }}
+            className={`absolute top-4 left-1/2 z-[60] w-[90%] p-3 rounded-2xl flex items-center justify-center shadow-lg border backdrop-blur-md ${
+              toast.type === "success" 
+                ? "bg-emerald-900/90 border-emerald-500/20 text-emerald-400" 
+                : "bg-red-900/90 border-red-500/20 text-red-400"
+            }`}
+          >
+            <span className="text-xs font-bold">{toast.msg}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {refreshing && (
         <div className="absolute top-0 right-0 z-20 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full shadow-lg pointer-events-none">
           <span className="w-1.5 h-1.5 rounded-full bg-[#e07c30] animate-pulse" />
           <span className="text-white/50 text-[9px] font-semibold tracking-wide">updating</span>
         </div>
       )}
-      {/* Video Container Frame */}
       <div
         onClick={() => setIsVideoExpanded((prev) => !prev)}
         className="relative flex-1 min-h-0 rounded-3xl overflow-hidden flex flex-col cursor-pointer"
@@ -278,16 +345,48 @@ export default function TodayPage() {
             src={activeClipUrl}
             autoPlay
             loop
-            muted={!isVideoExpanded} // Unmuted on extend, muted on minimize
+            muted={!isVideoExpanded}
             playsInline
             className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
           />
         ) : (
           <div className="absolute inset-0 bg-neutral-900/60 z-0 flex flex-col items-center justify-center p-6 text-center">
-            <VideoOff size={32} className="text-white/20 mb-2" />
-            <span className="text-white/40 text-[11px] font-semibold leading-relaxed max-w-[200px]">
-              No updates uploaded for this timeframe yet.
-            </span>
+            {isCurrentUserVlogger ? (
+              <>
+                <Camera size={40} className="text-[#e07c30] mb-4 animate-pulse" />
+                <h2 className="text-white text-lg font-bold mb-2">It's your turn today!</h2>
+                <p className="text-white/60 text-[12px] max-w-[200px] mb-6">Your friends are waiting for your vlog.</p>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); router.push("/record"); }} 
+                  className="px-6 py-3 bg-[#e07c30] text-black font-bold rounded-full active:scale-95 transition-transform"
+                >
+                  Record Now
+                </button>
+              </>
+            ) : (
+              <>
+                <VideoOff size={32} className="text-white/20 mb-3" />
+                <span className="text-white/80 text-[14px] font-bold mb-1">Waiting for {assignment?.user?.name || "vlogger"}</span>
+                <span className="text-white/40 text-[11px] max-w-[200px] mb-6">No updates uploaded yet.</span>
+                <button 
+                  onClick={handlePoke} 
+                  disabled={poking || pokeCooldown > 0} 
+                  className="px-5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 text-white text-xs font-bold rounded-full transition active:scale-95 flex items-center justify-center gap-2"
+                >
+                  {pokeCooldown > 0 ? (
+                    <>
+                      <Clock size={14} className="opacity-50" />
+                      <span className="opacity-50 font-mono tracking-widest">{Math.floor(pokeCooldown / 60)}:{(pokeCooldown % 60).toString().padStart(2, "0")}</span>
+                    </>
+                  ) : (
+                    <>
+                      {poking ? <Loader2 size={14} className="animate-spin" /> : <Hand size={14} />}
+                      <span>{poking ? "Poking..." : "Poke"}</span>
+                    </>
+                  )}
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -311,77 +410,82 @@ export default function TodayPage() {
           </div>
         </div>
 
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-white text-[9px] font-semibold z-10 shadow-md max-w-[140px]">
-          <MapPin size={10} className="text-[#e07c30] flex-shrink-0" />
-          <span className="truncate">{activeClip?.location || "Live Vlog"}</span>
-        </div>
+        {activeClipUrl && (
+          <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-white text-[9px] font-semibold z-10 shadow-md max-w-[140px]">
+            <MapPin size={10} className="text-[#e07c30] flex-shrink-0" />
+            <span className="truncate">{activeClip?.location || "Live Vlog"}</span>
+          </div>
+        )}
 
-        <div className="mt-auto relative z-10 flex flex-col w-full">
-          <div className="py-2 px-3.5 flex items-center justify-between flex-shrink-0">
-            {/* Watchers Click Integration to trigger Viewers overlay */}
-            <div
-              onClick={(e) => {
-                e.stopPropagation(); // Avoid triggering video container extend/minimize
-                setIsViewsOpen(true);
-              }}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <div className="flex -space-x-1.5">
-                {activeClip?.views?.slice(0, 3).map((view: any, idx: number) => (
-                  <div key={view.id || idx} className="relative z-10 border border-black rounded-full">
-                    <Avatar src={view.user?.image} name={view.user?.name} size={20} />
-                  </div>
-                ))}
-                {(!activeClip?.views || activeClip.views.length === 0) && (
-                  <span className="text-white/40 text-[9px] font-semibold pl-1">0 views</span>
-                )}
-              </div>
-              {activeClip?.views && activeClip.views.length > 0 && (
-                <span className="text-white/65 text-[9px] font-bold tracking-tight pl-1.5">
-                  {activeClip.views.length} viewer{activeClip.views.length > 1 ? "s" : ""}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button onClick={handleLike} className="flex items-center gap-1 cursor-pointer">
-                <Heart
-                  size={16}
-                  className="transition-transform duration-200"
-                  style={{
-                    fill: liked ? "#ff6b6b" : "none",
-                    color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)",
-                    transform: liked ? "scale(1.2)" : "scale(1)",
-                  }}
-                />
-                <span
-                  className="text-[11px] font-bold drop-shadow-md"
-                  style={{ color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)" }}
-                >
-                  {likeCount}
-                </span>
-              </button>
-              <span className="w-[1px] h-3.5 bg-white/20" />
-              {/* Comments Trigger Panel */}
-              <button
+        {activeClipUrl && (
+          <div className="mt-auto relative z-10 flex flex-col w-full">
+            <div className="py-2 px-3.5 flex items-center justify-between flex-shrink-0">
+              <div
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsCommentsOpen(true);
+                  setIsViewsOpen(true);
                 }}
-                className="flex items-center gap-1 cursor-pointer"
+                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
               >
-                <MessageCircle size={16} className="text-white/95" />
-                <span className="text-[11px] font-bold text-white/95">{commentList.length}</span>
-              </button>
-              <span className="w-[1px] h-3.5 bg-white/20" />
-              <button className="p-1 rounded-full hover:bg-white/20 transition-colors">
-                <Smile size={16} className="text-white/90" />
-              </button>
+                <div className="flex -space-x-1.5">
+                  {activeClip?.views?.slice(0, 3).map((view: any, idx: number) => (
+                    <div key={view.id || idx} className="relative z-10 border border-black rounded-full">
+                      <Avatar src={view.user?.image} name={view.user?.name} size={20} />
+                    </div>
+                  ))}
+                  {(!activeClip?.views || activeClip.views.length === 0) && (
+                    <span className="text-white/40 text-[9px] font-semibold pl-1">0 views</span>
+                  )}
+                </div>
+                {activeClip?.views && activeClip.views.length > 0 && (
+                  <span className="text-white/65 text-[9px] font-bold tracking-tight pl-1.5">
+                    {activeClip.views.length} viewer{activeClip.views.length > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button onClick={handleLike} className="flex items-center gap-1 cursor-pointer">
+                  <Heart
+                    size={16}
+                    className="transition-transform duration-200"
+                    style={{
+                      fill: liked ? "#ff6b6b" : "none",
+                      color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)",
+                      transform: liked ? "scale(1.2)" : "scale(1)",
+                    }}
+                  />
+                  <span
+                    className="text-[11px] font-bold drop-shadow-md"
+                    style={{ color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)" }}
+                  >
+                    {likeCount}
+                  </span>
+                </button>
+                <span className="w-[1px] h-3.5 bg-white/20" />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsCommentsOpen(true);
+                  }}
+                  className="flex items-center gap-1 cursor-pointer"
+                >
+                  <MessageCircle size={16} className="text-white/95" />
+                  <span className="text-[11px] font-bold text-white/95">{commentList.length}</span>
+                </button>
+                <span className="w-[1px] h-3.5 bg-white/20" />
+                <button 
+                  onClick={(e) => { e.stopPropagation(); showToast("Reported to moderation team."); }} 
+                  className="p-1 rounded-full hover:bg-white/20 transition-colors"
+                  title="Report Vlog"
+                >
+                  <AlertCircle size={15} className="text-white/90" />
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Sliding Comments Glassmorphic Tray Overlay */}
         <AnimatePresence>
           {isCommentsOpen && (
             <motion.div
@@ -390,7 +494,7 @@ export default function TodayPage() {
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
               className="absolute inset-x-0 bottom-0 h-[65%] bg-neutral-950/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[24px] z-30 flex flex-col p-4 shadow-2xl"
-              onClick={(e) => e.stopPropagation()} // Prevent expansion trigger
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between pb-3 border-b border-white/5">
                 <span className="text-white text-[12px] font-bold tracking-wide">Comments ({commentList.length})</span>
@@ -410,8 +514,17 @@ export default function TodayPage() {
                       <div className="flex flex-col flex-1 min-w-0 bg-white/[0.04] rounded-2xl px-3.5 py-2 border border-white/5">
                         <div className="flex justify-between items-baseline mb-0.5">
                           <span className="text-white text-[10px] font-bold">@{c.user?.name || "user"}</span>
-                          <span className="text-white/40 text-[8px] font-medium">
+                          <span className="text-white/40 text-[8px] font-medium flex items-center gap-1.5">
                             {new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {c.userId === session?.user?.id ? (
+                              <button onClick={() => handleDeleteComment(c.id)} className="text-white/30 hover:text-red-400 transition" title="Delete">
+                                <Trash2 size={10} />
+                              </button>
+                            ) : (
+                              <button onClick={() => showToast("Comment reported.")} className="text-white/30 hover:text-red-400 transition" title="Report">
+                                <AlertCircle size={10} />
+                              </button>
+                            )}
                           </span>
                         </div>
                         <p className="text-white/80 text-[11px] leading-relaxed break-words">{c.text}</p>
@@ -447,7 +560,6 @@ export default function TodayPage() {
           )}
         </AnimatePresence>
 
-        {/* Sliding Viewers List Glassmorphic Sheet Overlay */}
         <AnimatePresence>
           {isViewsOpen && (
             <motion.div
@@ -456,7 +568,7 @@ export default function TodayPage() {
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
               className="absolute inset-x-0 bottom-0 h-[50%] bg-neutral-950/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[24px] z-30 flex flex-col p-4 shadow-2xl"
-              onClick={(e) => e.stopPropagation()} // Prevent expansion trigger
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between pb-3 border-b border-white/5">
                 <span className="text-white text-[12px] font-bold tracking-wide">Viewers ({activeClip?.views?.length || 0})</span>
@@ -491,7 +603,6 @@ export default function TodayPage() {
         </AnimatePresence>
       </div>
 
-      {/* Dynamic collapsing View Menu */}
       <div
         className={`flex-shrink-0 rounded-[24px] flex flex-col gap-3.5 shadow-lg transition-all duration-500 ${isVideoExpanded
             ? "max-h-0 opacity-0 overflow-hidden pointer-events-none p-0"
@@ -517,12 +628,15 @@ export default function TodayPage() {
               </div>
             </div>
 
-            <button
-              type="button"
-              className="mt-2 w-full rounded-full border border-white/10 py-1.5 text-[10px] font-semibold text-white/90 transition-colors hover:bg-white/10 active:scale-[0.98]"
-            >
-              View Profile
-            </button>
+            {isCurrentUserVlogger && activeClipUrl && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); router.push("/record"); }} 
+                className="mt-2 w-full py-1.5 bg-[#e07c30]/10 text-[#e07c30] border border-[#e07c30]/20 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition hover:bg-[#e07c30]/20 active:scale-95"
+              >
+                <Camera size={10} />
+                Record Another Update
+              </button>
+            )}
           </div>
 
           <div style={glassStyle(0.04, 16, 0.08)} className="p-3 rounded-[20px] min-h-[118px] flex flex-col justify-between overflow-hidden">

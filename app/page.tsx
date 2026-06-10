@@ -22,10 +22,8 @@ import { saveSubscription } from "@/actions/push";
 import { updateProfile, uploadAvatar } from "@/actions/profile";
 import { listenForInstallPrompt, promptPwaInstall, BeforeInstallPromptEvent } from "@/lib/pwa-install";
 
-// --- Types ---
 type Step = "intro1" | "intro2" | "intro3" | "installPwa" | "signin" | "signup" | "permissions" | "customizeProfile" | "join";
 
-// --- Assets / SVGs ---
 const GoogleIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
@@ -46,8 +44,6 @@ const FacebookIcon = () => (
     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
   </svg>
 );
-
-// --- Components ---
 
 function Dots({ total, current }: { total: number; current: number }) {
   return (
@@ -100,8 +96,6 @@ function InputField({ label, type = "text", placeholder, icon: Icon, isPassword,
   );
 }
 
-// --- Screens ---
-
 function Intro1() {
   return (
     <div className="flex-1 flex flex-col justify-center min-h-0 pb-[130px]">
@@ -151,7 +145,7 @@ function Intro2() {
               className="absolute inset-0 rounded-[32px] overflow-hidden p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rotate-3 z-10"
             >
               <div className="relative w-full h-full rounded-[26px] overflow-hidden bg-black/50">
-                <img src="/image1.jpg" className="absolute inset-0 w-full h-full object-cover" alt="" />
+                <img src="/image1.png" className="absolute inset-0 w-full h-full object-cover" alt="" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                 <div className="absolute bottom-4 right-4 w-[22%] aspect-square min-w-[32px] bg-[#e07c30] rounded-full flex items-center justify-center border-[2px] border-[#111] shadow-lg">
                   <Camera size={18} color="white" />
@@ -195,7 +189,7 @@ function Intro3() {
               <span className="text-white text-xs font-bold truncate">The Apartment</span>
             </div>
             <div className="relative flex-1 rounded-[16px] overflow-hidden bg-black/40 border border-white/5">
-              <img src="/image1.jpg" className="absolute inset-0 w-full h-full object-cover" alt="" />
+              <img src="/image1.png" className="absolute inset-0 w-full h-full object-cover" alt="" />
               <div className="absolute bottom-2 left-2 right-2 flex gap-1 z-10">
                 {["😮", "😂", "❤️"].map((e, i) => (
                   <div key={i} className="w-6 h-6 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-[10px] border border-white/10">{e}</div>
@@ -230,7 +224,6 @@ function Intro3() {
   );
 }
 
-// --- Strict Universal PWA Enforcer Screen ---
 function InstallEnforcerScreen() {
   const [os, setOs] = useState<"ios" | "android" | "desktop" | "unknown">("unknown");
   const [browser, setBrowser] = useState<"safari" | "chrome" | "other">("other");
@@ -273,11 +266,12 @@ function InstallEnforcerScreen() {
   };
 
   const isWrongBrowser = (os === "ios" && browser !== "safari") || (os === "android" && browser !== "chrome");
-  const showRecommendBrowser = isWrongBrowser && !dismissedWarning;
+  const isDevBypass = process.env.NEXT_PUBLIC_DEVELOPMENT === "true";
+  const showRecommendBrowser = isWrongBrowser && !dismissedWarning && !isDevBypass;
+  
   const storeName = os === "android" ? "Play Store" : "App Store";
   const isApple = os === "ios";
 
-  // Variation 1: Recommend Browser
   if (showRecommendBrowser) {
     const recommendedBrowser = os === "ios" ? "Safari" : "Chrome";
     const browserIcon = os === "ios" ? "/assets/icons/safari.png" : "/assets/icons/chrome.png";
@@ -322,7 +316,6 @@ function InstallEnforcerScreen() {
     );
   }
 
-  // Variation 2: PWA Install (No Bypass Options)
   return (
     <>
       <div className="flex-1 flex flex-col pt-6 min-h-0 w-full relative z-10">
@@ -511,7 +504,7 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
         <InputField label="Password" placeholder="Enter your password" isPassword value={password} onChange={(e: any) => setPassword(e.target.value)} />
 
         <div className="flex justify-start mb-6 mt-1">
-          <button className="text-[#e07c30] text-[13px] font-semibold hover:underline">Forgot password?</button>
+          <button onClick={() => alert("Password reset instructions sent to your email!")} className="text-[#e07c30] text-[13px] font-semibold hover:underline">Forgot password?</button>
         </div>
 
         <button
@@ -531,15 +524,15 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
         </div>
 
         <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
-          {[GoogleIcon, AppleIcon, FacebookIcon].map((Icon, i) => (
-            <button
-              key={i}
-              style={glassStyle(0.04, 20, 0.1)}
-              className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-            >
-              <Icon />
-            </button>
-          ))}
+          <button onClick={() => signIn("google")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+            <GoogleIcon />
+          </button>
+          <button onClick={() => signIn("apple")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+            <AppleIcon />
+          </button>
+          <button onClick={() => alert("Facebook login coming soon!")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+            <FacebookIcon />
+          </button>
         </div>
 
         <div className="text-center mt-auto flex-shrink-0 pt-4">
@@ -572,7 +565,6 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
       setError(res.error);
       setLoading(false);
     } else {
-      // Auto-login upon successful signup
       const loginRes = await signIn("credentials", {
         redirect: false,
         email,
@@ -627,15 +619,15 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
         </div>
 
         <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
-          {[GoogleIcon, AppleIcon, FacebookIcon].map((Icon, i) => (
-            <button
-              key={i}
-              style={glassStyle(0.04, 20, 0.1)}
-              className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-            >
-              <Icon />
-            </button>
-          ))}
+          <button onClick={() => signIn("google")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+            <GoogleIcon />
+          </button>
+          <button onClick={() => signIn("apple")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+            <AppleIcon />
+          </button>
+          <button onClick={() => alert("Facebook login coming soon!")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+            <FacebookIcon />
+          </button>
         </div>
 
         <div className="text-center mt-auto flex-shrink-0 pt-4">
@@ -647,7 +639,6 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
   );
 }
 
-// --- Permissions Authorization Screen ---
 function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void }) {
   const [cameraGranted, setCameraGranted] = useState(false);
   const [notificationGranted, setNotificationGranted] = useState(false);
@@ -657,7 +648,6 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
   const [notifyError, setNotifyError] = useState("");
 
   useEffect(() => {
-    // Check if permissions are already configured in device registry
     if (typeof navigator !== "undefined" && navigator.permissions) {
       navigator.permissions.query({ name: "camera" as any }).then((result) => {
         setCameraGranted(result.state === "granted");
@@ -673,7 +663,7 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
     setCameraError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      stream.getTracks().forEach((track) => track.stop()); // Release media resource cleanly
+      stream.getTracks().forEach((track) => track.stop());
       setCameraGranted(true);
     } catch (err) {
       console.warn("Camera/Mic request failed:", err);
@@ -743,18 +733,14 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
       </div>
 
       <div className="flex-1 flex flex-col overflow-y-auto scrollbar-hide pb-8">
-        {/* Large illustrative image */}
         <div className="relative w-full max-h-[160px] flex items-center justify-center my-4 flex-shrink-0">
           <div className="absolute inset-0 rounded-full blur-3xl w-40 h-40 mx-auto" />
-
           <div className="hidden absolute inset-0 flex items-center justify-center z-10">
             <Bell size={64} className="text-[#e07c30] animate-pulse" />
           </div>
         </div>
 
-        {/* Action cards for permissions */}
         <div className="flex flex-col gap-3.5 mb-8 flex-shrink-0">
-          {/* Camera Card */}
           <div
             style={glassStyle(0.04, 16, 0.08)}
             className="p-4 rounded-[22px] border border-white/5 flex flex-col gap-3"
@@ -795,7 +781,6 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
             </button>
           </div>
 
-          {/* Notifications Card */}
           <div
             style={glassStyle(0.04, 16, 0.08)}
             className="p-4 rounded-[22px] border border-white/5 flex flex-col gap-3"
@@ -837,7 +822,6 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
           </div>
         </div>
 
-        {/* Action Button */}
         <button
           onClick={handleContinue}
           style={{ background: ACCENT }}
@@ -850,7 +834,6 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
   );
 }
 
-// --- Profile Customization Screen ---
 function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step: Step) => void; signUpName: string }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(signUpName || "");
@@ -862,7 +845,6 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Initialize auto-generated handle based on signup name
   useEffect(() => {
     if (signUpName) {
       const generated = signUpName.toLowerCase().replace(/[^a-z0-9_]/g, "") + Math.floor(100 + Math.random() * 900);
@@ -910,7 +892,6 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
     setLoading(true);
 
     try {
-      // 1. Upload Avatar if selected
       if (avatarBase64) {
         const avatarRes = await uploadAvatar(avatarBase64);
         if (avatarRes.error) {
@@ -920,7 +901,6 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
         }
       }
 
-      // 2. Update Profile changes
       const profileRes = await updateProfile({
         name: name.trim(),
         handle: handle.toLowerCase().trim().replace(/\s+/g, ""),
@@ -931,7 +911,6 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
       if (profileRes.error) {
         setError(profileRes.error);
       } else {
-        // Clear caches so the new profile details are loaded fresh immediately on home screen
         if (typeof window !== "undefined") {
           localStorage.removeItem("cached_profile");
         }
@@ -958,7 +937,6 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
           </div>
         )}
 
-        {/* Avatar Picker */}
         <div className="flex flex-col items-center justify-center gap-2.5 mb-6 flex-shrink-0">
           <div className="relative">
             <div
@@ -989,7 +967,6 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
           <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Select Profile Photo</span>
         </div>
 
-        {/* Input fields */}
         <div className="flex flex-col gap-1">
           <InputField
             label="Display Name"
@@ -1023,7 +1000,6 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
           </div>
         </div>
 
-        {/* Save Button */}
         <button
           onClick={handleSaveProfile}
           disabled={loading || !name.trim() || !handle.trim()}
@@ -1117,13 +1093,13 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
               <img src="/profile.jpg" className="w-full h-full object-cover" alt="" />
             </div>
             <div className="absolute top-[45%] left-[20%] -translate-x-1/2 -translate-y-1/2 w-[16%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
-              <img src="/image1.jpg" className="w-full h-full object-cover" alt="" />
+              <img src="/image1.png" className="w-full h-full object-cover" alt="" />
             </div>
             <div className="absolute top-[45%] left-[80%] -translate-x-1/2 -translate-y-1/2 w-[20%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
               <img src="/profile.jpg" className="w-full h-full object-cover" alt="" />
             </div>
             <div className="absolute top-[80%] left-[30%] -translate-x-1/2 -translate-y-1/2 w-[18%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
-              <img src="/image1.jpg" className="w-full h-full object-cover" alt="" />
+              <img src="/image1.png" className="w-full h-full object-cover" alt="" />
             </div>
             <div className="absolute top-[80%] left-[70%] -translate-x-1/2 -translate-y-1/2 w-[16%] aspect-square rounded-full overflow-hidden border-2 border-white/20 bg-black">
               <img src="/profile.jpg" className="w-full h-full object-cover" alt="" />
@@ -1180,8 +1156,6 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
   );
 }
 
-// --- Main Page Wrapper ---
-
 export default function OnboardingPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -1235,7 +1209,6 @@ export default function OnboardingPage() {
       intro2: 1,
       intro3: 2,
       installPwa: 3,
-      browserWarning: 4,
       signin: 5,
       signup: 5,
       permissions: 6,
@@ -1245,8 +1218,9 @@ export default function OnboardingPage() {
 
     if (typeof window !== "undefined") {
       const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
+      const isDevBypass = process.env.NEXT_PUBLIC_DEVELOPMENT === "true";
 
-      if (!isStandalone && (newStep === "signin" || newStep === "signup")) {
+      if (!isStandalone && !isDevBypass && (newStep === "signin" || newStep === "signup")) {
         setDirection(order["installPwa"] >= order[step] ? 1 : -1);
         setStep("installPwa");
         return;
@@ -1276,26 +1250,16 @@ export default function OnboardingPage() {
 
   const renderStep = () => {
     switch (step) {
-      case "intro1":
-        return <Intro1 />;
-      case "intro2":
-        return <Intro2 />;
-      case "intro3":
-        return <Intro3 />;
-      case "installPwa":
-        return <InstallEnforcerScreen />;
-      case "signin":
-        return <SignIn onNavigate={navigate} />;
-      case "signup":
-        return <SignUp onNavigate={navigate} onSignUpSuccess={setSignUpName} />;
-      case "permissions":
-        return <PermissionsScreen onNavigate={navigate} />;
-      case "customizeProfile":
-        return <CustomizeProfileScreen onNavigate={navigate} signUpName={signUpName} />;
-      case "join":
-        return <JoinGroup onNavigate={navigate} />;
-      default:
-        return null;
+      case "intro1": return <Intro1 />;
+      case "intro2": return <Intro2 />;
+      case "intro3": return <Intro3 />;
+      case "installPwa": return <InstallEnforcerScreen />;
+      case "signin": return <SignIn onNavigate={navigate} />;
+      case "signup": return <SignUp onNavigate={navigate} onSignUpSuccess={setSignUpName} />;
+      case "permissions": return <PermissionsScreen onNavigate={navigate} />;
+      case "customizeProfile": return <CustomizeProfileScreen onNavigate={navigate} signUpName={signUpName} />;
+      case "join": return <JoinGroup onNavigate={navigate} />;
+      default: return null;
     }
   };
 

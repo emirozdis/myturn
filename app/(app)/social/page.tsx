@@ -6,8 +6,8 @@ import { UserPlus, Users, ArrowRight, X, Search, Check, Flame, Compass, Loader2,
 import { useRouter } from "next/navigation";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
-import { getSocialData } from "@/actions/social";
-import { joinGroup, createGroup, getGroupDetails, leaveGroup } from "@/actions/group";
+import { getSocialData, sendFriendRequest, respondFriendRequest } from "@/actions/social";
+import { joinGroup, createGroup, getGroupDetails } from "@/actions/group";
 import { Avatar } from "@/components/shared/avatar";
 
 const TABS = ["Friends", "Groups", "Requests", "Discover"];
@@ -22,7 +22,6 @@ export default function SocialPage() {
   const [enrollMsg, setEnrollMsg] = useState("");
   const [joining, setJoining] = useState(false);
 
-  // Read immediately from cache to prevent skeleton flash
   const [socialData, setSocialData] = useState<any>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -33,7 +32,6 @@ export default function SocialPage() {
     return null;
   });
 
-  // Create Group State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [createdGroupCode, setCreatedGroupCode] = useState("");
@@ -41,12 +39,17 @@ export default function SocialPage() {
   const [createError, setCreateError] = useState("");
   const [creating, setCreating] = useState(false);
 
-  // Group Detail State
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [loadingDetailsId, setLoadingDetailsId] = useState<string | null>(null);
 
-  // Guard to prevent concurrent duplicate fetching
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
   const isFetchingRef = useRef(false);
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const loadSocial = async () => {
     if (isFetchingRef.current) return;
@@ -126,7 +129,6 @@ export default function SocialPage() {
     setLoadingDetailsId(null);
 
     if (res.success && res.group) {
-      // Trigger the slide up Apple Sheet layout for Group Details
       window.dispatchEvent(
         new CustomEvent("open-bottom-sheet", {
           detail: {
@@ -141,7 +143,7 @@ export default function SocialPage() {
         })
       );
     } else if (res.error) {
-      alert(res.error);
+      showToast(res.error, "error");
     }
   };
 
@@ -155,7 +157,7 @@ export default function SocialPage() {
   const copyExistingCode = (e: React.MouseEvent, code: string) => {
     e.stopPropagation();
     navigator.clipboard.writeText(code);
-    alert(`Code "${code}" copied to clipboard! Share it with friends to invite them. ✨`);
+    showToast(`Code "${code}" copied to clipboard!`);
   };
 
   const closeCreateFlow = () => {
@@ -166,7 +168,48 @@ export default function SocialPage() {
     loadSocial();
   };
 
-  // Only show skeleton on absolute first load with no cached data
+  const handleSendRequest = async (userId: string) => {
+    setSocialData((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        suggestions: prev.suggestions.map((s: any) => s.id === userId ? { ...s, requested: true } : s)
+      };
+    });
+    const res = await sendFriendRequest(userId);
+    if (res.success) {
+      showToast("Friend request sent!", "success");
+    } else {
+      showToast(res.error || "Failed to send request.", "error");
+      setSocialData((prev: any) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          suggestions: prev.suggestions.map((s: any) => s.id === userId ? { ...s, requested: false } : s)
+        };
+      });
+    }
+  };
+
+  const handleRespondRequest = async (requestId: string, accept: boolean) => {
+    setSocialData((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        pendingRequests: prev.pendingRequests.filter((r: any) => r.id !== requestId)
+      };
+    });
+    
+    const res = await respondFriendRequest(requestId, accept);
+    if (res.success) {
+      showToast(accept ? "Friend request accepted!" : "Friend request declined.", "success");
+      if (accept) loadSocial(); 
+    } else {
+      showToast(res.error || "Failed to respond.", "error");
+      loadSocial(); 
+    }
+  };
+
   if (initialLoad && !socialData) {
     return (
       <div className="flex-1 flex flex-col gap-4 px-0 pt-6 animate-pulse">
@@ -182,7 +225,7 @@ export default function SocialPage() {
     );
   }
 
-  const { friends, groups, suggestions, trending } = socialData;
+  const { friends = [], groups = [], suggestions = [], trending = [], pendingRequests = [] } = socialData;
   const activeIndex = TABS.indexOf(activeTab);
 
   const renderTabContent = () => {
@@ -208,7 +251,7 @@ export default function SocialPage() {
               <div className="absolute inset-y-0 right-0 w-[65%] pointer-events-none mask-image-gradient">
                 <div className="absolute inset-0 bg-gradient-to-r from-[#2c2c2c] via-transparent to-transparent z-10" />
                 <img
-                  src="/image1.jpg"
+                  src="/image1.png"
                   alt="Friends"
                   className="w-full h-full object-cover opacity-70"
                 />
@@ -230,7 +273,7 @@ export default function SocialPage() {
 
             <div>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white text-[17px] font-bold tracking-tight">Group Co-Members ({friends.length})</h2>
+                <h2 className="text-white text-[17px] font-bold tracking-tight">Your Friends ({friends.length})</h2>
               </div>
               {friends.length > 0 ? (
                 <div
@@ -264,49 +307,53 @@ export default function SocialPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-white/30 text-xs">No group members found. Share your group code!</p>
+                <p className="text-white/30 text-xs">No connections found. Send some friend requests!</p>
               )}
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-white text-[17px] font-bold tracking-tight">Suggested Connections</h2>
-              </div>
-              <div className="flex flex-col gap-3">
-                {suggestions.map((user: any) => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-3 rounded-[22px] transition-all hover:bg-white/[0.06]"
-                    style={glassStyle(0.03, 16, 0.06)}
-                  >
-                    <div className="flex items-center gap-3.5">
-                      <Avatar
-                        src={user.image}
-                        name={user.name}
-                        size={44}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white text-[14px] font-bold truncate leading-tight tracking-tight">
-                          {user.name}
-                        </div>
-                        <div className="text-white/50 text-[11px] font-medium mt-0.5">{user.mutual} mutual groups</div>
-                      </div>
-                    </div>
-                    <button
-                      className="px-4 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95 whitespace-nowrap"
-                      style={{
-                        background: "rgba(224,124,48,0.15)",
-                        border: "1px solid rgba(224,124,48,0.4)",
-                        color: ACCENT,
-                        boxShadow: "inset 0 1px 2px rgba(255,255,255,0.1)"
-                      }}
+            {suggestions && suggestions.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-white text-[17px] font-bold tracking-tight">Suggested Connections</h2>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {suggestions.map((user: any) => (
+                    <div
+                      key={user.id}
+                      className="flex items-center justify-between p-3 rounded-[22px] transition-all hover:bg-white/[0.06]"
+                      style={glassStyle(0.03, 16, 0.06)}
                     >
-                      Connect
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex items-center gap-3.5">
+                        <Avatar
+                          src={user.image}
+                          name={user.name}
+                          size={44}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-white text-[14px] font-bold truncate leading-tight tracking-tight">
+                            {user.name}
+                          </div>
+                          <div className="text-white/50 text-[11px] font-medium mt-0.5">{user.mutual} mutual groups</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => !user.requested && handleSendRequest(user.id)}
+                        disabled={user.requested}
+                        className="px-4 py-1.5 rounded-full text-[11px] font-bold transition-all whitespace-nowrap disabled:opacity-50 disabled:bg-transparent disabled:text-white/50"
+                        style={user.requested ? { border: "1px solid rgba(255,255,255,0.2)" } : {
+                          background: "rgba(224,124,48,0.15)",
+                          border: "1px solid rgba(224,124,48,0.4)",
+                          color: ACCENT,
+                          boxShadow: "inset 0 1px 2px rgba(255,255,255,0.1)"
+                        }}
+                      >
+                        {user.requested ? "Requested" : "Connect"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </motion.div>
         );
 
@@ -400,11 +447,9 @@ export default function SocialPage() {
                     style={glassStyle(0.03, 16, 0.06)}
                   >
                     <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                      <img
-                        src="/image1.jpg"
-                        alt={group.name}
-                        className="w-14 h-14 rounded-full object-cover shadow-md border-[1.5px] border-white/10 flex-shrink-0"
-                      />
+                      <div className="w-14 h-14 rounded-full shadow-md border-[1.5px] border-white/10 flex-shrink-0 flex items-center justify-center bg-white/5 text-2xl font-bold">
+                        {group.name.charAt(0).toUpperCase()}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-white text-[15px] font-bold truncate tracking-tight">{group.name}</div>
                         <div className="text-white/60 text-[11px] font-medium flex items-center gap-1.5 mt-0.5">
@@ -450,13 +495,37 @@ export default function SocialPage() {
             transition={{ duration: 0.2 }}
             className="flex flex-col gap-8 pb-24"
           >
-            <div className="py-12 flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-                <Check size={24} className="text-white/30" />
-              </div>
-              <p className="text-white/70 font-semibold text-[14px]">You&apos;re all caught up!</p>
-              <p className="text-white/40 text-[12px] mt-1">No pending invitations or join requests.</p>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-white text-[17px] font-bold tracking-tight">Pending Requests ({pendingRequests?.length || 0})</h2>
             </div>
+            
+            {pendingRequests && pendingRequests.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                {pendingRequests.map((req: any) => (
+                  <div key={req.id} className="flex items-center justify-between p-3 rounded-[22px] transition-all hover:bg-white/[0.06]" style={glassStyle(0.03, 16, 0.06)}>
+                    <div className="flex items-center gap-3.5">
+                      <Avatar src={req.user.image} name={req.user.name} size={44} />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-white text-[14px] font-bold truncate leading-tight tracking-tight">{req.user.name}</div>
+                        <div className="text-white/50 text-[11px] font-medium mt-0.5">@{req.user.handle}</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleRespondRequest(req.id, true)} className="px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95 bg-[#e07c30] text-black">Accept</button>
+                      <button onClick={() => handleRespondRequest(req.id, false)} className="px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95 bg-white/10 text-white/70 hover:bg-red-500/20 hover:text-red-400">Decline</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-12 flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                  <Check size={24} className="text-white/30" />
+                </div>
+                <p className="text-white/70 font-semibold text-[14px]">You're all caught up!</p>
+                <p className="text-white/40 text-[12px] mt-1">No pending invitations or join requests.</p>
+              </div>
+            )}
           </motion.div>
         );
 
@@ -496,11 +565,9 @@ export default function SocialPage() {
                     style={glassStyle(0.03, 16, 0.06)}
                   >
                     <div className="flex items-center gap-3.5">
-                      <img
-                        src="/image1.jpg"
-                        alt={group.name}
-                        className="w-12 h-12 rounded-xl object-cover border border-white/15 shadow-sm"
-                      />
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white/5 border border-white/15 shadow-sm text-white font-bold text-lg">
+                        {group.name.charAt(0).toUpperCase()}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-white text-[15px] font-bold truncate tracking-tight">
                           {group.name}
@@ -522,7 +589,23 @@ export default function SocialPage() {
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden relative">
-      {/* Background refresh indicator */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: "-50%" }}
+            animate={{ opacity: 1, y: 0, x: "-50%" }}
+            exit={{ opacity: 0, y: -20, x: "-50%" }}
+            className={`absolute top-4 left-1/2 z-[60] w-[90%] p-3 rounded-2xl flex items-center justify-center shadow-lg border backdrop-blur-md ${
+              toast.type === "success" 
+                ? "bg-emerald-900/90 border-emerald-500/20 text-emerald-400" 
+                : "bg-red-900/90 border-red-500/20 text-red-400"
+            }`}
+          >
+            <span className="text-xs font-bold">{toast.msg}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {refreshing && (
         <div className="absolute top-4 right-0 z-20 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full pointer-events-none">
           <span className="w-1.5 h-1.5 rounded-full bg-[#e07c30] animate-pulse" />
@@ -579,7 +662,6 @@ export default function SocialPage() {
         </AnimatePresence>
       </motion.div>
 
-      {/* Slide-over Create Group Panel */}
       <AnimatePresence>
         {showCreateModal && (
           <motion.div

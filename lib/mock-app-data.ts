@@ -143,7 +143,7 @@ export const MOCK_APP: MockAppState = {
     { id: "u4", name: "Ali", initials: "AL", lastVlogged: "2 days ago", streak: 3 },
     { id: "u5", name: "Mina", initials: "MI", lastVlogged: "3 days ago", streak: 1 },
   ],
-  inviteLink: "https://dayroll.app/join/the-apartment",
+  inviteLink: "https://myturn.app/join/the-apartment",
   notifications: {
     todaysTurn: true,
     someoneUploads: true,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Flame, PartyPopper, MapPin } from "lucide-react";
+import { X, Flame, MapPin } from "lucide-react";
 import { getGroupDetails } from "@/actions/group";
 import { Avatar } from "@/components/shared/avatar";
 import { glassStyle } from "@/components/shared/glass-style";
@@ -43,7 +43,8 @@ export function VloggerRevealModal({
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleClose = () => {
-    localStorage.setItem(`revealed_vlogger_${assignment.id}`, "true");
+    const dateStr = assignment?.date ? new Date(assignment.date).toISOString().split("T")[0] : "";
+    localStorage.setItem(`revealed_vlogger_${groupId}_${dateStr}`, "true");
     onClose();
   };
 
@@ -276,6 +277,7 @@ export function VloggerRevealModal({
         }}
       />
 
+      {/* Close Button styled with safe-area calculations and unified glass styling */}
       <AnimatePresence>
         {animationPhase === "idle" && (
           <motion.button
@@ -284,7 +286,11 @@ export function VloggerRevealModal({
             exit={{ opacity: 0, scale: 0.5, filter: "blur(4px)" }}
             transition={{ duration: 0.3 }}
             onClick={handleClose}
-            className="absolute top-6 right-6 z-50 w-10 h-10 rounded-full flex items-center justify-center transition-all hover:bg-white/10 bg-[#161618] border border-white/5"
+            className="absolute right-6 z-50 w-10 h-10 rounded-full flex items-center justify-center transition-all hover:bg-white/10"
+            style={{
+              top: "max(1.5rem, env(safe-area-inset-top, 1.5rem))",
+              ...glassStyle(0.04, 16, 0.08)
+            }}
           >
             <X size={18} className="text-white/60" />
           </motion.button>
@@ -570,7 +576,7 @@ export function VloggerRevealModal({
               );
             })}
 
-            {/* Center Reveal Button '?' (Idle) */}
+            {/* Center Reveal Button '?' (Idle) styled with glassmorphism */}
             <AnimatePresence>
               {animationPhase === "idle" && (
                 <motion.button
@@ -580,7 +586,12 @@ export function VloggerRevealModal({
                   exit={{ opacity: 0, scale: 0.5, filter: "blur(10px)" }}
                   transition={{ duration: 0.4 }}
                   onClick={() => setPhase("spinning")}
-                  className="absolute z-30 w-[130px] h-[130px] rounded-full flex items-center justify-center bg-[#0a0a0a] border-[3px] border-[#e07c30] text-[#e07c30] font-bold text-[64px] hover:bg-[#e07c30]/10 transition-colors shadow-[0_0_40px_rgba(224,124,48,0.15)]"
+                  className="absolute z-30 w-[130px] h-[130px] rounded-full flex items-center justify-center text-[#e07c30] font-bold text-[64px] hover:bg-[#e07c30]/10 transition-colors shadow-[0_0_40px_rgba(224,124,48,0.15)] border-solid"
+                  style={{
+                    ...glassStyle(0.06, 20, 0.15),
+                    borderWidth: "3px",
+                    borderColor: "#e07c30"
+                  }}
                 >
                   ?
                 </motion.button>
@@ -597,7 +608,8 @@ export function VloggerRevealModal({
                 initial={{ opacity: 0, y: 40, filter: "blur(8px)" }}
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                 transition={{ type: "spring", stiffness: 150, damping: 22, delay: 0.4 }}
-                className="w-full bg-[#161618] border border-white/5 rounded-3xl p-6 pb-8 flex flex-col items-center text-center shadow-2xl"
+                className="w-full rounded-3xl p-6 pb-8 flex flex-col items-center text-center shadow-2xl"
+                style={glassStyle(0.04, 20, 0.08)}
               >
                 <h2 className="text-white text-[22px] font-bold mb-2">Ready for action!</h2>
                 <p className="text-white/50 text-[13px] leading-relaxed max-w-[260px] mb-6">

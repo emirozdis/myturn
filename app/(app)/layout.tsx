@@ -7,14 +7,15 @@ import { NEUTRAL_PAGE_BG } from "../../lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { GroupSwipePager } from "@/components/group-swipe-pager";
 import { BottomNavRouter } from "@/components/bottom-nav-router";
-import { getUserGroups } from "@/actions/group";
-import { Loader2, Plus, Users, Copy, Check, Info } from "lucide-react";
-import { addComment, getOrCreateTodayAssignment } from "@/actions/vlog";
+import { getUserGroups, leaveGroup } from "@/actions/group";
+import { Loader2, Plus, Users, Copy, Check, Info, LogOut } from "lucide-react";
+import { addComment, getOrCreateTodayAssignment, getLatestCompilation } from "@/actions/vlog";
 import { glassStyle } from "@/components/shared/glass-style";
 import { ACCENT } from "@/lib/theme";
 import { Avatar } from "@/components/shared/avatar";
 import { VloggerRevealModal } from "@/components/vlogger-reveal-modal";
 import { AchievementOverlay, AchievementConfig } from "@/components/achievements/achievement-overlay";
+import { CompilationReadyModal } from "@/components/compilation-ready-modal";
 import { ACHIEVEMENT_MOCKS } from "@/components/achievements/achievement-data";
 import {
   registerPushServiceWorker,
@@ -30,6 +31,40 @@ export interface GroupConfig {
   emoji: string;
   memberCount: number;
 }
+
+// Scans localStorage and deletes any older modal presentation flags from previous days or groups
+const cleanupStaleStorageKeys = (groupId: string, currentDateStr: string) => {
+  if (typeof window === "undefined") return;
+  try {
+    const keysToRemove: string[] = [];
+    const activeVloggerPattern = `revealed_vlogger_${groupId}_${currentDateStr}`;
+    const activeRecapPattern = `seen_recap_${groupId}_${currentDateStr}`;
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        if (
+          (key.startsWith("revealed_vlogger_") && key !== activeVloggerPattern) ||
+          (key.startsWith("seen_recap_") && key !== activeRecapPattern)
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  } catch (e) {
+    console.error("Failed to clean up stale localStorage keys:", e);
+  }
+};
+
+const getAssignmentDateStr = (asg: any) => {
+  if (!asg?.date) return "";
+  try {
+    return new Date(asg.date).toISOString().split("T")[0];
+  } catch {
+    return "";
+  }
+};
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -53,7 +88,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     return [];
   });
 
-  // Synchronously initialize index to match cache and prevent mid-load remounts
   const [activeGroupIndex, setActiveGroupIndex] = useState<number>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -80,11 +114,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [commentsList, setCommentsList] = useState<any[]>([]);
   const [submittingComment, setSubmittingComment] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [leavingGroup, setLeavingGroup] = useState(false);
 
   const [showRevealModal, setShowRevealModal] = useState(false);
   const [revealAssignment, setRevealAssignment] = useState<any>(null);
 
-  // Global Level Up and Achievement overlays triggers
+  const [globalCompilation, setGlobalCompilation] = useState<any>(null);
   const [unlockedOverlay, setUnlockedOverlay] = useState<AchievementConfig | null>(null);
   const [levelUpOverlay, setLevelUpOverlay] = useState<{ type: "group" | "individual"; from: string | number; to: string | number; name?: string } | null>(null);
 
@@ -105,13 +142,35 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           } catch { }
         }
 
-        const storageKey = `revealed_vlogger_${res.assignment.id}`;
-        if (!localStorage.getItem(storageKey)) {
-          setShowRevealModal(true);
+        const dateStr = getAssignmentDateStr(res.assignment);
+        if (dateStr) {
+          cleanupStaleStorageKeys(groupId, dateStr);
+          const storageKey = `revealed_vlogger_${groupId}_${dateStr}`;
+          if (!localStorage.getItem(storageKey)) {
+            setShowRevealModal(true);
+          }
         }
       }
     } catch (e) {
       console.error("Failed to check vlogger reveal status:", e);
+    }
+  }, []);
+
+  const checkGlobalCompilation = useCallback(async (groupId: string) => {
+    try {
+      const res = await getLatestCompilation(groupId);
+      if (res.success && res.assignment) {
+        const dateStr = getAssignmentDateStr(res.assignment);
+        if (dateStr) {
+          cleanupStaleStorageKeys(groupId, dateStr);
+          const seenKey = `seen_recap_${groupId}_${dateStr}`;
+          if (!localStorage.getItem(seenKey)) {
+             setGlobalCompilation(res.assignment);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to check compilation recap status:", e);
     }
   }, []);
 
@@ -130,16 +189,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         if (foundIndex !== -1) {
           setActiveGroupIndex(foundIndex);
           checkRevealStatus(res.groups[foundIndex].id);
+          checkGlobalCompilation(res.groups[foundIndex].id);
         } else {
           localStorage.setItem("active_group_id", res.groups[0].id);
           setActiveGroupIndex(0);
           checkRevealStatus(res.groups[0].id);
+          checkGlobalCompilation(res.groups[0].id);
         }
       }
     } else {
       setGroups([]);
     }
-  }, [checkRevealStatus]);
+  }, [checkRevealStatus, checkGlobalCompilation]);
 
   useEffect(() => {
     loadGroups();
@@ -153,9 +214,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         localStorage.setItem("active_group_id", groupId);
         window.dispatchEvent(new CustomEvent("group-changed", { detail: groupId }));
         checkRevealStatus(groupId);
+        checkGlobalCompilation(groupId);
       }
     },
-    [groups, checkRevealStatus]
+    [groups, checkRevealStatus, checkGlobalCompilation]
   );
 
   useEffect(() => {
@@ -244,7 +306,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       setCreateError("");
       window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
 
-      // Trigger achievement popup if newly unlocked
       if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
         res.newlyUnlocked.forEach((id: string) => {
           window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
@@ -261,6 +322,27 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     setTimeout(() => setCopySuccess(false), 2000);
   };
 
+  const handleLeaveGroup = () => {
+    if (!sheetData?.groupId) return;
+    setShowLeaveConfirm(true);
+  };
+
+  const confirmLeaveGroup = async () => {
+    if (!sheetData?.groupId) return;
+    setLeavingGroup(true);
+    const res = await leaveGroup(sheetData.groupId);
+    setLeavingGroup(false);
+    setShowLeaveConfirm(false);
+
+    if (res.success) {
+      setActiveSheet(null);
+      loadGroups();
+      router.push("/social");
+    } else {
+      alert(res.error || "Failed to leave group.");
+    }
+  };
+
   const isRecordPreview = activeTab === "record" && recordStep === "PREVIEW";
   const showMainChrome = activeTab !== "streaks" && !isRecordPreview;
   const isTodayTab = activeTab === "today";
@@ -269,7 +351,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const showBottomNav = activeTab !== "record" || recordStep === "CAMERA";
   const hasNoGroups = groups.length === 0 && !groupsLoading;
 
-  // Bypasses the blocker screen if they are specifically navigating to Social or Profile to onboard or adjust settings
   const isBypassPage = pathname === "/social" || pathname === "/profile";
   const showNoGroupsScreen = hasNoGroups && !isBypassPage;
 
@@ -296,7 +377,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     </div>
   );
 
-  // Convert Level Up metadata structurally into high-end standard AchievementConfig on the fly
   const getLevelUpConfig = (): AchievementConfig | null => {
     if (!levelUpOverlay) return null;
     const isIndiv = levelUpOverlay.type === "individual";
@@ -354,7 +434,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </div>
             ) : showNoGroupsScreen ? (
               <div className="flex-1 flex flex-col justify-center px-6 py-8 relative overflow-hidden animate-fade-in">
-                {/* Immersive background glow */}
                 <div 
                   className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full pointer-events-none filter blur-[90px] opacity-20"
                   style={{ background: `radial-gradient(circle, ${ACCENT} 0%, transparent 70%)` }}
@@ -364,7 +443,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   style={glassStyle(0.04, 24, 0.08)}
                   className="relative z-10 w-full rounded-[36px] border border-white/5 p-6 flex flex-col items-center text-center shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
                 >
-                  {/* Glowing custom icon container */}
                   <div className="relative mb-6">
                     <div 
                       className="absolute inset-0 rounded-full blur-xl scale-125 opacity-30"
@@ -385,7 +463,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     MyTurn is built for close friends. Share raw, daily moments and grow your streaks!
                   </p>
 
-                  {/* iOS-inspired interactive step guide */}
                   <div className="w-full flex flex-col gap-3 text-left mb-6">
                     {[
                       { step: "1", title: "Join with Invite Code", desc: "Use a shared code from your friends or create your own." },
@@ -430,7 +507,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   />
                 )}
 
-                {/* Wrap layout content in the GroupSwipePager ONLY on swipeable tabs */}
                 {isSwipeableTab ? (
                   <GroupSwipePager
                     groups={groups}
@@ -459,7 +535,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          {/* Global Bottom Sheet */}
           <AnimatePresence>
             {activeSheet && (
               <>
@@ -531,7 +606,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                   <span className="text-white text-xs font-bold">
                                     {comm.user?.name || "Friend"}
                                   </span>
-                                  <span className="text-white/70 text-[11px] font-medium truncate w-full text-center mt-0.5">
+                                  <span className="text-white/70 text-[11px] font-medium truncate w-full mt-0.5">
                                     {comm.text}
                                   </span>
                                 </div>
@@ -635,6 +710,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                             ))}
                           </div>
                         </div>
+
+                        <button
+                          onClick={handleLeaveGroup}
+                          className="w-full mt-4 py-3.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition hover:bg-red-500/20 active:scale-95"
+                        >
+                          <LogOut size={16} />
+                          Leave Group
+                        </button>
                       </div>
                     )}
                   </div>
@@ -643,7 +726,75 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             )}
           </AnimatePresence>
 
-          {/* Vlogger Selection Reveal Modal */}
+          <AnimatePresence>
+            {showLeaveConfirm && (
+              <>
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setShowLeaveConfirm(false)}
+                  className="absolute inset-0 z-[60] bg-black/60 backdrop-blur-sm cursor-pointer"
+                />
+                <motion.div
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "100%" }}
+                  transition={{ type: "spring", damping: 30, stiffness: 350 }}
+                  className="absolute bottom-0 inset-x-0 z-[70] rounded-t-[32px] p-6 flex flex-col bg-neutral-950/95 border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
+                >
+                  <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-5 flex-shrink-0" />
+                  <div className="flex flex-col items-center text-center gap-4">
+                    <div
+                      className="w-14 h-14 rounded-full flex items-center justify-center border border-red-500/20 shadow-sm"
+                      style={{ background: `rgba(239,68,68,0.15)` }}
+                    >
+                      <LogOut size={24} className="text-red-500" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <h3 className="text-white text-lg font-bold">Leave Group?</h3>
+                      <p className="text-white/50 text-xs leading-relaxed max-w-[280px]">
+                        You will lose access to all its content and your streaks will be reset.
+                      </p>
+                    </div>
+                    <div className="w-full flex gap-3 mt-4">
+                      <button
+                        type="button"
+                        onClick={() => setShowLeaveConfirm(false)}
+                        className="flex-1 py-3.5 rounded-xl text-white font-bold text-sm bg-white/5 border border-white/10 hover:bg-white/10 active:scale-[0.98] transition-all"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={confirmLeaveGroup}
+                        disabled={leavingGroup}
+                        className="flex-1 py-3.5 rounded-xl text-white font-bold text-sm bg-red-500 hover:bg-red-600 active:scale-[0.98] transition-all flex justify-center items-center gap-2"
+                      >
+                        {leavingGroup ? <Loader2 size={16} className="animate-spin" /> : "Leave"}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+
+          {/* Compilation Ready Modal (Auto Popup global with date-scaped seen tracking) */}
+          <AnimatePresence>
+            {globalCompilation && groups[activeGroupIndex] && (
+              <CompilationReadyModal 
+                assignment={globalCompilation}
+                onClose={() => {
+                  const dateStr = getAssignmentDateStr(globalCompilation);
+                  localStorage.setItem(`seen_recap_${groups[activeGroupIndex].id}_${dateStr}`, "true");
+                  setGlobalCompilation(null);
+                }}
+                isArchive={false}
+              />
+            )}
+          </AnimatePresence>
+
           <AnimatePresence>
             {showRevealModal && revealAssignment && groups[activeGroupIndex] && (
               <VloggerRevealModal
@@ -654,7 +805,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             )}
           </AnimatePresence>
 
-          {/* Dynamic Achievement Unlock Overlay Popup */}
           <AnimatePresence>
             {unlockedOverlay && (
               <AchievementOverlay
@@ -664,7 +814,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             )}
           </AnimatePresence>
 
-          {/* Dynamic Level Up Popup Modal - Re-routed to render with exact same high-end layout matching achievements */}
           <AnimatePresence>
             {levelUpOverlay && activeLevelUpConfig && (
               <AchievementOverlay

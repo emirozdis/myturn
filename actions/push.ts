@@ -25,29 +25,6 @@ if (vapidPrivateKey) {
   console.warn("[Push Config] WARNING: VAPID_PRIVATE_KEY is missing in your .env. Push notifications will fail.");
 }
 
-/**
- * Self-healing mechanism: Generates the PushSubscription schema table in the 
- * PostgreSQL instance if it has not yet been processed by Prisma migrations.
- */
-async function ensureSubscriptionsTable() {
-  try {
-    await db.$executeRaw`
-      CREATE TABLE IF NOT EXISTS "PushSubscription" (
-        "id" TEXT NOT NULL,
-        "userId" TEXT NOT NULL,
-        "endpoint" TEXT NOT NULL,
-        "p256dh" TEXT NOT NULL,
-        "auth" TEXT NOT NULL,
-        "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "PushSubscription_pkey" PRIMARY KEY ("id"),
-        CONSTRAINT "PushSubscription_endpoint_key" UNIQUE ("endpoint")
-      );
-    `;
-  } catch (err) {
-    console.error("Failed to verify PushSubscription table existence:", err);
-  }
-}
-
 export async function saveSubscription(subscription: {
   endpoint: string;
   keys: { p256dh: string; auth: string };
@@ -58,23 +35,45 @@ export async function saveSubscription(subscription: {
       return { error: "Unauthorized. Please log in first." };
     }
 
-    await ensureSubscriptionsTable();
-
     const userId = session.user.id;
     const { endpoint, keys } = subscription;
+    
     const id = `${userId}_${Buffer.from(endpoint).toString("base64").substring(0, 40)}`;
 
-    await db.$executeRaw`
-      INSERT INTO "PushSubscription" ("id", "userId", "endpoint", "p256dh", "auth")
-      VALUES (${id}, ${userId}, ${endpoint}, ${keys.p256dh}, ${keys.auth})
-      ON CONFLICT ("endpoint") DO UPDATE
-      SET "userId" = EXCLUDED."userId", "p256dh" = EXCLUDED."p256dh", "auth" = EXCLUDED."auth";
-    `;
+    await db.pushSubscription.upsert({
+      where: { endpoint },
+      update: {
+        userId,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+      },
+      create: {
+        id,
+        userId,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+      },
+    });
 
     return { success: true };
   } catch (error: any) {
     console.error("Failed to register active device subscription:", error);
     return { error: error?.message || "Internal database subscription registration failure." };
+  }
+}
+
+// Server action to safely delete subscription endpoints from the database
+export async function deleteSubscription(endpoint: string) {
+  try {
+    // We use deleteMany so that it gracefully succeeds even if the record does not exist
+    await db.pushSubscription.deleteMany({
+      where: { endpoint }
+    });
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to delete push subscription on logout:", error);
+    return { error: error?.message || "Internal database subscription deletion failure." };
   }
 }
 
@@ -115,12 +114,11 @@ export async function sendPushNotification(
     console.error(`[Push Service] FAILURE. Server returned status code: ${error.statusCode || "Unknown"}`);
     console.error("[Push Service] Detailed Error logs:", error.message || error);
 
-    // Graceful token cleanup if browser returns 410 (revoked) or 404 (stale subscription)
     if (error.statusCode === 410 || error.statusCode === 404) {
       try {
-        await db.$executeRaw`
-          DELETE FROM "PushSubscription" WHERE "endpoint" = ${subscription.endpoint};
-        `;
+        await db.pushSubscription.delete({
+          where: { endpoint: subscription.endpoint }
+        });
         console.log(`[Push Service] Cleaned up stale push subscription endpoint: ${subscription.endpoint}`);
       } catch (dbErr) {
         console.error("[Push Service] Database cleanup error:", dbErr);
@@ -135,11 +133,9 @@ export async function sendPushToUser(
   payload: { title: string; body: string; url?: string }
 ) {
   try {
-    await ensureSubscriptionsTable();
-
-    const subscriptions: any[] = await db.$queryRaw`
-      SELECT "endpoint", "p256dh", "auth" FROM "PushSubscription" WHERE "userId" = ${userId};
-    `;
+    const subscriptions = await db.pushSubscription.findMany({
+      where: { userId }
+    });
 
     if (!subscriptions || subscriptions.length === 0) {
       console.log(`[Push Service] User ${userId} has no registered PWA push subscriptions.`);

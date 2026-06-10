@@ -46,3 +46,14 @@ body {
 *::after {
   overscroll-behavior: none;
 }
+
+/* Landscape Blocker Fallback for Mobile Web */
+/* Hides UI and shows block warning ONLY if '.allow-landscape' is not present */
+@media screen and (orientation: landscape) and (max-height: 700px) and (hover: none) {
+  body:not(.allow-landscape) .portrait-app {
+    display: none !important;
+  }
+  body:not(.allow-landscape) .landscape-blocker {
+    display: flex !important;
+  }
+}

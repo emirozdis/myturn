@@ -9,7 +9,7 @@ export type UiTab = "today" | "social" | "record" | "streaks" | "profile";
 
 const TABS: { id: UiTab; icon: ReactNode; label: string; special?: boolean }[] = [
   { id: "today", icon: <Clapperboard size={18} />, label: "Today" },
-  { id: "streaks", icon: <Trophy size={18} />, label: "Streaks" },
+  { id: "streaks", icon: <Trophy size={18} />, label: "Archive" },
   { id: "record", icon: <Camera size={19} />, label: "Record", special: true },
   { id: "social", icon: <Users size={18} />, label: "Social" },
   { id: "profile", icon: <User size={18} />, label: "Profile" },

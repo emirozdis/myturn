@@ -4,11 +4,13 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera, Pencil, MapPin, Calendar, Clapperboard, Users,
-  LogOut, ChevronRight, UserCircle, IdCard, Bell, ChevronLeft, Play, Crown, Loader2, Check
+  LogOut, ChevronRight, UserCircle, IdCard, Bell, ChevronLeft, Play, Crown, Loader2, Check, Trash2, X
 } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { getProfileData, updateProfile, uploadAvatar } from "@/actions/profile";
+import { deleteClip } from "@/actions/vlog";
+import { deleteSubscription } from "@/actions/push";
 import { signOut } from "next-auth/react";
 import { Avatar } from "@/components/shared/avatar";
 import { registerPushServiceWorker, subscribeToPush, getVapidPublicKey, urlBase64ToUint8Array } from "@/lib/push-client";
@@ -154,7 +156,7 @@ function EditProfilePanel({
             <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Username</p>
             <div style={{ position: "relative" }}>
               <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.40)", fontSize: 14 }}>@</span>
-              <input value={handle} onChange={e => setHandle(e.target.value)} style={{ ...s.input, paddingLeft: 28 } as any} placeholder="handle" />
+              <input value={handle} onChange={e => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} style={{ ...s.input, paddingLeft: 28 } as any} placeholder="handle" />
             </div>
           </div>
           <div>
@@ -224,7 +226,11 @@ function NotificationsPanel({ onBack }: { onBack: () => void }) {
         setError("Notifications permission was denied. Please enable permission in your device/browser settings.");
       }
     } catch (err: any) {
-      setError(err?.message || "Failed to configure push alerts.");
+      let msg = err?.message || "Failed to configure push alerts.";
+      if (msg.includes("Registration failed - push service error") || msg.includes("push service error")) {
+        msg = "Push service error. If you are using Brave Browser, please enable 'Use Google services for push messaging' in brave://settings/privacy and reload.";
+      }
+      setError(msg);
     } finally {
       setSubscribing(false);
     }
@@ -318,7 +324,7 @@ function NotificationsPanel({ onBack }: { onBack: () => void }) {
   );
 }
 
-function VlogsGrid({ clips }: { clips: any[] }) {
+function VlogsGrid({ clips, onPlayClip }: { clips: any[]; onPlayClip: (clip: any) => void }) {
   if (clips.length === 0) {
     return (
       <div style={{ textAlign: "center", padding: "32px 0", color: "rgba(255,255,255,0.25)", fontSize: 13 }}>
@@ -330,16 +336,27 @@ function VlogsGrid({ clips }: { clips: any[] }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
       {clips.map(v => (
-        <div key={v.id} style={{ position: "relative", borderRadius: 12, overflow: "hidden", aspectRatio: "4/3", background: "#222", cursor: "pointer" }}>
-          <img src={v.thumbnailUrl || "/image1.jpg"} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.78) 40%, transparent 100%)" }} />
-          <div style={{ position: "absolute", top: 7, left: 7, background: "rgba(0,0,0,0.55)", borderRadius: 6, padding: "2px 7px", display: "flex", alignItems: "center", gap: 4 }}>
+        <div 
+          key={v.id} 
+          onClick={() => onPlayClip(v)}
+          className="group relative rounded-xl overflow-hidden aspect-[4/3] bg-[#222] cursor-pointer"
+        >
+          <img src={v.thumbnailUrl || "/image1.jpg"} alt="" className="w-full h-full object-cover block group-hover:scale-105 transition-transform duration-500" />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.78) 10%, transparent 100%)" }} />
+          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+            <div className="w-10 h-10 rounded-full bg-black/50 backdrop-blur border border-white/20 flex items-center justify-center">
+              <Play size={16} className="text-white ml-1" />
+            </div>
+          </div>
+          <div style={{ position: "absolute", top: 7, left: 7, background: "rgba(0,0,0,0.55)", borderRadius: 6, padding: "3px 7px", display: "flex", alignItems: "center", gap: 4 }}>
             <Play size={9} color="#fff" fill="#fff" />
-            <span style={{ color: "#fff", fontSize: 10, fontWeight: 600 }}>0:12</span>
+            <span style={{ color: "#fff", fontSize: 10, fontWeight: 600 }}>Play</span>
           </div>
           <div style={{ position: "absolute", bottom: 8, left: 8, right: 8 }}>
-            <p style={{ color: "#fff", fontWeight: 700, fontSize: 12, margin: 0, lineHeight: 1.2 }}>Daily Update</p>
-            <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, margin: "2px 0 0" }}>{new Date(v.recordedAt).toLocaleDateString()}</p>
+            <p style={{ color: "#fff", fontWeight: 700, fontSize: 12, margin: 0, lineHeight: 1.2 }}>
+              {new Date(v.recordedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+            </p>
+            <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 10, margin: "2px 0 0" }}>{v.location || "Earth"}</p>
           </div>
         </div>
       ))}
@@ -348,7 +365,6 @@ function VlogsGrid({ clips }: { clips: any[] }) {
 }
 
 function RankContent({ user, vlogsCount, calendarDays }: { user: any; vlogsCount: number; calendarDays: any[] }) {
-  // Setup dynamic threshold matching user vibe xp limits
   const xp = user.xp || 0;
   let nextRankGoal = 100;
   let prevRankGoal = 0;
@@ -452,18 +468,34 @@ export default function ProfilePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [activePlaybackClip, setActivePlaybackClip] = useState<any>(null);
+  const [deletingClip, setDeletingClip] = useState(false);
 
-  const handleLogout = () => {
+  // Robustly delete push subscription from browser & DB on logout
+  const handleLogout = async () => {
     if (typeof window !== "undefined") {
+      try {
+        if ("serviceWorker" in navigator) {
+          const registration = await navigator.serviceWorker.getRegistration();
+          if (registration) {
+            const subscription = await registration.pushManager.getSubscription();
+            if (subscription) {
+              await deleteSubscription(subscription.endpoint);
+              await subscription.unsubscribe();
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Silent push unsubscription during logout bypassed:", err);
+      }
+
       localStorage.clear();
       sessionStorage.clear();
     }
-
     signOut({ callbackUrl: "/" });
   };
 
   const fetchProfile = async () => {
-    // Prevent multiple parallel executions
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
@@ -471,7 +503,6 @@ export default function ProfilePage() {
     const res = await getProfileData();
     if (res.success) {
       setProfile(res);
-      // Persist for instant next-load
       if (typeof window !== "undefined") {
         localStorage.setItem("cached_profile", JSON.stringify(res));
       }
@@ -483,7 +514,6 @@ export default function ProfilePage() {
 
   useEffect(() => {
     fetchProfile();
-    console.log("Profile Mounted");
   }, []);
 
   const triggerAvatarSelection = () => {
@@ -498,7 +528,6 @@ export default function ProfilePage() {
     reader.onload = async (event) => {
       const img = new Image();
       img.onload = async () => {
-        // High-end client compression: Maintain uniform 256x256 aspect ratio bounds
         const canvas = document.createElement("canvas");
         const SIZE = 256;
         canvas.width = SIZE;
@@ -529,6 +558,24 @@ export default function ProfilePage() {
     reader.readAsDataURL(file);
   };
 
+  const handleDeleteActiveClip = async () => {
+    if (!activePlaybackClip) return;
+    const confirm = window.confirm("Are you sure you want to delete this vlog? This action cannot be undone.");
+    if (!confirm) return;
+
+    setDeletingClip(true);
+    const res = await deleteClip(activePlaybackClip.id);
+    setDeletingClip(false);
+
+    if (res.success) {
+      setActivePlaybackClip(null);
+      fetchProfile();
+      window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
+    } else {
+      alert(res.error || "Failed to delete vlog.");
+    }
+  };
+
   const activityTabs = [
     { key: "vlogs" as const, label: "Vlogs" },
     { key: "rank" as const, label: "Rank" },
@@ -536,11 +583,9 @@ export default function ProfilePage() {
 
   const settingsRows = [
     { icon: UserCircle, label: "Edit Profile", sub: "Update your information", panel: "editProfile" as const },
-    { icon: IdCard, label: "Account Details", sub: "Email, phone, password", panel: "accountDetails" as const },
     { icon: Bell, label: "Push Notifications", sub: "Configure daily alerts", panel: "notifications" as const },
   ];
 
-  // Only block on very first load with no cached data
   if (initialLoad && !profile) {
     return (
       <div className="flex-1 flex flex-col gap-4 px-4 pt-4 animate-pulse">
@@ -561,6 +606,7 @@ export default function ProfilePage() {
 
   const { user, totalVlogs, groupsCount, friendsCount, clips, calendarDays } = profile;
   const vibeStyle = getVibeBadgeStyle(user.archetype);
+  const joinedYear = user.createdAt ? new Date(user.createdAt).getFullYear() : 2026;
 
   return (
     <motion.div
@@ -569,14 +615,13 @@ export default function ProfilePage() {
       transition={{ duration: 0.15, ease: "easeOut" }}
       className="flex-1 flex flex-col relative overflow-hidden -mx-4 min-h-0"
     >
-      {/* Subtle background-refresh indicator */}
       {refreshing && (
         <div className="absolute top-4 right-4 z-20 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full pointer-events-none" style={{ zIndex: 5 }}>
           <span className="w-1.5 h-1.5 rounded-full bg-[#e07c30] animate-pulse" />
           <span className="text-white/50 text-[9px] font-semibold tracking-wide">updating</span>
         </div>
       )}
-      {/* Hidden File Input for Image Selection */}
+      
       <input
         type="file"
         ref={fileInputRef}
@@ -587,7 +632,7 @@ export default function ProfilePage() {
       />
 
       <div
-        className="flex-1 overflow-y-auto flex flex-col scrollbar-hide"
+        className="flex-1 overflow-y-auto flex flex-col scrollbar-hide pb-16"
         style={{ WebkitOverflowScrolling: "touch", msOverflowStyle: "none" }}
       >
         <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
@@ -638,7 +683,7 @@ export default function ProfilePage() {
               </span>
               <span style={{ color: "rgba(255,255,255,0.20)", fontSize: 11 }}>•</span>
               <span style={{ display: "flex", alignItems: "center", gap: 4, color: "rgba(255,255,255,0.45)", fontSize: 11 }}>
-                <Calendar size={12} color="rgba(255,255,255,0.45)" /> Joined 2026
+                <Calendar size={12} color="rgba(255,255,255,0.45)" /> Joined {joinedYear}
               </span>
             </div>
           </div>
@@ -696,7 +741,7 @@ export default function ProfilePage() {
           </div>
           <AnimatePresence mode="wait">
             <motion.div key={activityTab} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
-              {activityTab === "vlogs" && <VlogsGrid clips={clips} />}
+              {activityTab === "vlogs" && <VlogsGrid clips={clips} onPlayClip={setActivePlaybackClip} />}
               {activityTab === "rank" && <RankContent user={user} vlogsCount={totalVlogs} calendarDays={calendarDays} />}
             </motion.div>
           </AnimatePresence>
@@ -714,6 +759,56 @@ export default function ProfilePage() {
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {activePlaybackClip && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ ease: [0.16, 1, 0.3, 1], duration: 0.3 }}
+            className="absolute inset-0 z-50 bg-black flex flex-col justify-between"
+          >
+            <video
+              src={activePlaybackClip.videoUrl}
+              autoPlay
+              loop
+              playsInline
+              className="absolute inset-0 w-full h-full object-cover z-0"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-10" />
+
+            <div className="relative z-20 p-4 pt-12 flex justify-between items-center">
+              <div className="flex flex-col">
+                <span className="text-white text-sm font-bold tracking-tight drop-shadow-md">
+                  {new Date(activePlaybackClip.recordedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                </span>
+                <span className="text-white/60 text-xs font-medium">{activePlaybackClip.location || "Earth"}</span>
+              </div>
+              
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleDeleteActiveClip}
+                  disabled={deletingClip}
+                  className="w-10 h-10 bg-black/40 backdrop-blur rounded-full text-white/80 flex items-center justify-center hover:bg-red-500/20 hover:text-red-400 transition border border-white/10"
+                >
+                  {deletingClip ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                </button>
+                <button 
+                  onClick={() => setActivePlaybackClip(null)}
+                  className="w-10 h-10 bg-black/40 backdrop-blur rounded-full text-white font-extrabold flex items-center justify-center hover:bg-white/20 transition border border-white/10"
+                >
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+              </div>
+            </div>
+
+            <div className="relative z-20 p-6 mt-auto text-center pointer-events-none">
+              <span className="text-white/50 text-[11px] font-medium tracking-wide uppercase">Historical Archive</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {panel === "editProfile" && (
@@ -740,7 +835,6 @@ export default function ProfilePage() {
       <AnimatePresence>
         {panel === "logoutConfirm" && (
           <>
-            {/* Backdrop Overlay */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -748,8 +842,6 @@ export default function ProfilePage() {
               onClick={() => setPanel(null)}
               className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm cursor-pointer"
             />
-
-            {/* Sliding Card */}
             <motion.div
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
@@ -758,9 +850,7 @@ export default function ProfilePage() {
               onClick={(e) => e.stopPropagation()}
               className="absolute bottom-0 inset-x-0 z-50 rounded-t-[32px] p-6 flex flex-col bg-neutral-950/95 border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
             >
-              {/* Apple Handle bar indicator */}
               <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-5 flex-shrink-0" />
-
               <div className="flex flex-col items-center text-center gap-4">
                 <div
                   className="w-14 h-14 rounded-full flex items-center justify-center border border-[#e07c30]/20 shadow-sm"
@@ -768,14 +858,12 @@ export default function ProfilePage() {
                 >
                   <LogOut size={24} className="text-[#e07c30]" />
                 </div>
-
                 <div className="flex flex-col gap-1.5">
                   <h3 className="text-white text-lg font-bold">Log out?</h3>
                   <p className="text-white/50 text-xs leading-relaxed max-w-[280px]">
                     You'll need to sign in again to access your account.
                   </p>
                 </div>
-
                 <div className="w-full flex gap-3 mt-4">
                   <button
                     type="button"

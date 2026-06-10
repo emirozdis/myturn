@@ -3,33 +3,26 @@
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { getVibeArchetype } from "@/lib/vibe";
+import { supabaseServer } from "@/lib/supabase";
 
 export async function getStreaksData(groupId: string) {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
-    // Get group info and members
     const group = await db.group.findUnique({
       where: { id: groupId },
       include: {
         members: {
           include: {
-            user: {
-              select: { id: true, name: true, image: true },
-            },
+            user: { select: { id: true, name: true, image: true } },
           },
         },
       },
     });
 
-    if (!group) {
-      return { error: "Group not found" };
-    }
+    if (!group) return { error: "Group not found" };
 
-    // Sort group members by dynamic streak ranks and member XP values
     const friendsStreaks = group.members
       .map((member) => ({
         name: member.user.name || "User",
@@ -43,29 +36,71 @@ export async function getStreaksData(groupId: string) {
       .sort((a, b) => b.xp - a.xp)
       .map((item, idx) => ({ ...item, rank: idx + 1 }));
 
-    // Fetch daily assignments for streaks calendar mapping
     const assignments = await db.dailyAssignment.findMany({
       where: { groupId },
+      include: {
+        user: { select: { id: true, name: true, handle: true, image: true } },
+        clips: {
+          orderBy: { recordedAt: "asc" },
+        }
+      },
       orderBy: { date: "asc" },
     });
 
-    // Render calendar history for streaks page (April 2026 placeholder offset context)
-    const calendarDays = Array.from({ length: 30 }).map((_, i) => {
-      const dayNum = i + 1;
-      const matchingAssignment = assignments.find(
-        (asg) => new Date(asg.date).getDate() === dayNum
-      );
-      return {
-        d: dayNum,
-        type: matchingAssignment
-          ? matchingAssignment.status === "completed"
-            ? "vlogged"
-            : "missed"
-          : "empty",
-      };
-    });
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-    // Compute user specific group statistics
+    const calendarDays = await Promise.all(
+      Array.from({ length: daysInMonth }).map(async (_, i) => {
+        const dayNum = i + 1;
+        const matchingAssignment = assignments.find((asg) => {
+          const d = new Date(asg.date);
+          return d.getDate() === dayNum && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        });
+        
+        if (matchingAssignment) {
+          const type = matchingAssignment.status === "completed" ? "vlogged" : matchingAssignment.status === "missed" ? "missed" : "active";
+          
+          let resolvedClips: any[] = [];
+          if (type === "vlogged" && matchingAssignment.clips && matchingAssignment.clips.length > 0) {
+            resolvedClips = await Promise.all(
+              matchingAssignment.clips.map(async (clip) => {
+                try {
+                  const { data: videoData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.videoUrl, 3600);
+                  const { data: thumbData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.thumbnailUrl, 3600);
+                  return {
+                    ...clip,
+                    videoUrl: videoData?.signedUrl || clip.videoUrl,
+                    thumbnailUrl: thumbData?.signedUrl || clip.thumbnailUrl,
+                  };
+                } catch {
+                  return clip;
+                }
+              })
+            );
+          }
+
+          return {
+            d: dayNum,
+            type: type === "active" ? "empty" : type,
+            assignment: {
+              id: matchingAssignment.id,
+              user: matchingAssignment.user,
+              clips: resolvedClips,
+              date: matchingAssignment.date,
+            }
+          };
+        }
+        
+        return {
+          d: dayNum,
+          type: "empty",
+        };
+      })
+    );
+
     const userMembership = group.members.find((m) => m.userId === session.user.id);
     const totalClips = await db.clip.count({
       where: { groupId, userId: session.user.id },
@@ -74,7 +109,7 @@ export async function getStreaksData(groupId: string) {
     return {
       success: true,
       currentStreak: userMembership?.streak || 0,
-      bestStreak: (userMembership?.streak || 0) + 4, // Best streak relative offset mapping
+      bestStreak: (userMembership?.streak || 0) + 4,
       totalVlogs: totalClips,
       friendsStreaks,
       calendarDays,

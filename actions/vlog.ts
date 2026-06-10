@@ -52,7 +52,7 @@ export async function checkAndUnlockAchievement(userId: string, achievementId: s
           groupId,
         },
       });
-      return true; // Newly unlocked!
+      return true;
     }
     return false;
   } catch (err) {
@@ -78,8 +78,6 @@ export async function getUnlockedAchievements() {
   }
 }
 
-// --- CORE VLOG FUNCTIONS ---
-
 export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
   const now = new Date();
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -93,23 +91,16 @@ export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
   const day = parts.find((p) => p.type === "day")?.value;
   const year = parts.find((p) => p.type === "year")?.value;
 
-  // Create a Date object forced to midnight UTC for that calendar day
   return new Date(`${year}-${month}-${day}T00:00:00Z`);
 }
 
-/**
- * Sweeps and transitions stale active assignments into missed status,
- * resetting the associated user's streak in that group and applying
- * harsh progressive deranking penalty.
- */
 export async function processGroupDayTransition(groupId: string, localDate: Date) {
+  // 1. Mark missed assignments and process decay
   const missedAssignments = await db.dailyAssignment.findMany({
     where: {
       groupId,
       status: "active",
-      date: {
-        lt: localDate,
-      },
+      date: { lt: localDate },
     },
   });
 
@@ -120,21 +111,12 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
     });
 
     await db.groupMember.updateMany({
-      where: {
-        groupId,
-        userId: asg.userId,
-      },
+      where: { groupId, userId: asg.userId },
       data: { streak: 0 },
     });
 
-    // HARSH DERANKING: Deduct -150 XP on turn lapses
     const member = await db.groupMember.findUnique({
-      where: {
-        groupId_userId: {
-          groupId,
-          userId: asg.userId,
-        },
-      },
+      where: { groupId_userId: { groupId, userId: asg.userId } },
     });
 
     if (member) {
@@ -146,17 +128,44 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
     }
   }
 
-  // HARSH INACTIVITY DECAY:
-  // Starts after 5 days of zero activity, -20 XP daily.
-  // After 14 days of inactivity, extra -50 XP penalty applied daily (Total -70 XP/day).
-  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
-  const inactiveMembers = await db.groupMember.findMany({
+  // 2. Identify freshly completed assignments from yesterday to trigger push notifications
+  const completedAssignments = await db.dailyAssignment.findMany({
     where: {
       groupId,
-      lastActiveAt: {
-        lt: fiveDaysAgo,
-      },
+      status: "completed",
+      date: { lt: localDate },
+      recapNotified: false
     },
+    include: { user: true, group: true }
+  });
+
+  for (const assignment of completedAssignments) {
+    await db.dailyAssignment.update({
+      where: { id: assignment.id },
+      data: { recapNotified: true }
+    });
+
+    const members = await db.groupMember.findMany({ where: { groupId } });
+    for (const member of members) {
+      if (member.userId !== assignment.userId) {
+        await sendPushToUser(member.userId, {
+          title: "Daily Recap Ready! 🍿",
+          body: `@${assignment.user.handle || assignment.user.name}'s vlog from yesterday in "${assignment.group.name}" is ready to watch!`,
+          url: "/streaks",
+        });
+      } else {
+        await sendPushToUser(member.userId, {
+          title: "Your Day is Ready! 🎉",
+          body: `Your vlog from yesterday in "${assignment.group.name}" has been compiled and is ready to share.`,
+          url: "/streaks",
+        });
+      }
+    }
+  }
+
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+  const inactiveMembers = await db.groupMember.findMany({
+    where: { groupId, lastActiveAt: { lt: fiveDaysAgo } },
   });
 
   const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
@@ -165,7 +174,7 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
     let decayAmount = 20;
     const lastActiveTime = new Date(member.lastActiveAt).getTime();
     if (lastActiveTime < fourteenDaysAgo.getTime()) {
-      decayAmount += 50; // Heavy inactivity decay trigger
+      decayAmount += 50; 
     }
 
     const newXp = Math.max(0, member.xp - decayAmount);
@@ -176,46 +185,31 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
   }
 }
 
-/**
- * Shared logic to handle day transitions and roll today's assignment cleanly.
- */
 export async function rollGroupAssignmentForDate(groupId: string, localDate: Date) {
-  // 1. Process any outstanding past day transitions/missed assignments
   await processGroupDayTransition(groupId, localDate);
 
-  // 2. Check if today's assignment already exists
   const existingAssignment = await db.dailyAssignment.findFirst({
-    where: {
-      groupId,
-      date: localDate,
-    },
+    where: { groupId, date: localDate },
   });
 
   if (existingAssignment) {
     return existingAssignment;
   }
 
-  // 3. Roll a new assignment
   const group = await db.group.findUnique({
     where: { id: groupId },
-    include: {
-      members: true,
-    },
+    include: { members: true },
   });
 
   if (!group || group.members.length === 0) {
     return null;
   }
 
-  // Pick a member at random. Ensure we don't pick yesterday's if possible
   const yesterdayDate = new Date(localDate);
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
 
   const yesterdayAssignment = await db.dailyAssignment.findFirst({
-    where: {
-      groupId,
-      date: yesterdayDate,
-    },
+    where: { groupId, date: yesterdayDate },
   });
 
   let pool = group.members;
@@ -234,7 +228,6 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     },
   });
 
-  // Notify group participants of the assignment roll
   try {
     const groupMembers = await db.groupMember.findMany({
       where: { groupId },
@@ -271,40 +264,25 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
 export async function getOrCreateTodayAssignment(groupId: string) {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
-    const group = await db.group.findUnique({
-      where: { id: groupId },
-    });
-
-    if (!group) {
-      return { error: "Group not found" };
-    }
+    const group = await db.group.findUnique({ where: { id: groupId } });
+    if (!group) return { error: "Group not found" };
 
     const localDate = await getLocalDateInTimezone(group.timezone);
-
-    // Roll or retrieve today's assignment
     const assignment = await rollGroupAssignmentForDate(groupId, localDate);
 
-    if (!assignment) {
-      return { error: "No members in group to assign" };
-    }
+    if (!assignment) return { error: "No members in group to assign" };
 
-    // Fetch fully populated assignment context with group timezone and user details
     const fullyPopulatedAssignment = await db.dailyAssignment.findFirst({
       where: { id: assignment.id },
       include: {
-        group: {
-          select: {
-            timezone: true,
-            xp: true,
-            level: true,
-          },
-        },
-        user: {
-          select: { id: true, name: true, image: true, handle: true, bio: true, location: true },
+        group: { select: { timezone: true, xp: true, level: true } },
+        user: { select: { id: true, name: true, image: true, handle: true, bio: true, location: true } },
+        pokes: {
+          where: { pokerId: session.user.id },
+          orderBy: { createdAt: "desc" },
+          take: 1
         },
         clips: {
           orderBy: { recordedAt: "asc" },
@@ -312,18 +290,10 @@ export async function getOrCreateTodayAssignment(groupId: string) {
             reactions: true,
             comments: {
               orderBy: { createdAt: "asc" },
-              include: {
-                user: {
-                  select: { id: true, name: true, image: true, handle: true },
-                },
-              },
+              include: { user: { select: { id: true, name: true, image: true, handle: true } } },
             },
             views: {
-              include: {
-                user: {
-                  select: { id: true, name: true, image: true, handle: true },
-                },
-              },
+              include: { user: { select: { id: true, name: true, image: true, handle: true } } },
             },
           },
         },
@@ -336,25 +306,59 @@ export async function getOrCreateTodayAssignment(groupId: string) {
   }
 }
 
+export async function getLatestCompilation(groupId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+
+    const assignment = await db.dailyAssignment.findFirst({
+      where: { groupId, status: "completed" },
+      orderBy: { date: "desc" },
+      include: {
+        user: { select: { id: true, name: true, image: true, handle: true } },
+        clips: { orderBy: { recordedAt: "asc" } }
+      }
+    });
+
+    if (!assignment || assignment.clips.length === 0) return { success: false };
+
+    // Resolve signed URLs
+    const resolvedClips = await Promise.all(
+      assignment.clips.map(async (clip) => {
+        try {
+          const { data: videoData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.videoUrl, 3600);
+          const { data: thumbData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.thumbnailUrl, 3600);
+          return {
+            ...clip,
+            videoUrl: videoData?.signedUrl || clip.videoUrl,
+            thumbnailUrl: thumbData?.signedUrl || clip.thumbnailUrl,
+          };
+        } catch {
+          return clip;
+        }
+      })
+    );
+
+    return {
+      success: true,
+      assignment: { ...assignment, clips: resolvedClips }
+    };
+  } catch (error) {
+    return { error: "Failed to fetch latest compilation" };
+  }
+}
+
 export async function getSignedUploadUrls(groupId: string, assignmentId: string, ext: string = "webm") {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
     const timestamp = Date.now();
     const videoPath = `${groupId}/${assignmentId}/${timestamp}-vlog.${ext}`;
     const thumbPath = `${groupId}/${assignmentId}/${timestamp}-thumb.jpg`;
 
-    // Generate signed upload URLs for vlogs and thumbnails
-    const videoResponse = await supabaseServer.storage
-      .from("vlogs")
-      .createSignedUploadUrl(videoPath);
-
-    const thumbResponse = await supabaseServer.storage
-      .from("vlogs")
-      .createSignedUploadUrl(thumbPath);
+    const videoResponse = await supabaseServer.storage.from("vlogs").createSignedUploadUrl(videoPath);
+    const thumbResponse = await supabaseServer.storage.from("vlogs").createSignedUploadUrl(thumbPath);
 
     if (videoResponse.error || thumbResponse.error) {
       throw new Error("Storage Error: Failed to generate signed URLs.");
@@ -376,33 +380,18 @@ export async function createClip(data: {
   videoUrl: string;
   thumbnailUrl: string;
   location?: string;
+  caption?: string;
 }) {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
-    // Verify user is the assigned vlogger
-    const assignment = await db.dailyAssignment.findUnique({
-      where: { id: data.assignmentId },
-    });
+    const assignment = await db.dailyAssignment.findUnique({ where: { id: data.assignmentId } });
+    if (!assignment) return { error: "Active daily assignment not found" };
+    if (assignment.userId !== session.user.id) return { error: "It is not your turn to vlog today!" };
 
-    if (!assignment) {
-      return { error: "Active daily assignment not found" };
-    }
-
-    if (assignment.userId !== session.user.id) {
-      return { error: "It is not your turn to vlog today!" };
-    }
-
-    const group = await db.group.findUnique({
-      where: { id: data.groupId },
-    });
-
-    if (!group) {
-      return { error: "Group parameters unresolved" };
-    }
+    const group = await db.group.findUnique({ where: { id: data.groupId } });
+    if (!group) return { error: "Group parameters unresolved" };
 
     const isFirstClip = assignment.status === "active";
 
@@ -417,11 +406,18 @@ export async function createClip(data: {
       },
     });
 
-    // XP CALCULATIONS
-    let individualXpGain = 100; // Duty Bonus
-    let groupXpGain = 100;
+    if (data.caption && data.caption.trim()) {
+      await db.comment.create({
+        data: {
+          clipId: clip.id,
+          userId: session.user.id,
+          text: data.caption.trim(),
+        },
+      });
+    }
 
-    // Check First Light: Uploaded in first 2 hours of assignment selection
+    let individualXpGain = 100; 
+    let groupXpGain = 100;
     const twoHours = 2 * 60 * 60 * 1000;
     if (Date.now() - new Date(assignment.createdAt).getTime() < twoHours) {
       individualXpGain += 50;
@@ -432,15 +428,10 @@ export async function createClip(data: {
     let groupLevelUp: { from: number; to: number } | null = null;
     let individualTierUp: { from: string; to: string } | null = null;
 
-    // Check Savior Bonus: Uploaded in final hour of timezone countdown with active streak >= 10
     const memberRecord = await db.groupMember.findUnique({
-      where: {
-        groupId_userId: {
-          groupId: data.groupId,
-          userId: session.user.id,
-        },
-      },
+      where: { groupId_userId: { groupId: data.groupId, userId: session.user.id } },
     });
+    
     const streakCount = memberRecord?.streak || 0;
     if (getSecondsUntilMidnightInTz(group.timezone) < 3600 && streakCount >= 10) {
       individualXpGain += 150;
@@ -449,13 +440,11 @@ export async function createClip(data: {
       if (isNew) newlyUnlocked.push("the-savior");
     }
 
-    // Unlock zero-hour if posted within 30 minutes of assignment roll
     if (Date.now() - new Date(assignment.createdAt).getTime() < 30 * 60 * 1000) {
       const isNew = await checkAndUnlockAchievement(session.user.id, "zero-hour", data.groupId);
       if (isNew) newlyUnlocked.push("zero-hour");
     }
 
-    // Update dynamic statistics with newly computed XP
     if (memberRecord) {
       const nextStreakValue = isFirstClip ? streakCount + 1 : streakCount;
       const prevArchetype = getVibeArchetype(memberRecord.xp);
@@ -468,14 +457,9 @@ export async function createClip(data: {
 
       await db.groupMember.update({
         where: { id: memberRecord.id },
-        data: {
-          xp: finalXp,
-          lastActiveAt: new Date(),
-          streak: nextStreakValue,
-        },
+        data: { xp: finalXp, lastActiveAt: new Date(), streak: nextStreakValue },
       });
 
-      // Unlock sequential streaks milestones
       if (nextStreakValue >= 5) {
         const isNew = await checkAndUnlockAchievement(session.user.id, "on-duty", data.groupId);
         if (isNew) newlyUnlocked.push("on-duty");
@@ -495,24 +479,17 @@ export async function createClip(data: {
 
     await db.group.update({
       where: { id: group.id },
-      data: {
-        xp: updatedGroupXp,
-        level: calculatedLevel,
-      },
+      data: { xp: updatedGroupXp, level: calculatedLevel },
     });
 
     if (isFirstClip) {
-      // Update daily assignment status to completed if successfully posted
       await db.dailyAssignment.update({
         where: { id: data.assignmentId },
         data: { status: "completed" },
       });
     }
 
-    // Dynamic checks for long-term upload achievements
-    const clipsCount = await db.clip.count({
-      where: { userId: session.user.id },
-    });
+    const clipsCount = await db.clip.count({ where: { userId: session.user.id } });
     if (clipsCount >= 50) {
       const isNew = await checkAndUnlockAchievement(session.user.id, "silver-screen");
       if (isNew) newlyUnlocked.push("silver-screen");
@@ -522,31 +499,19 @@ export async function createClip(data: {
       if (isNew) newlyUnlocked.push("gold-standard");
     }
 
-    // Night-owl: clip created between 1 AM and 5 AM local server hour
     const serverHour = new Date().getHours();
     if (serverHour >= 1 && serverHour < 5) {
       const isNew = await checkAndUnlockAchievement(session.user.id, "night-owl", data.groupId);
       if (isNew) newlyUnlocked.push("night-owl");
     }
 
-    // Notify other group members about the new post
     try {
-      const poster = await db.user.findUnique({
-        where: { id: session.user.id },
-        select: { name: true, handle: true },
-      });
+      const poster = await db.user.findUnique({ where: { id: session.user.id }, select: { name: true, handle: true } });
       const posterName = poster?.name || `@${poster?.handle}` || "A friend";
-
-      const groupInfo = await db.group.findUnique({
-        where: { id: data.groupId },
-        select: { name: true },
-      });
+      const groupInfo = await db.group.findUnique({ where: { id: data.groupId }, select: { name: true } });
 
       const otherMembers = await db.groupMember.findMany({
-        where: {
-          groupId: data.groupId,
-          userId: { not: session.user.id },
-        },
+        where: { groupId: data.groupId, userId: { not: session.user.id } },
       });
 
       for (const member of otherMembers) {
@@ -572,12 +537,87 @@ export async function createClip(data: {
   }
 }
 
+export async function pokeVlogger(assignmentId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+
+    const THIRTY_MINUTES = 30 * 60 * 1000;
+    
+    const lastPoke = await db.poke.findFirst({
+      where: { assignmentId, pokerId: session.user.id },
+      orderBy: { createdAt: "desc" }
+    });
+
+    if (lastPoke) {
+      const timeSince = Date.now() - new Date(lastPoke.createdAt).getTime();
+      if (timeSince < THIRTY_MINUTES) {
+        const minutesLeft = Math.ceil((THIRTY_MINUTES - timeSince) / 60000);
+        return { error: `You can poke again in ${minutesLeft}m.` };
+      }
+    }
+
+    const assignment = await db.dailyAssignment.findUnique({
+      where: { id: assignmentId },
+      include: { group: true }
+    });
+    
+    if (!assignment || assignment.status !== "active") return { error: "Not an active assignment" };
+
+    await db.poke.create({
+      data: {
+        assignmentId,
+        pokerId: session.user.id
+      }
+    });
+
+    const poker = await db.user.findUnique({ where: { id: session.user.id } });
+    await sendPushToUser(assignment.userId, {
+      title: "You've been poked! 👀",
+      body: `${poker?.name || 'Someone'} is waiting for your MyTurn update in "${assignment.group.name}".`,
+      url: "/record"
+    });
+    
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+export async function deleteClip(clipId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+    
+    const clip = await db.clip.findUnique({ where: { id: clipId } });
+    if (!clip || clip.userId !== session.user.id) return { error: "Unauthorized to delete" };
+    
+    await db.clip.delete({ where: { id: clipId } });
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+export async function deleteComment(commentId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+    
+    const comment = await db.comment.findUnique({ where: { id: commentId } });
+    if (!comment || comment.userId !== session.user.id) return { error: "Unauthorized to delete" };
+    
+    await db.comment.delete({ where: { id: commentId } });
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
 export async function getSignedReadUrl(bucket: "vlogs" | "thumbnails" | "avatars", path: string) {
   try {
-    const response = await supabaseServer.storage.from(bucket).createSignedUrl(path, 3600); // 1 hour link
-    if (response.error) {
-      throw new Error(response.error.message);
-    }
+    const response = await supabaseServer.storage.from(bucket).createSignedUrl(path, 3600);
+    if (response.error) throw new Error(response.error.message);
     return { success: true, url: response.data.signedUrl };
   } catch (error: any) {
     return { error: error?.message || "Failed to generate read URL." };
@@ -587,59 +627,36 @@ export async function getSignedReadUrl(bucket: "vlogs" | "thumbnails" | "avatars
 export async function toggleReaction(clipId: string, emoji: string) {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
     const existing = await db.reaction.findFirst({
-      where: {
-        clipId,
-        userId: session.user.id,
-        emoji,
-      },
+      where: { clipId, userId: session.user.id, emoji },
     });
 
     if (existing) {
-      await db.reaction.delete({
-        where: { id: existing.id },
-      });
+      await db.reaction.delete({ where: { id: existing.id } });
       return { success: true, removed: true };
     }
 
     const reaction = await db.reaction.create({
-      data: {
-        clipId,
-        userId: session.user.id,
-        emoji,
-      },
+      data: { clipId, userId: session.user.id, emoji },
     });
 
     const newlyUnlocked: string[] = [];
-
-    // Check Hype-man achievement
-    const totalReactions = await db.reaction.count({
-      where: { userId: session.user.id },
-    });
+    const totalReactions = await db.reaction.count({ where: { userId: session.user.id } });
     if (totalReactions >= 100) {
       const isNew = await checkAndUnlockAchievement(session.user.id, "hype-man");
       if (isNew) newlyUnlocked.push("hype-man");
     }
 
-    // Notify the clip author about the reaction
     try {
       const targetClip = await db.clip.findUnique({
         where: { id: clipId },
-        include: {
-          group: { select: { name: true } },
-        },
+        include: { group: { select: { name: true } } },
       });
 
       if (targetClip && targetClip.userId !== session.user.id) {
-        const reactor = await db.user.findUnique({
-          where: { id: session.user.id },
-          select: { name: true },
-        });
-
+        const reactor = await db.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
         await sendPushToUser(targetClip.userId, {
           title: "New Reaction! ❤️",
           body: `${reactor?.name || "A friend"} reacted with ${emoji} to your vlog in "${targetClip.group.name}".`,
@@ -656,113 +673,63 @@ export async function toggleReaction(clipId: string, emoji: string) {
   }
 }
 
-/**
- * Handle dynamic commentary posts on active vlogs.
- */
 export async function addComment(clipId: string, text: string) {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
-    const clip = await db.clip.findUnique({
-      where: { id: clipId },
-      select: { groupId: true },
-    });
-
-    if (!clip) {
-      return { error: "Target clip parameters unresolved" };
-    }
+    const clip = await db.clip.findUnique({ where: { id: clipId }, select: { groupId: true } });
+    if (!clip) return { error: "Target clip parameters unresolved" };
 
     const comment = await db.comment.create({
-      data: {
-        clipId,
-        userId: session.user.id,
-        text,
-      },
-      include: {
-        user: {
-          select: { id: true, name: true, image: true, handle: true },
-        },
-      },
+      data: { clipId, userId: session.user.id, text },
+      include: { user: { select: { id: true, name: true, image: true, handle: true } } },
     });
 
     const newlyUnlocked: string[] = [];
-
-    // SPECTATOR COMMENTARY BONUS: (Capped at 30 XP daily per user)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const commentsWrittenToday = await db.comment.count({
-      where: {
-        userId: session.user.id,
-        createdAt: {
-          gte: today,
-        },
-      },
+      where: { userId: session.user.id, createdAt: { gte: today } },
     });
 
     if (commentsWrittenToday * 10 <= 30) {
       const groupMember = await db.groupMember.findUnique({
-        where: {
-          groupId_userId: {
-            groupId: clip.groupId,
-            userId: session.user.id,
-          },
-        },
+        where: { groupId_userId: { groupId: clip.groupId, userId: session.user.id } },
       });
 
       if (groupMember) {
         await db.groupMember.update({
           where: { id: groupMember.id },
-          data: {
-            xp: groupMember.xp + 10,
-            lastActiveAt: new Date(),
-          },
+          data: { xp: groupMember.xp + 10, lastActiveAt: new Date() },
         });
 
-        const targetGroup = await db.group.findUnique({
-          where: { id: clip.groupId },
-        });
-
+        const targetGroup = await db.group.findUnique({ where: { id: clip.groupId } });
         if (targetGroup) {
           const nextGroupXp = targetGroup.xp + 5;
           await db.group.update({
             where: { id: targetGroup.id },
-            data: {
-              xp: nextGroupXp,
-              level: calculateGroupLevel(nextGroupXp),
-            },
+            data: { xp: nextGroupXp, level: calculateGroupLevel(nextGroupXp) },
           });
         }
       }
     }
 
-    // Trigger director's commentary achievement check
-    const totalComments = await db.comment.count({
-      where: { userId: session.user.id },
-    });
+    const totalComments = await db.comment.count({ where: { userId: session.user.id } });
     if (totalComments >= 50) {
       const isNew = await checkAndUnlockAchievement(session.user.id, "directors-commentary");
       if (isNew) newlyUnlocked.push("directors-commentary");
     }
 
-    // Notify the clip author of the new comment
     try {
       const targetClip = await db.clip.findUnique({
         where: { id: clipId },
-        include: {
-          group: { select: { name: true } },
-        },
+        include: { group: { select: { name: true } } },
       });
 
       if (targetClip && targetClip.userId !== session.user.id) {
-        const commenter = await db.user.findUnique({
-          where: { id: session.user.id },
-          select: { name: true },
-        });
-
+        const commenter = await db.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
         const truncatedText = text.length > 60 ? `${text.substring(0, 57)}...` : text;
 
         await sendPushToUser(targetClip.userId, {
@@ -781,112 +748,60 @@ export async function addComment(clipId: string, text: string) {
   }
 }
 
-/**
- * Track unique vlog views natively to update active watchers indexes.
- */
 export async function trackView(clipId: string) {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
-    const clip = await db.clip.findUnique({
-      where: { id: clipId },
-      select: { groupId: true, views: true },
-    });
-
-    if (!clip) {
-      return { error: "Clip details unresolved" };
-    }
+    const clip = await db.clip.findUnique({ where: { id: clipId }, select: { groupId: true, views: true } });
+    if (!clip) return { error: "Clip details unresolved" };
 
     const existing = await db.view.findUnique({
-      where: {
-        clipId_userId: {
-          clipId,
-          userId: session.user.id,
-        },
-      },
+      where: { clipId_userId: { clipId, userId: session.user.id } },
     });
 
-    if (existing) {
-      return { success: true, alreadyViewed: true };
-    }
+    if (existing) return { success: true, alreadyViewed: true };
 
     const view = await db.view.create({
-      data: {
-        clipId,
-        userId: session.user.id,
-      },
+      data: { clipId, userId: session.user.id },
     });
 
     const newlyUnlocked: string[] = [];
-
-    // SPECTATOR VIEW BONUS: (Capped at 15 XP daily per user)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const viewsRegisteredToday = await db.view.count({
-      where: {
-        userId: session.user.id,
-        createdAt: {
-          gte: today,
-        },
-      },
+      where: { userId: session.user.id, createdAt: { gte: today } },
     });
 
     if (viewsRegisteredToday * 5 <= 15) {
       const groupMember = await db.groupMember.findUnique({
-        where: {
-          groupId_userId: {
-            groupId: clip.groupId,
-            userId: session.user.id,
-          },
-        },
+        where: { groupId_userId: { groupId: clip.groupId, userId: session.user.id } },
       });
 
       if (groupMember) {
         await db.groupMember.update({
           where: { id: groupMember.id },
-          data: {
-            xp: groupMember.xp + 5,
-            lastActiveAt: new Date(),
-          },
+          data: { xp: groupMember.xp + 5, lastActiveAt: new Date() },
         });
 
-        const targetGroup = await db.group.findUnique({
-          where: { id: clip.groupId },
-        });
-
+        const targetGroup = await db.group.findUnique({ where: { id: clip.groupId } });
         if (targetGroup) {
           const nextGroupXp = targetGroup.xp + 2;
           await db.group.update({
             where: { id: targetGroup.id },
-            data: {
-              xp: nextGroupXp,
-              level: calculateGroupLevel(nextGroupXp),
-            },
+            data: { xp: nextGroupXp, level: calculateGroupLevel(nextGroupXp) },
           });
         }
       }
     }
 
-    // First responder trigger: Be the first to view a vlog post 10 times
-    const viewsOnThisClip = await db.view.count({
-      where: { clipId },
-    });
+    const viewsOnThisClip = await db.view.count({ where: { clipId } });
     if (viewsOnThisClip === 1) {
-      // Find how many times this user has been the first view
       const firstViewsCount = await db.view.count({
         where: {
           userId: session.user.id,
-          clip: {
-            views: {
-              some: {
-                userId: session.user.id,
-              },
-            },
-          },
+          clip: { views: { some: { userId: session.user.id } } },
         },
       });
       if (firstViewsCount >= 10) {

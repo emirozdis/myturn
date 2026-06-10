@@ -12,32 +12,23 @@ export async function uploadAvatar(base64Data: string) {
       return { error: "Unauthorized" };
     }
 
-    // Clean metadata prefix (e.g., "data:image/jpeg;base64,") if present
     const base64Image = base64Data.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Image, "base64");
 
     const userId = session.user.id;
     const path = `avatars/${userId}-${Date.now()}.jpg`;
 
-    // Direct binary upload to the dedicated "avatars" Supabase bucket
     const { error: uploadError } = await supabaseServer.storage
       .from("avatars")
-      .upload(path, buffer, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+      .upload(path, buffer, { contentType: "image/jpeg", upsert: true });
 
-    if (uploadError) {
-      return { error: `Upload failed: ${uploadError.message}` };
-    }
+    if (uploadError) return { error: `Upload failed: ${uploadError.message}` };
 
-    // Update user's image field with the Supabase path
     await db.user.update({
       where: { id: userId },
       data: { image: path },
     });
 
-    // Generate pre-signed read URL for immediate client feedback from the avatars bucket
     const { data: signedData } = await supabaseServer.storage
       .from("avatars")
       .createSignedUrl(path, 3600);
@@ -51,27 +42,17 @@ export async function uploadAvatar(base64Data: string) {
 export async function getProfileData() {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
     const user = await db.user.findUnique({
       where: { id: session.user.id },
       include: {
-        _count: {
-          select: {
-            clips: true,
-            groupMembers: true,
-          },
-        },
+        _count: { select: { clips: true, groupMembers: true } },
       },
     });
 
-    if (!user) {
-      return { error: "User not found" };
-    }
+    if (!user) return { error: "User not found" };
 
-    // Set fallback handle if empty
     if (!user.handle) {
       const generatedHandle = user.name
         ? user.name.toLowerCase().replace(/\s+/g, "") + Math.floor(100 + Math.random() * 900)
@@ -84,7 +65,6 @@ export async function getProfileData() {
       user.handle = generatedHandle;
     }
 
-    // Find distinct co-members across user's active groups (friends)
     const userGroupIds = await db.groupMember.findMany({
       where: { userId: user.id },
       select: { groupId: true },
@@ -99,24 +79,17 @@ export async function getProfileData() {
       },
     });
 
-    // Fetch user's latest clips
     const rawClips = await db.clip.findMany({
       where: { userId: user.id },
       orderBy: { recordedAt: "desc" },
       take: 6,
     });
 
-    // Resolve pre-signed URLs for each clip so the browser can load them securely
     const clips = await Promise.all(
       rawClips.map(async (clip) => {
         try {
-          const { data: videoData } = await supabaseServer.storage
-            .from("vlogs")
-            .createSignedUrl(clip.videoUrl, 3600);
-            
-          const { data: thumbData } = await supabaseServer.storage
-            .from("vlogs")
-            .createSignedUrl(clip.thumbnailUrl, 3600);
+          const { data: videoData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.videoUrl, 3600);
+          const { data: thumbData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.thumbnailUrl, 3600);
           
           return {
             ...clip,
@@ -129,22 +102,14 @@ export async function getProfileData() {
       })
     );
 
-    // Resolve pre-signed URL for user's own avatar if it is a storage path inside the avatars bucket
     let avatarUrl = user.image;
     if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {
       try {
-        const { data: signedData } = await supabaseServer.storage
-          .from("avatars")
-          .createSignedUrl(user.image, 3600);
-        if (signedData) {
-          avatarUrl = signedData.signedUrl;
-        }
-      } catch {
-        // Fallback
-      }
+        const { data: signedData } = await supabaseServer.storage.from("avatars").createSignedUrl(user.image, 3600);
+        if (signedData) avatarUrl = signedData.signedUrl;
+      } catch {}
     }
 
-    // Fetch highest member XP to compute actual user vibe archetype level
     const highestMemberXp = await db.groupMember.findFirst({
       where: { userId: user.id },
       orderBy: { xp: "desc" },
@@ -152,7 +117,6 @@ export async function getProfileData() {
     const totalXp = highestMemberXp?.xp || 0;
     const archetype = getVibeArchetype(totalXp);
 
-    // Query Unlocked achievements matching the user ID
     const unlocked = await db.unlockedAchievement.findMany({
       where: { userId: user.id },
       select: { achievementId: true },
@@ -167,16 +131,21 @@ export async function getProfileData() {
       unlockedIds,
     };
 
-    // Generate monthly calendar data showing vlogged history
-    const calendarDays = Array.from({ length: 30 }).map((_, i) => {
+    // Calculate calendar days properly mapping exact current month timeline offsets
+    const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+
+    const calendarDays = Array.from({ length: daysInMonth }).map((_, i) => {
       const dayNum = i + 1;
       const vloggedOnDay = clips.some(
-        (clip) => new Date(clip.recordedAt).getDate() === dayNum
+        (clip) => {
+          const d = new Date(clip.recordedAt);
+          return d.getDate() === dayNum && d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        }
       );
-      return {
-        d: dayNum,
-        type: vloggedOnDay ? "vlogged" : "empty",
-      };
+      return { d: dayNum, type: vloggedOnDay ? "vlogged" : "empty" };
     });
 
     return {
@@ -201,13 +170,10 @@ export async function updateProfile(data: {
 }) {
   try {
     const session = await getAuthSession();
-    if (!session?.user?.id) {
-      return { error: "Unauthorized" };
-    }
+    if (!session?.user?.id) return { error: "Unauthorized" };
 
     const formattedHandle = data.handle.toLowerCase().trim().replace(/\s+/g, "");
 
-    // Check unique constraints on handle
     const existing = await db.user.findFirst({
       where: {
         handle: formattedHandle,
@@ -215,9 +181,7 @@ export async function updateProfile(data: {
       },
     });
 
-    if (existing) {
-      return { error: "Username/handle is already taken by another user." };
-    }
+    if (existing) return { error: "Username/handle is already taken by another user." };
 
     const updated = await db.user.update({
       where: { id: session.user.id },

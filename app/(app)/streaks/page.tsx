@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Flame, Clapperboard, Lock } from "lucide-react";
+import { Flame } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
 import { Avatar } from "@/components/shared/avatar";
 import { getOrCreateTodayAssignment, getUnlockedAchievements } from "@/actions/vlog";
@@ -10,7 +10,7 @@ import { getStreaksData } from "@/actions/streaks";
 import { getVibeBadgeStyle } from "@/lib/vibe";
 
 import { AchievementOverlay, AchievementConfig } from "@/components/achievements/achievement-overlay";
-import { ACHIEVEMENT_MOCKS } from "@/components/achievements/achievement-data";
+import { CompilationReadyModal } from "@/components/compilation-ready-modal";
 
 const getCachedStreaks = () => {
   if (typeof window !== "undefined") {
@@ -26,16 +26,24 @@ const getCachedStreaks = () => {
 
 export default function StreaksPage() {
   const cachedData = getCachedStreaks();
-  const [assignment, setAssignment] = useState<any>(cachedData?.assignment || null);
+  const [, setAssignment] = useState<any>(cachedData?.assignment || null);
   const [streaks, setStreaks] = useState<any>(cachedData?.streaks || null);
 
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
   const [activeAchievement, setActiveAchievement] = useState<AchievementConfig | null>(null);
-  const [unlockedIds, setUnlockedIds] = useState<string[]>([]);
+  const [, setUnlockedIds] = useState<string[]>([]);
 
-  // Guard to prevent concurrent duplicate fetching
+  const [selectedDay, setSelectedDay] = useState<any>(null);
+  const [startOffset, setStartOffset] = useState(0);
+
   const isFetchingRef = useRef(false);
+
+  useEffect(() => {
+    const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).getDay();
+    const offset = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
+    setStartOffset(offset);
+  }, []);
 
   const loadStreaks = async (targetGroupId?: any) => {
     let activeGroupId = typeof targetGroupId === "string" ? targetGroupId : null;
@@ -88,7 +96,12 @@ export default function StreaksPage() {
     return () => window.removeEventListener("group-changed", handleGroupChange);
   }, []);
 
-  // Only block on first ever load with no cached data
+  const handleDayClick = (day: any) => {
+    if (day.type === "vlogged") {
+      setSelectedDay(day);
+    }
+  };
+
   if (initialLoad && !streaks) {
     return (
       <div className="flex-1 flex flex-col gap-3 px-4 pt-6 animate-pulse">
@@ -100,7 +113,7 @@ export default function StreaksPage() {
     );
   }
 
-  const { currentStreak, bestStreak, totalVlogs, friendsStreaks, calendarDays } = streaks;
+  const { currentStreak, friendsStreaks, calendarDays } = streaks;
 
   return (
     <>
@@ -110,10 +123,9 @@ export default function StreaksPage() {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -8 }}
         transition={{ duration: 0.2 }}
-        className="flex-1 h-full overflow-y-auto px-4 pt-6 pb-6 scrollbar-hide flex flex-col gap-4 relative z-0"
+        className="flex-1 h-full overflow-y-auto px-4 pt-6 pb-6 scrollbar-hide flex flex-col gap-6 relative z-0"
         style={{ WebkitOverflowScrolling: "touch", msOverflowStyle: "none", scrollbarWidth: "none" }}
       >
-        {/* Background refresh dot */}
         {refreshing && (
           <div className="absolute top-4 right-4 z-20 flex items-center gap-1 bg-black/50 backdrop-blur-md px-2.5 py-1 rounded-full pointer-events-none">
             <span className="w-1.5 h-1.5 rounded-full bg-[#e07c30] animate-pulse" />
@@ -122,16 +134,15 @@ export default function StreaksPage() {
         )}
         <style
           dangerouslySetInnerHTML={{
-            __html: `
-        ::-webkit-scrollbar { display: none; }
-      `,
+            __html: `::-webkit-scrollbar { display: none; }`,
           }}
         />
 
+        {/* Top Header */}
         <div className="flex justify-between items-start mb-2">
           <div>
-            <h2 className="text-white text-[28px] font-bold tracking-tight leading-tight">Streaks</h2>
-            <p className="text-white/60 text-[12px] mt-0.5">Keep the streak alive 🔥</p>
+            <h2 className="text-white text-[28px] font-bold tracking-tight leading-tight">Archives & Streaks</h2>
+            <p className="text-white/60 text-[12px] mt-0.5">Relive the memories 🔥</p>
           </div>
           <div
             style={glassStyle(0.05, 10, 0.1)}
@@ -142,136 +153,16 @@ export default function StreaksPage() {
           </div>
         </div>
 
-        <div
-          style={glassStyle(0.04, 20, 0.08)}
-          className="rounded-[24px] p-5 flex items-center justify-between"
-        >
-          <div className="flex flex-col items-center gap-2.5 flex-1">
-            <div className="relative w-[76px] h-[76px]">
-              <svg className="w-full h-full -rotate-90">
-                <circle
-                  cx="38"
-                  cy="38"
-                  r="34"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.05)"
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                />
-                <circle
-                  cx="38"
-                  cy="38"
-                  r="34"
-                  fill="none"
-                  stroke="#e07c30"
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                  strokeDasharray="213.6"
-                  strokeDashoffset="128"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center pt-1">
-                <Flame size={16} className="text-white fill-[#e07c30] mb-0.5" />
-                <span className="text-white text-2xl font-bold leading-none tracking-tighter">
-                  {currentStreak}
-                </span>
-                <span className="text-white/50 text-[10px] font-medium mt-0.5">days</span>
-              </div>
-            </div>
-            <span className="text-[#e07c30] text-[11px] font-bold">Current Streak</span>
-          </div>
-
-          <div className="w-[1px] h-16 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
-
-          <div className="flex flex-col items-center flex-1">
-            <span className="text-white/60 text-[11px] font-medium mb-1.5">Best Streak</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-white text-3xl font-bold leading-none tracking-tighter">
-                {bestStreak}
-              </span>
-              <span className="text-white/60 text-[11px] font-medium">days</span>
-            </div>
-          </div>
-
-          <div className="w-[1px] h-16 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
-
-          <div className="flex flex-col items-center flex-1">
-            <span className="text-white/60 text-[11px] font-medium mb-1.5">Total Vlogs</span>
-            <div className="flex items-baseline gap-1">
-              <span className="text-white text-3xl font-bold leading-none tracking-tighter">
-                {totalVlogs}
-              </span>
-              <span className="text-white/60 text-[11px] font-medium">vlogs</span>
-            </div>
-            <Clapperboard size={14} className="text-white/30 mt-2.5" />
-          </div>
-        </div>
-
-        <div
-          style={glassStyle(0.04, 20, 0.08)}
-          className="rounded-[20px] p-4 flex items-center justify-between"
-        >
-          <div className="flex items-center gap-3.5">
-            <span className="text-2xl drop-shadow-md">🚀</span>
-            <div className="flex flex-col gap-0.5">
-              <h3 className="text-white text-[12px] font-bold tracking-wide">You&apos;re on fire!</h3>
-              <p className="text-white/50 text-[10px] leading-snug max-w-[170px]">
-                Record today to keep your daily streak alive.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={glassStyle(0.04, 20, 0.08)}
-          className="rounded-[24px] p-5 flex flex-col gap-4"
-        >
-          <div className="flex justify-between items-center">
-            <span className="text-white text-[14px] font-bold tracking-wide">Activity Calendar</span>
-          </div>
-
-          <div className="grid grid-cols-7 gap-y-3.5 gap-x-1 text-center">
-            {["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
-              <span key={day} className="text-white/40 text-[9px] font-medium tracking-wider mb-2">
-                {day
-                }
-              </span>
-            ))}
-
-            {calendarDays.map((item: any, i: number) => (
-              <div key={i} className="flex justify-center relative">
-                <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold transition-all
-                ${item.type === "vlogged"
-                      ? "bg-gradient-to-br from-[#ff9a44] to-[#e07c30] text-white shadow-[0_2px_10px_rgba(224,124,48,0.3)]"
-                      : item.type === "missed"
-                        ? "border border-white/5 bg-white/[0.03] text-white/50"
-                        : "text-white/20"
-                    }
-              `}
-                >
-                  {item.d}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div
-          style={glassStyle(0.04, 20, 0.08)}
-          className="rounded-[24px] p-5 flex flex-col gap-4"
-        >
-          <div className="flex justify-between items-center">
-            <span className="text-white text-[14px] font-bold tracking-wide">Friends Streaks</span>
-          </div>
-
-          <div className="flex justify-between items-end mt-2">
+        {/* Leaderboard Horizontal Carousel */}
+        <div className="flex flex-col gap-3">
+          <span className="text-white/60 text-[11px] font-bold uppercase tracking-widest pl-1">Leaderboard</span>
+          <div className="flex items-start gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-2 px-2">
             {friendsStreaks.map((friend: any) => (
-              <div key={friend.name} className="flex flex-col items-center gap-2 relative">
+              <div key={friend.name} className="flex flex-col items-center gap-2 relative flex-shrink-0 w-[64px]">
                 <div
                   className="absolute -top-1.5 -left-1.5 w-[18px] h-[18px] rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-[9px] font-bold text-white z-10 shadow-lg"
                   style={
-                    friend.isMe ? { background: "#e07c30", borderColor: "#ffb880" } : {}
+                    friend.isMe ? { background: "#e07c30", borderColor: "#ffb880", color: "#000" } : {}
                   }
                 >
                   {friend.rank}
@@ -283,10 +174,9 @@ export default function StreaksPage() {
                   <Avatar src={friend.img} size={46} />
                 </div>
 
-                <div className="flex flex-col items-center text-center gap-0.5">
-                  <span className="text-white text-[11px] font-bold tracking-tight">{friend.name}</span>
+                <div className="flex flex-col items-center text-center gap-0.5 w-full">
+                  <span className="text-white text-[11px] font-bold tracking-tight truncate w-full">{friend.name}</span>
                   
-                  {/* Dynamic vibe style mini pill rendering */}
                   <span 
                     style={{
                       ...getVibeBadgeStyle(friend.archetype),
@@ -297,7 +187,11 @@ export default function StreaksPage() {
                       textTransform: "uppercase",
                       letterSpacing: "0.05em",
                       marginTop: "2.5px",
-                      display: "inline-block"
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      maxWidth: "100%"
                     }}
                   >
                     {friend.archetype}
@@ -308,19 +202,81 @@ export default function StreaksPage() {
                   >
                     {friend.streak} days
                   </span>
-                  {friend.isMe ? (
-                    <div className="mt-1 px-2.5 py-[2px] rounded-full bg-white/10 border border-white/5 text-[9px] text-white/70 font-medium">
-                      You
-                    </div>
-                  ) : (
-                    <Flame size={11} className="text-[#e07c30] fill-[#e07c30] mt-1" />
-                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
+
+        {/* Interactive Memory Calendar */}
+        <div
+          style={glassStyle(0.04, 20, 0.08)}
+          className="rounded-[24px] p-5 flex flex-col gap-4"
+        >
+          <div className="flex justify-between items-center">
+            <span className="text-white text-[14px] font-bold tracking-wide">Memory Calendar</span>
+            <span className="text-white/40 text-[10px]">Tap a highlighted day</span>
+          </div>
+
+          <div className="grid grid-cols-7 gap-y-3.5 gap-x-1 text-center">
+            {["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
+              <span key={day} className="text-white/40 text-[9px] font-medium tracking-wider mb-2">
+                {day}
+              </span>
+            ))}
+            
+            {Array.from({ length: startOffset }).map((_, i) => (
+               <div key={`empty-${i}`} />
+            ))}
+
+            {calendarDays.map((item: any, i: number) => {
+              const isVlogged = item.type === "vlogged";
+
+              return (
+                <div key={i} className="flex justify-center relative">
+                  <button
+                    onClick={() => handleDayClick(item)}
+                    disabled={!isVlogged}
+                    className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-[11px] sm:text-[12px] font-bold transition-all overflow-hidden
+                    ${isVlogged
+                        ? "ring-1 ring-[#e07c30]/50 hover:scale-105"
+                        : item.type === "missed"
+                          ? "border border-white/5 bg-white/[0.03] text-white/50 cursor-not-allowed"
+                          : "text-white/20 cursor-not-allowed"
+                      }
+                    `}
+                  >
+                    {isVlogged && item.assignment?.user ? (
+                      <>
+                        <div className="absolute inset-0 z-0 flex items-center justify-center">
+                          <Avatar src={item.assignment.user.image} name={item.assignment.user.name} size={36} />
+                        </div>
+                        <div className="absolute inset-0 bg-black/40 z-10 hover:bg-black/20 transition-colors" />
+                        <span className="relative z-20 text-white font-extrabold text-[11px] sm:text-[12px] drop-shadow-[0_1.5px_2.5px_rgba(0,0,0,0.9)]">
+                          {item.d}
+                        </span>
+                      </>
+                    ) : (
+                      <span>{item.d}</span>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </motion.div>
+
+      {/* Manual Trigger Compilation Ready Modal */}
+      <AnimatePresence>
+        {selectedDay && selectedDay.type === "vlogged" && (
+           <CompilationReadyModal 
+             assignment={selectedDay.assignment}
+             onClose={() => setSelectedDay(null)}
+             isArchive={true}
+           />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {activeAchievement && (
