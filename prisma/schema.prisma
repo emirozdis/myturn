@@ -54,6 +54,8 @@ model User {
   handle        String?   @unique
   location      String?   @default("Phuket, Thailand")
 
+  createdAt     DateTime  @default(now())
+
   accounts          Account[]
   sessions          Session[]
   

@@ -108,7 +108,7 @@ export function CompilationReadyModal({
               <div className="relative w-full h-[120px] flex flex-col items-center justify-end mb-4 z-0">
                 <div className="relative z-10 w-[128px] h-[128px] rounded-full flex items-center justify-center">
                   <div className="absolute inset-0 bg-[#e07c30]/20 blur-xl rounded-full" />
-                  <img src="/assets/icons/play.png" alt="Play" className="w-16 h-16 object-contain" />
+                  <img src="/assets/icons/play.png" alt="Play" className="w-64 h-64 object-contain" />
                 </div>
               </div>
 

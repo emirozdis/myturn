@@ -5,6 +5,51 @@ import { getAuthSession } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 import { getVibeArchetype } from "@/lib/vibe";
 
+export async function getUserPublicProfile(userId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        handle: true,
+        image: true,
+        bio: true,
+        location: true,
+        createdAt: true,
+        _count: { select: { clips: true, groupMembers: true } },
+      },
+    });
+
+    if (!user) return { error: "User not found" };
+
+    const highestMemberXp = await db.groupMember.findFirst({
+      where: { userId: user.id },
+      orderBy: { xp: "desc" },
+    });
+    const totalXp = highestMemberXp?.xp || 0;
+    const archetype = getVibeArchetype(totalXp);
+
+    let avatarUrl = user.image;
+    if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {
+      try {
+        const { data: signedData } = await supabaseServer.storage.from("avatars").createSignedUrl(user.image, 3600);
+        if (signedData) avatarUrl = signedData.signedUrl;
+      } catch {}
+    }
+
+    return {
+      success: true,
+      user: { ...user, image: avatarUrl, xp: totalXp, archetype },
+    };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to fetch profile." };
+  }
+}
+
 export async function uploadAvatar(base64Data: string) {
   try {
     const session = await getAuthSession();
