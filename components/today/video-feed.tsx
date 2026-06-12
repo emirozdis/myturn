@@ -2,10 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import {
-  MapPin, Heart, MessageCircle, AlertCircle, Loader2,
+  MapPin, Heart, MessageCircle
 } from "lucide-react";
 import { Avatar } from "@/components/shared/avatar";
-import { ACCENT } from "@/lib/theme";
 import { CommentsSheet } from "./comments-sheet";
 import { ViewsSheet } from "./views-sheet";
 import { glassStyle } from "../shared/glass-style";
@@ -174,7 +173,7 @@ export function VideoFeed({
           </div>
 
           {/* Text Content & Actions placed nicely on top of the blurry part */}
-          <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-12 text-center">
+          <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-4 text-center">
             {isCurrentUserVlogger ? (
               <>
                 <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">It&apos;s Your Turn Today</h2>

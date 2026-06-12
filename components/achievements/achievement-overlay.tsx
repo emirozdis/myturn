@@ -115,7 +115,7 @@ const numberStampVariants: Variants = {
       stiffness: 500,
       damping: 15,
       mass: 0.5,
-      delay: 0.35, // Stamps after the main image finishes popping
+      delay: 0.35,
     },
   },
 };
@@ -197,7 +197,6 @@ function StatsModule({ data }: { data: { items: { icon: "flame" | "camera" | "ta
 function RewardsModule({ data }: { data: { unlocked: any; next?: any } }) {
   return (
     <div className="w-full flex flex-col gap-3">
-      {/* Unlocked */}
       <div style={glassStyle(0.04, 16, 0.08)} className="rounded-[20px] p-4 flex items-start gap-3 border border-[#e07c30]/30 shadow-[inset_0_0_20px_rgba(224,124,48,0.05)]">
         <div className="mt-1">
           <Sparkles size={20} className="text-[#e07c30]" />
@@ -208,7 +207,6 @@ function RewardsModule({ data }: { data: { unlocked: any; next?: any } }) {
           <span className="text-white/60 text-[11px] leading-snug">{data.unlocked.desc}</span>
         </div>
       </div>
-      {/* Next */}
       {data.next && (
         <div style={glassStyle(0.02, 16, 0.05)} className="rounded-[20px] p-4 flex items-start gap-3">
           <div className="mt-1">
@@ -308,7 +306,6 @@ function ProgressBarModule({ data }: { data: { current: number; max: number; lab
           className="absolute top-0 left-0 bottom-0 rounded-full"
           style={{ background: "linear-gradient(90deg, #ff9a44 0%, #e07c30 100%)" }}
         />
-        {/* Glow effect on the progress bar */}
         <motion.div
           initial={{ opacity: 0, x: "-100%" }}
           animate={{ opacity: [0, 0.5, 0], x: "100%" }}
@@ -333,183 +330,198 @@ export function AchievementOverlay({
   
   return (
     <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-      exit="exit"
-      className="fixed inset-0 z-50 bg-[#111]/95 backdrop-blur-xl overflow-y-auto overflow-x-hidden flex flex-col select-none"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, transition: { duration: 0.3, delay: 0.1 } }}
+      className="fixed inset-0 z-50 flex flex-col justify-end pointer-events-none"
     >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto" onClick={onClose} />
+      
+      {/* Particles behind the sheet */}
       <ParticleEffect type={config.particles} />
 
-      {/* Close Button */}
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 0.5 }}
-        className="absolute top-6 right-6 z-20"
+      {/* Bottom Sheet Container */}
+      <motion.div
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+        className="relative w-full max-w-md mx-auto bg-neutral-950/95 backdrop-blur-2xl border-t border-white/10 rounded-t-[32px] pt-4 pb-8 flex flex-col max-h-[85vh] shadow-[0_-10px_40px_rgba(0,0,0,0.5)] select-none pointer-events-auto"
       >
+        {/* Handle */}
+        <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto mb-2 flex-shrink-0" />
+
+        {/* Close Button */}
         <button
           onClick={onClose}
-          className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+          className="absolute top-4 right-6 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white/60 hover:text-white hover:bg-white/20 transition-colors z-20"
         >
-          <X size={20} />
+          <X size={18} strokeWidth={2.5} />
         </button>
-      </motion.div>
 
-      <div className="flex-1 flex flex-col px-6 pt-16 pb-8 relative z-10 w-full max-w-md mx-auto min-h-full">
-        
-        {/* Top Content */}
-        {config.topContent && (
+        {/* Staggered Scrollable Content */}
+        <div className="flex-1 overflow-y-auto scrollbar-hide px-6 pt-6">
           <motion.div
-            variants={itemVariants}
-            className="flex flex-col items-center text-center mb-6"
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            exit="exit"
+            className="flex flex-col w-full min-h-full"
           >
-            <h1 className="text-white text-[28px] font-bold tracking-tight mb-2">
-              <HighlightedText text={config.topContent.title} highlight={config.topContent.highlight} />
-            </h1>
-            {config.topContent.subtitle && (
-              <p className="text-white/70 text-[15px] font-medium">
-                {config.topContent.subtitle}
-              </p>
+            {/* Top Content */}
+            {config.topContent && (
+              <motion.div
+                variants={itemVariants}
+                className="flex flex-col items-center text-center mb-6"
+              >
+                <h1 className="text-white text-[28px] font-bold tracking-tight mb-2">
+                  <HighlightedText text={config.topContent.title} highlight={config.topContent.highlight} />
+                </h1>
+                {config.topContent.subtitle && (
+                  <p className="text-white/70 text-[15px] font-medium">
+                    {config.topContent.subtitle}
+                  </p>
+                )}
+              </motion.div>
             )}
-          </motion.div>
-        )}
 
-        {/* Main Central Image */}
-        {hasImage && (
-          <motion.div
-            variants={imageVariants}
-            className="relative w-full aspect-square max-w-[240px] mx-auto my-6 flex items-center justify-center"
-          >
+            {/* Main Central Image */}
+            {hasImage && (
+              <motion.div
+                variants={imageVariants}
+                className="relative w-full aspect-square max-w-[240px] mx-auto my-6 flex items-center justify-center"
+              >
+                <motion.div
+                  animate={{ y: [-5, 5, -5] }}
+                  transition={{ repeat: Infinity, duration: 4, ease: "easeInOut", delay: 0.5 }}
+                  className="relative w-full h-full flex items-center justify-center"
+                >
+                  <img
+                    src={config.image!.src}
+                    alt="Achievement Graphic"
+                    className="w-full h-full object-contain drop-shadow-[0_0_40px_rgba(224,124,48,0.25)]"
+                  />
+                  {config.image!.value && (
+                    <div className="absolute inset-0 flex items-center justify-center pb-[8%]">
+                      <motion.div 
+                        variants={numberStampVariants}
+                        className="relative font-black tracking-tighter"
+                        style={{ fontSize: String(config.image!.value).length > 1 ? "90px" : "110px", lineHeight: 1 }}
+                      >
+                        {/* Shadow and Extrusion Layer */}
+                        <span 
+                          className="absolute inset-0"
+                          style={{
+                            color: "#a1a1aa",
+                            textShadow: `
+                              0px 1px 0px #d4d4d8,
+                              0px 2px 0px #a1a1aa,
+                              0px 3px 0px #71717a,
+                              0px 4px 0px #52525b,
+                              0px 10px 15px rgba(0,0,0,0.6),
+                              0px 20px 30px rgba(0,0,0,0.4)
+                            `,
+                            WebkitTextStroke: "2px rgba(255,255,255,0.2)",
+                            zIndex: 0
+                          }}
+                          aria-hidden="true"
+                        >
+                          {config.image!.value}
+                        </span>
+                        {/* Front Gradient Layer */}
+                        <span 
+                          className="relative z-10"
+                          style={{
+                            background: "linear-gradient(180deg, #FFFFFF 0%, #e4e4e7 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            color: "transparent",
+                          }}
+                        >
+                          {config.image!.value}
+                        </span>
+                      </motion.div>
+                    </div>
+                  )}
+                </motion.div>
+              </motion.div>
+            )}
+
+            {/* Main Content */}
+            {config.mainContent && (
+              <motion.div
+                variants={itemVariants}
+                className="flex flex-col items-center text-center mb-8"
+              >
+                {config.mainContent.title && (
+                  <h2 className="text-white text-[24px] font-bold tracking-tight mb-2">
+                    <HighlightedText text={config.mainContent.title} highlight={config.mainContent.highlight} />
+                  </h2>
+                )}
+                {config.mainContent.subtitle && (
+                  <p className="text-[#e07c30] text-[14px] font-bold tracking-wide mb-2 uppercase">
+                    {config.mainContent.subtitle}
+                  </p>
+                )}
+                {config.mainContent.description && (
+                  <p className="text-white/60 text-[13px] leading-relaxed max-w-[280px] whitespace-pre-line">
+                    {config.mainContent.description}
+                  </p>
+                )}
+              </motion.div>
+            )}
+
+            {/* Modules Rendering */}
+            {config.modules && config.modules.length > 0 && (
+              <div className="flex flex-col gap-6 w-full mb-8 mt-auto">
+                {config.modules.map((mod, idx) => {
+                  return (
+                    <motion.div key={idx} variants={itemVariants}>
+                      {mod.type === "calendar" && <CalendarModule data={mod} />}
+                      {mod.type === "stats" && <StatsModule data={mod} />}
+                      {mod.type === "rewards" && <RewardsModule data={mod} />}
+                      {mod.type === "milestones" && <MilestonesModule data={mod} />}
+                      {mod.type === "progress-header" && <ProgressHeaderModule data={mod} />}
+                      {mod.type === "progress-bar" && <ProgressBarModule data={mod} />}
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Action Buttons */}
             <motion.div
-              animate={{ y: [-5, 5, -5] }}
-              transition={{ repeat: Infinity, duration: 4, ease: "easeInOut", delay: 0.5 }} // Delay infinite float until entrance finishes
-              className="relative w-full h-full flex items-center justify-center"
+              variants={itemVariants}
+              className={`mt-auto pt-4 flex flex-col gap-4 w-full ${!config.modules ? "pt-12" : ""}`}
             >
-              <img
-                src={config.image!.src}
-                alt="Achievement Graphic"
-                className="w-full h-full object-contain drop-shadow-[0_0_40px_rgba(224,124,48,0.25)]"
-              />
-              {config.image!.value && (
-                <div className="absolute inset-0 flex items-center justify-center pb-[8%]">
-                  <motion.div 
-                    variants={numberStampVariants}
-                    className="relative font-black tracking-tighter"
-                    style={{ fontSize: String(config.image!.value).length > 1 ? "90px" : "110px", lineHeight: 1 }}
-                  >
-                    {/* Shadow and Extrusion Layer */}
-                    <span 
-                      className="absolute inset-0"
-                      style={{
-                        color: "#a1a1aa",
-                        textShadow: `
-                          0px 1px 0px #d4d4d8,
-                          0px 2px 0px #a1a1aa,
-                          0px 3px 0px #71717a,
-                          0px 4px 0px #52525b,
-                          0px 10px 15px rgba(0,0,0,0.6),
-                          0px 20px 30px rgba(0,0,0,0.4)
-                        `,
-                        WebkitTextStroke: "2px rgba(255,255,255,0.2)",
-                        zIndex: 0
-                      }}
-                      aria-hidden="true"
-                    >
-                      {config.image!.value}
-                    </span>
-                    {/* Front Gradient Layer */}
-                    <span 
-                      className="relative z-10"
-                      style={{
-                        background: "linear-gradient(180deg, #FFFFFF 0%, #e4e4e7 100%)",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                        color: "transparent",
-                      }}
-                    >
-                      {config.image!.value}
-                    </span>
-                  </motion.div>
-                </div>
+              {config.primaryAction && (
+                <button
+                  onClick={() => {
+                    config.primaryAction?.onClick?.();
+                    onClose();
+                  }}
+                  className="w-full py-4 rounded-[16px] text-black font-bold text-[16px] transition-transform active:scale-[0.98] shadow-lg"
+                  style={{ background: ACCENT }}
+                >
+                  {config.primaryAction.label}
+                </button>
+              )}
+              {config.secondaryAction && (
+                <button
+                  onClick={() => {
+                    config.secondaryAction?.onClick?.();
+                  }}
+                  className="w-full py-3 flex items-center justify-center gap-2 text-[#e07c30] font-bold text-[14px] hover:bg-white/5 rounded-[16px] transition-colors"
+                >
+                  {config.secondaryAction.icon || <Share size={16} />}
+                  {config.secondaryAction.label}
+                </button>
               )}
             </motion.div>
           </motion.div>
-        )}
-
-        {/* Main Content (Title/Desc below image) */}
-        {config.mainContent && (
-          <motion.div
-            variants={itemVariants}
-            className="flex flex-col items-center text-center mb-8"
-          >
-            {config.mainContent.title && (
-              <h2 className="text-white text-[24px] font-bold tracking-tight mb-2">
-                <HighlightedText text={config.mainContent.title} highlight={config.mainContent.highlight} />
-              </h2>
-            )}
-            {config.mainContent.subtitle && (
-              <p className="text-[#e07c30] text-[14px] font-bold tracking-wide mb-2 uppercase">
-                {config.mainContent.subtitle}
-              </p>
-            )}
-            {config.mainContent.description && (
-              <p className="text-white/60 text-[13px] leading-relaxed max-w-[280px] whitespace-pre-line">
-                {config.mainContent.description}
-              </p>
-            )}
-          </motion.div>
-        )}
-
-        {/* Modules Rendering */}
-        {config.modules && config.modules.length > 0 && (
-          <div className="flex flex-col gap-6 w-full mb-8 mt-auto">
-            {config.modules.map((mod, idx) => {
-              return (
-                <motion.div key={idx} variants={itemVariants}>
-                  {mod.type === "calendar" && <CalendarModule data={mod} />}
-                  {mod.type === "stats" && <StatsModule data={mod} />}
-                  {mod.type === "rewards" && <RewardsModule data={mod} />}
-                  {mod.type === "milestones" && <MilestonesModule data={mod} />}
-                  {mod.type === "progress-header" && <ProgressHeaderModule data={mod} />}
-                  {mod.type === "progress-bar" && <ProgressBarModule data={mod} />}
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <motion.div
-          variants={itemVariants}
-          className={`mt-auto pt-4 flex flex-col gap-4 w-full ${!config.modules ? "pt-12" : ""}`}
-        >
-          {config.primaryAction && (
-            <button
-              onClick={() => {
-                config.primaryAction?.onClick?.();
-                onClose();
-              }}
-              className="w-full py-4 rounded-[16px] text-black font-bold text-[16px] transition-transform active:scale-[0.98] shadow-lg"
-              style={{ background: ACCENT }}
-            >
-              {config.primaryAction.label}
-            </button>
-          )}
-          {config.secondaryAction && (
-            <button
-              onClick={() => {
-                config.secondaryAction?.onClick?.();
-              }}
-              className="w-full py-3 flex items-center justify-center gap-2 text-[#e07c30] font-bold text-[14px] hover:bg-white/5 rounded-[16px] transition-colors"
-            >
-              {config.secondaryAction.icon || <Share size={16} />}
-              {config.secondaryAction.label}
-            </button>
-          )}
-        </motion.div>
-
-      </div>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }

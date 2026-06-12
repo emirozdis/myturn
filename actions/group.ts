@@ -1,3 +1,4 @@
+// ./actions/group.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -27,7 +28,7 @@ async function generateInviteCode(): Promise<string> {
   return code;
 }
 
-export async function createGroup(name: string, timezone: string = "UTC") {
+export async function createGroup(name: string, timezone: string = "UTC", emoji: string = "🏠") {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) {
@@ -41,6 +42,7 @@ export async function createGroup(name: string, timezone: string = "UTC") {
         name,
         inviteCode,
         timezone,
+        emoji,
         members: {
           create: {
             userId: session.user.id,
@@ -123,7 +125,7 @@ export async function getUserGroups() {
     const groups = memberships.map((m) => ({
       id: m.group.id,
       name: m.group.name,
-      emoji: "🏠",
+      emoji: m.group.emoji || "🏠",
       inviteCode: m.group.inviteCode,
       memberCount: m.group._count.members,
       role: m.role,

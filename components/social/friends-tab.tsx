@@ -1,3 +1,4 @@
+// ./components/social/friends-tab.tsx
 "use client";
 
 import { motion } from "framer-motion";
@@ -30,9 +31,14 @@ export function FriendsTab({ friends, suggestions, onFindFriends, onSendRequest 
           border: "1px solid rgba(255,255,255,0.08)",
         }}
       >
-        <div className="absolute inset-y-0 right-0 w-[65%] pointer-events-none mask-image-gradient">
-          <div className="absolute inset-0 bg-gradient-to-r from-[#2c2c2c] via-transparent to-transparent z-10" />
-          <img src="/image1.png" alt="Friends" className="w-full h-full object-cover opacity-70" />
+        <div 
+          className="absolute inset-y-0 right-0 w-[75%] pointer-events-none"
+          style={{
+            maskImage: "linear-gradient(to right, transparent 0%, black 50%)",
+            WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 50%)",
+          }}
+        >
+          <img src="/assets/images/vlogging.jpg" alt="Friends" className="w-full h-full object-cover opacity-75" />
         </div>
         <div className="relative z-20 p-5 w-[70%]">
           <p className="text-white/70 text-[11px] font-bold uppercase tracking-wider mb-1.5">Grow your circle</p>

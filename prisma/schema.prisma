@@ -1,3 +1,4 @@
+// ./prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -93,6 +94,7 @@ model Group {
   name        String
   inviteCode  String   @unique
   timezone    String   @default("UTC")
+  emoji       String   @default("🏠")
   createdAt   DateTime @default(now())
 
   xp          Int      @default(0)      

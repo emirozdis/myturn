@@ -1,3 +1,4 @@
+// ./app/(app)/social/page.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -34,6 +35,12 @@ export default function SocialPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupEmoji, setNewGroupEmoji] = useState("🏠");
+  const [newGroupTimezone, setNewGroupTimezone] = useState(() => {
+    return typeof window !== "undefined"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+      : "UTC";
+  });
   const [createdGroupCode, setCreatedGroupCode] = useState("");
   const [copySuccess, setCopySuccess] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -100,8 +107,7 @@ export default function SocialPage() {
     }
 
     setCreating(true);
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    const res = await createGroup(newGroupName, timezone);
+    const res = await createGroup(newGroupName, newGroupTimezone, newGroupEmoji);
     setCreating(false);
 
     if (res.error) {
@@ -152,6 +158,12 @@ export default function SocialPage() {
   const closeCreateFlow = () => {
     setShowCreateModal(false);
     setNewGroupName("");
+    setNewGroupEmoji("🏠");
+    setNewGroupTimezone(
+      typeof window !== "undefined"
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
+        : "UTC"
+    );
     setCreatedGroupCode("");
     setCreateError("");
     loadSocial();
@@ -280,6 +292,10 @@ export default function SocialPage() {
         onClose={closeCreateFlow}
         newGroupName={newGroupName}
         onNameChange={setNewGroupName}
+        newGroupEmoji={newGroupEmoji}
+        onEmojiChange={setNewGroupEmoji}
+        newGroupTimezone={newGroupTimezone}
+        onTimezoneChange={setNewGroupTimezone}
         createdGroupCode={createdGroupCode}
         copySuccess={copySuccess}
         createError={createError}
