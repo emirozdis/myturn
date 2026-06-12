@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Sparkles, Clock, Camera, User } from "lucide-react";
+import { useState } from "react";
+import { Sparkles, Clock, User } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
 import { CountdownTimer } from "@/components/shared/countdown-timer";
 import { Avatar } from "@/components/shared/avatar";
@@ -15,6 +15,7 @@ type TodayBottomPanelProps = {
   currentHourIndex: number;
   uploadedSlots: number[];
   onHourChange: (index: number) => void;
+  isSleepMode: boolean;
 };
 
 export function TodayBottomPanel({
@@ -25,8 +26,12 @@ export function TodayBottomPanel({
   currentHourIndex,
   uploadedSlots,
   onHourChange,
+  isSleepMode,
 }: TodayBottomPanelProps) {
-  const router = useRouter();
+  const [localSleepMode, setLocalSleepMode] = useState(isSleepMode);
+
+  const vloggerLabel = localSleepMode ? "Yesterday's Vlogger" : "Today's Vlogger";
+  const countdownLabel = localSleepMode ? "until day starts" : "until day ends";
 
   return (
     <div
@@ -40,7 +45,7 @@ export function TodayBottomPanel({
         <div style={glassStyle(0.04, 16, 0.08)} className="rounded-[20px] p-3 flex flex-col justify-between min-h-[118px]">
           <div className="flex items-center gap-1.5 text-white mb-2">
             <Sparkles size={14} className="text-[#e07c30]" />
-            <span className="text-[11px] font-bold tracking-wide">Today&apos;s Vlogger</span>
+            <span className="text-[11px] font-bold tracking-wide">{vloggerLabel}</span>
           </div>
 
           <div className="flex items-center gap-2.5">
@@ -72,15 +77,6 @@ export function TodayBottomPanel({
               <User size={10} />
               View Profile
             </button>
-            {isCurrentUserVlogger && activeClipUrl && (
-              <button
-                onClick={(e) => { e.stopPropagation(); router.push("/record"); }}
-                className="w-full py-1.5 bg-[#e07c30]/10 text-[#e07c30] border border-[#e07c30]/20 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition hover:bg-[#e07c30]/20 active:scale-95"
-              >
-                <Camera size={10} />
-                Record Another Update
-              </button>
-            )}
           </div>
         </div>
 
@@ -91,20 +87,27 @@ export function TodayBottomPanel({
           </div>
           <div className="flex flex-col flex-1 justify-center items-center w-full min-w-0">
             <div className="w-full mb-1.5">
-              <CountdownTimer timezone={assignment?.group?.timezone} />
+              <CountdownTimer 
+                timezone={assignment?.group?.timezone} 
+                onStateChange={setLocalSleepMode}
+              />
             </div>
-            <div className="text-white/60 text-[9px] sm:text-[10px] font-semibold tracking-wide text-center">until day ends</div>
+            <div className="text-white/60 text-[9px] sm:text-[10px] font-semibold tracking-wide text-center">
+              {countdownLabel}
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="rounded-[20px] p-1.5">
-        <TimelineTracker
-          currentHourIndex={currentHourIndex}
-          onHourChange={onHourChange}
-          uploadedSlots={uploadedSlots}
-        />
-      </div>
+      {(!localSleepMode || (assignment?.clips && assignment.clips.length > 0)) && (
+        <div className="rounded-[20px] p-1.5">
+          <TimelineTracker
+            currentHourIndex={currentHourIndex}
+            onHourChange={onHourChange}
+            uploadedSlots={uploadedSlots}
+          />
+        </div>
+      )}
     </div>
   );
 }

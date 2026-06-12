@@ -34,15 +34,15 @@ export default function TodayPage() {
     toast,
     currentHourIndex,
     setCurrentHourIndex,
-    todayVloggerHandle,
     showToast,
     handleLike,
     handleSendComment,
     handleDeleteComment,
     handlePoke,
+    isSleepMode,
   } = useTodayPage();
 
-  if (initialLoad && !assignment) {
+  if (initialLoad && !assignment && !isSleepMode) {
     return <TodaySkeleton />;
   }
 
@@ -68,7 +68,6 @@ export default function TodayPage() {
         activeClip={activeClip}
         activeClipUrl={activeClipUrl}
         isCurrentUserVlogger={isCurrentUserVlogger}
-        todayVloggerHandle={todayVloggerHandle}
         liked={liked}
         likeCount={likeCount}
         commentList={commentList}
@@ -87,8 +86,8 @@ export default function TodayPage() {
         onSendComment={handleSendComment}
         onDeleteComment={handleDeleteComment}
         onReportComment={() => showToast("Comment reported.")}
-        onReportVlog={() => showToast("Reported to moderation team.")}
         onPoke={handlePoke}
+        isSleepMode={isSleepMode}
       />
 
       <TodayBottomPanel
@@ -99,7 +98,9 @@ export default function TodayPage() {
         currentHourIndex={currentHourIndex}
         uploadedSlots={uploadedSlots}
         onHourChange={setCurrentHourIndex}
+        isSleepMode={isSleepMode}
       />
     </motion.div>
   );
 }
+

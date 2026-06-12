@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import {
-  MapPin, Heart, MessageCircle, AlertCircle, VideoOff, Camera, Clock, Loader2, Hand, Sparkles,
+  MapPin, Heart, MessageCircle, AlertCircle, Loader2,
 } from "lucide-react";
 import { Avatar } from "@/components/shared/avatar";
 import { ACCENT } from "@/lib/theme";
@@ -17,7 +17,6 @@ type VideoFeedProps = {
   activeClip: any;
   activeClipUrl: string | null;
   isCurrentUserVlogger: boolean;
-  todayVloggerHandle: string;
   liked: boolean;
   likeCount: number;
   commentList: any[];
@@ -36,8 +35,8 @@ type VideoFeedProps = {
   onSendComment: (e: React.FormEvent) => void;
   onDeleteComment: (id: string) => void;
   onReportComment: () => void;
-  onReportVlog: () => void;
   onPoke: (e: React.MouseEvent) => void;
+  isSleepMode: boolean;
 };
 
 export function VideoFeed({
@@ -47,7 +46,6 @@ export function VideoFeed({
   activeClip,
   activeClipUrl,
   isCurrentUserVlogger,
-  todayVloggerHandle,
   liked,
   likeCount,
   commentList,
@@ -66,10 +64,13 @@ export function VideoFeed({
   onSendComment,
   onDeleteComment,
   onReportComment,
-  onReportVlog,
   onPoke,
+  isSleepMode,
 }: VideoFeedProps) {
   const router = useRouter();
+
+  // Filter out the vlogger (assignment owner) from the views list
+  const displayViews = activeClip?.views?.filter((v: any) => v.user?.id !== assignment?.userId) || [];
 
   return (
     <div
@@ -92,7 +93,53 @@ export function VideoFeed({
         className="absolute inset-0 rounded-3xl pointer-events-none z-10"
       />
 
-      {activeClipUrl ? (
+      {isSleepMode && !activeClipUrl ? (
+        <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
+          {/* Sharp Background Image */}
+          <div 
+            className="absolute inset-0 bg-cover bg-center z-0"
+            style={{ backgroundImage: "url('/assets/images/resting.jpeg')" }}
+          />
+
+          {/* Progressive Top Blur Overlay Layer (Most blurry at the top, fading to 0% at center) */}
+          <div className="absolute top-0 left-0 right-0 h-[60%] overflow-hidden z-10 pointer-events-none">
+            {/* Blurred Copy of Background Image */}
+            <div 
+              className="absolute inset-0 bg-cover bg-center filter blur-[28px] scale-[1.08] origin-top"
+              style={{ 
+                backgroundImage: "url('/assets/images/resting.jpeg')",
+                maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
+                WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
+              }}
+            />
+            {/* Supporting dark gradient overlay to ensure text readability */}
+            <div 
+              className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent"
+            />
+          </div>
+
+          {/* Text Content cleanly placed directly on top of the blurry part */}
+          <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-6 text-center">
+            <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">MyTurn is Resting</h2>
+            <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
+              Quiet hours are active. Pokes and rolls are paused. Next vlogger selection rolls at 9:00 AM local time.
+            </p>
+
+            <div className="flex flex-col gap-2.5 w-full">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  router.push("/streaks");
+                }}
+                style={glassStyle(0.08, 16, 0.12)}
+                className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center"
+              >
+                <span>Watch Last Completed Vlog</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : activeClipUrl ? (
         <video
           src={activeClipUrl}
           autoPlay
@@ -102,129 +149,139 @@ export function VideoFeed({
           className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
         />
       ) : (
-        <div className="absolute inset-0 bg-neutral-900/60 z-0 flex flex-col items-center justify-center p-6 text-center">
-          {isCurrentUserVlogger ? (
-            <>
-             <Camera size={40} className="text-white/30 mb-2" />
-              <h2 className="text-white text-lg font-bold mb-2">It&apos;s your turn today!</h2>
-              <p className="text-white/60 text-[12px] max-w-[200px] mb-6">Your friends are waiting for your vlog.</p>
-              <button
-                onClick={(e) => { e.stopPropagation(); router.push("/record"); }}
-                style={{ background: ACCENT }}
-                className="px-6 py-3 text-black font-black rounded-full border-b-[4px] border-black/25 hover:brightness-105 active:border-b-0 active:translate-y-[4px] transition-all duration-75 shadow-md"
-              >
-                Record Now
-              </button>
-            </>
-          ) : (
-            <>
-              <VideoOff size={32} className="text-white/20 mb-3" />
-              <span className="text-white/80 text-[14px] font-bold mb-1">Waiting for {assignment?.user?.name || "vlogger"}</span>
-              <span className="text-white/40 text-[11px] max-w-[200px] mb-6">No updates uploaded yet.</span>
-              <button
-                onClick={onPoke}
-                disabled={poking || pokeCooldown > 0}
-                className="px-5 py-2.5 bg-white/10 hover:bg-white/20 border border-white/10 text-white text-xs font-bold rounded-full transition active:scale-95 flex items-center justify-center gap-2"
-              >
-                {pokeCooldown > 0 ? (
-                  <>
-                    <Clock size={14} className="opacity-50" />
-                    <span className="opacity-50 font-mono tracking-widest">
-                      {Math.floor(pokeCooldown / 60)}:{(pokeCooldown % 60).toString().padStart(2, "0")}
+        <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
+          {/* Sharp Background Image */}
+          <div 
+            className="absolute inset-0 bg-cover bg-center z-0"
+            style={{ backgroundImage: "url('/assets/images/no-clip-yet.jpeg')" }}
+          />
+
+          {/* Progressive Top Blur Overlay Layer */}
+          <div className="absolute top-0 left-0 right-0 h-[60%] overflow-hidden z-10 pointer-events-none">
+            {/* Blurred Copy of Background Image */}
+            <div 
+              className="absolute inset-0 bg-cover bg-center filter blur-[28px] scale-[1.08] origin-top"
+              style={{ 
+                backgroundImage: "url('/assets/images/no-clip-yet.jpeg')",
+                maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
+                WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
+              }}
+            />
+            {/* Dark gradient overlay to preserve contrast */}
+            <div 
+              className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent"
+            />
+          </div>
+
+          {/* Text Content & Actions placed nicely on top of the blurry part */}
+          <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-12 text-center">
+            {isCurrentUserVlogger ? (
+              <>
+                <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">It&apos;s Your Turn Today</h2>
+                <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
+                  Your friends are waiting for your updates. Post your first clip of the day to keep the group streak alive!
+                </p>
+                <button
+                  onClick={(e) => { e.stopPropagation(); router.push("/record"); }}
+                  style={glassStyle(0.08, 16, 0.12)}
+                  className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center"
+                >
+                  <span>Record Now</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">
+                  Waiting for {assignment?.user?.name || "Vlogger"}
+                </h2>
+                <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
+                  No clips have been shared today yet. Send them a poke to let them know it&apos;s their turn!
+                </p>
+                <button
+                  onClick={onPoke}
+                  disabled={poking || pokeCooldown > 0}
+                  style={glassStyle(0.08, 16, 0.12)}
+                  className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
+                >
+                  {pokeCooldown > 0 ? (
+                    <span>
+                      Poke Cooldown ({Math.floor(pokeCooldown / 60)}:{(pokeCooldown % 60).toString().padStart(2, "0")})
                     </span>
-                  </>
-                ) : (
-                  <>
-                    {poking ? <Loader2 size={14} className="animate-spin" /> : <Hand size={14} />}
-                    <span>{poking ? "Poking..." : "Poke"}</span>
-                  </>
-                )}
-              </button>
-            </>
-          )}
+                  ) : poking ? (
+                    <span>Poking...</span>
+                  ) : (
+                    <span>Poke Vlogger</span>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
       <div className="absolute inset-0 z-0 pointer-events-none bg-gradient-to-b from-black/60 via-transparent to-black/80" />
 
-      <div className="absolute top-3 left-3 flex items-center gap-2 bg-black/40 backdrop-blur-md px-1 pr-4 py-1 rounded-full z-10 shadow-md">
-        <div className="relative">
-          <div className="p-[1.5px] rounded-full" style={{ background: ACCENT }}>
-            <Avatar src={assignment?.user?.image} name={assignment?.user?.name} size={28} />
-          </div>
-          <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-emerald-400 border-2 border-black rounded-full" />
-        </div>
-        <div className="flex flex-col leading-tight">
-          <span className="text-white font-semibold text-[10px] tracking-tight">{todayVloggerHandle}</span>
-          <span className="text-white/45 text-[9px]">Today&apos;s Turn</span>
-        </div>
-      </div>
-
-      {activeClipUrl && (
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 text-white text-[9px] font-semibold z-10 shadow-md max-w-[140px]">
-          <MapPin size={10} className="text-[#e07c30] flex-shrink-0" />
-          <span className="truncate">{activeClip?.location || "Live Vlog"}</span>
-        </div>
-      )}
-
-      {activeClipUrl && (
-        <div className="mt-auto relative z-10 flex flex-col w-full">
-          <div className="py-2 px-3.5 flex items-center justify-between flex-shrink-0">
-            <div
-              onClick={onOpenViews}
-              className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-            >
-              <div className="flex -space-x-1.5">
-                {activeClip?.views?.slice(0, 3).map((view: any, idx: number) => (
-                  <div key={view.id || idx} className="relative z-10 border border-black rounded-full">
-                    <Avatar src={view.user?.image} name={view.user?.name} size={20} />
-                  </div>
-                ))}
-                {(!activeClip?.views || activeClip.views.length === 0) && (
-                  <span className="text-white/40 text-[9px] font-semibold pl-1">0 views</span>
-                )}
-              </div>
-              {activeClip?.views && activeClip.views.length > 0 && (
-                <span className="text-white/65 text-[9px] font-bold tracking-tight pl-1.5">
-                  {activeClip.views.length} viewer{activeClip.views.length > 1 ? "s" : ""}
-                </span>
-              )}
+      {!(isSleepMode && !activeClipUrl) && (
+        <>
+          {activeClipUrl && (
+            <div style={glassStyle(0.04, 16, 0.08)} className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white text-[9px] font-semibold z-10 shadow-md max-w-[140px]">
+              <MapPin size={10} className="text-white/60 flex-shrink-0" />
+              <span className="truncate">{activeClip?.location || "Live Vlog"}</span>
             </div>
+          )}
 
-            <div className="flex items-center gap-3">
-              <button onClick={onLike} className="flex items-center gap-1 cursor-pointer">
-                <Heart
-                  size={16}
-                  className="transition-transform duration-200"
-                  style={{
-                    fill: liked ? "#ff6b6b" : "none",
-                    color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)",
-                    transform: liked ? "scale(1.2)" : "scale(1)",
-                  }}
-                />
-                <span
-                  className="text-[11px] font-bold drop-shadow-md"
-                  style={{ color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)" }}
+          {activeClipUrl && (
+            <div className="mt-auto relative z-10 flex flex-col w-full">
+              <div className="py-2 px-3.5 flex items-center justify-between flex-shrink-0">
+                <div
+                  onClick={onOpenViews}
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
                 >
-                  {likeCount}
-                </span>
-              </button>
-              <span className="w-[1px] h-3.5 bg-white/20" />
-              <button onClick={onOpenComments} className="flex items-center gap-1 cursor-pointer">
-                <MessageCircle size={16} className="text-white/95" />
-                <span className="text-[11px] font-bold text-white/95">{commentList.length}</span>
-              </button>
-              <span className="w-[1px] h-3.5 bg-white/20" />
-              <button
-                onClick={(e) => { e.stopPropagation(); onReportVlog(); }}
-                className="p-1 rounded-full hover:bg-white/20 transition-colors"
-                title="Report Vlog"
-              >
-                <AlertCircle size={15} className="text-white/90" />
-              </button>
+                  <div className="flex -space-x-1.5">
+                    {displayViews.slice(0, 3).map((view: any, idx: number) => (
+                      <div key={view.id || idx} className="relative z-10 border border-black rounded-full">
+                        <Avatar src={view.user?.image} name={view.user?.name} size={20} />
+                      </div>
+                    ))}
+                    {displayViews.length === 0 && (
+                      <span className="text-white/40 text-[9px] font-semibold pl-1">0 views</span>
+                    )}
+                  </div>
+                  {displayViews.length > 0 && (
+                    <span className="text-white/65 text-[9px] font-bold tracking-tight pl-1.5">
+                      {displayViews.length} viewer{displayViews.length > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button onClick={onLike} className="flex items-center gap-1 cursor-pointer">
+                    <Heart
+                      size={16}
+                      className="transition-transform duration-200"
+                      style={{
+                        fill: liked ? "#ff6b6b" : "none",
+                        color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)",
+                        transform: liked ? "scale(1.2)" : "scale(1)",
+                      }}
+                    />
+                    <span
+                      className="text-[11px] font-bold drop-shadow-md"
+                      style={{ color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)" }}
+                    >
+                      {likeCount}
+                    </span>
+                  </button>
+                  <span className="w-[1px] h-3.5 bg-white/20" />
+                  <button onClick={onOpenComments} className="flex items-center gap-1 cursor-pointer">
+                    <MessageCircle size={16} className="text-white/95" />
+                    <span className="text-[11px] font-bold text-white/95">{commentList.length}</span>
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       <CommentsSheet
@@ -242,7 +299,7 @@ export function VideoFeed({
       <ViewsSheet
         isOpen={isViewsOpen}
         onClose={onCloseViews}
-        views={activeClip?.views}
+        views={displayViews}
       />
     </div>
   );

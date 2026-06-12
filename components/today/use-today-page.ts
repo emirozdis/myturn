@@ -23,6 +23,7 @@ export function useTodayPage() {
   const [assignment, setAssignment] = useState<any>(cachedData?.assignment || null);
   const [clips, setClips] = useState<any[]>(cachedData?.clips || []);
   const [resolvedClipUrls, setResolvedClipUrls] = useState<Record<string, string>>(cachedData?.resolvedClipUrls || {});
+  const [isSleepMode, setIsSleepMode] = useState<boolean>(cachedData?.isSleepMode || false);
 
   const [currentHourIndex, setCurrentHourIndex] = useState(() => {
     if (cachedData?.clips && cachedData.clips.length > 0) {
@@ -64,9 +65,10 @@ export function useTodayPage() {
     setRefreshing(false);
     setInitialLoad(false);
 
-    if (res.success && res.assignment) {
+    if (res.success) {
+      setIsSleepMode(res.isSleepMode || false);
       setAssignment(res.assignment);
-      const fetchedClips = res.assignment.clips || [];
+      const fetchedClips = res.assignment?.clips || [];
       setClips(fetchedClips);
 
       if (fetchedClips.length > 0) {
@@ -90,12 +92,14 @@ export function useTodayPage() {
           assignment: res.assignment,
           clips: fetchedClips,
           resolvedClipUrls: urls,
+          isSleepMode: res.isSleepMode || false,
         }));
       }
     } else {
       setAssignment(null);
       setClips([]);
       setResolvedClipUrls({});
+      setIsSleepMode(false);
     }
 
     isFetchingRef.current = false;
@@ -137,7 +141,18 @@ export function useTodayPage() {
       const recordViewEvent = async () => {
         const res = await trackView(activeClip.id);
         if (res.success && !res.alreadyViewed) {
-          setClips(prev => prev.map(c => c.id === activeClip.id ? { ...c, views: [...(c.views || []), { id: "temp-view" }] } : c));
+          setClips(prev => prev.map(c => c.id === activeClip.id ? { 
+            ...c, 
+            views: [...(c.views || []), { 
+              id: "temp-view", 
+              user: { 
+                id: session?.user?.id, 
+                name: session?.user?.name, 
+                image: session?.user?.image, 
+                handle: (session?.user as any)?.handle 
+              } 
+            }] 
+          } : c));
 
           if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
             res.newlyUnlocked.forEach((id: string) => {
@@ -152,7 +167,7 @@ export function useTodayPage() {
       setLiked(false);
       setCommentList([]);
     }
-  }, [activeClip]);
+  }, [activeClip, session]);
 
   useEffect(() => {
     if (assignment?.pokes?.[0]) {
@@ -235,8 +250,6 @@ export function useTodayPage() {
     }
   };
 
-  const todayVloggerHandle = assignment?.user?.handle ? `@${assignment.user.handle}` : "No vlogger";
-
   return {
     session,
     isVideoExpanded,
@@ -262,11 +275,12 @@ export function useTodayPage() {
     toast,
     currentHourIndex,
     setCurrentHourIndex,
-    todayVloggerHandle,
     showToast,
     handleLike,
     handleSendComment,
     handleDeleteComment,
     handlePoke,
+    isSleepMode,
+    setIsSleepMode,
   };
 }

@@ -6,6 +6,64 @@ import { supabaseServer } from "@/lib/supabase";
 import { sendPushToUser } from "@/actions/push";
 import { calculateGroupLevel, getVibeArchetype } from "@/lib/vibe";
 
+function getVlogCircadianState(timezone: string) {
+  const now = new Date();
+  let hour = 0, minute = 0, second = 0;
+  let year = "", month = "", day = "";
+
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    year = parts.find((p) => p.type === "year")?.value || "";
+    month = parts.find((p) => p.type === "month")?.value || "";
+    day = parts.find((p) => p.type === "day")?.value || "";
+    hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+    minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+    second = parseInt(parts.find((p) => p.type === "second")?.value || "0", 10);
+  } catch (e) {
+    year = String(now.getUTCFullYear());
+    month = String(now.getUTCMonth() + 1).padStart(2, "0");
+    day = String(now.getUTCDate()).padStart(2, "0");
+    hour = now.getUTCHours();
+    minute = now.getUTCMinutes();
+    second = now.getUTCSeconds();
+  }
+
+  // Generate date boundary at midnight in the group's local timezone
+  const localDate = new Date(`${year}-${month}-${day}T00:00:00Z`);
+  const currentSeconds = hour * 3600 + minute * 60 + second;
+
+  // Sleep mode is active between 12:00 AM (00:00) and 9:00 AM (09:00)
+  const isSleepMode = hour >= 0 && hour < 9;
+
+  let businessDate = new Date(localDate);
+  if (isSleepMode) {
+    // During sleep mode, the business date defaults back to yesterday's date
+    businessDate.setDate(businessDate.getDate() - 1);
+  }
+
+  const sleepTimeLeftSeconds = isSleepMode ? (9 * 3600 - currentSeconds) : 0;
+  const wakingTimeLeftSeconds = isSleepMode ? 0 : (24 * 3600 - currentSeconds);
+
+  return {
+    localDate,
+    businessDate,
+    isSleepMode,
+    sleepTimeLeftSeconds,
+    wakingTimeLeftSeconds,
+    currentHour: hour,
+  };
+}
+
 function getSecondsUntilMidnightInTz(timezone: string): number {
   try {
     const now = new Date();
@@ -186,6 +244,23 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
 }
 
 export async function rollGroupAssignmentForDate(groupId: string, localDate: Date) {
+  const group = await db.group.findUnique({
+    where: { id: groupId },
+    include: { members: true },
+  });
+
+  if (!group || group.members.length === 0) {
+    return null;
+  }
+
+  // Guard: If currently in local sleep mode, do not roll a new assignment!
+  const circadian = getVlogCircadianState(group.timezone);
+  if (circadian.isSleepMode) {
+    return await db.dailyAssignment.findFirst({
+      where: { groupId, date: circadian.businessDate }
+    });
+  }
+
   await processGroupDayTransition(groupId, localDate);
 
   const existingAssignment = await db.dailyAssignment.findFirst({
@@ -194,15 +269,6 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
 
   if (existingAssignment) {
     return existingAssignment;
-  }
-
-  const group = await db.group.findUnique({
-    where: { id: groupId },
-    include: { members: true },
-  });
-
-  if (!group || group.members.length === 0) {
-    return null;
   }
 
   const yesterdayDate = new Date(localDate);
@@ -269,10 +335,27 @@ export async function getOrCreateTodayAssignment(groupId: string) {
     const group = await db.group.findUnique({ where: { id: groupId } });
     if (!group) return { error: "Group not found" };
 
-    const localDate = await getLocalDateInTimezone(group.timezone);
-    const assignment = await rollGroupAssignmentForDate(groupId, localDate);
+    const circadian = getVlogCircadianState(group.timezone);
 
-    if (!assignment) return { error: "No members in group to assign" };
+    let assignment;
+    if (circadian.isSleepMode) {
+      // Retain the prior day's assignment for viewing and grace period updates
+      assignment = await db.dailyAssignment.findFirst({
+        where: { groupId, date: circadian.businessDate },
+      });
+    } else {
+      assignment = await rollGroupAssignmentForDate(groupId, circadian.businessDate);
+    }
+
+    if (!assignment) {
+      return { 
+        success: true, 
+        assignment: null, 
+        isSleepMode: circadian.isSleepMode,
+        sleepTimeLeftSeconds: circadian.sleepTimeLeftSeconds,
+        wakingTimeLeftSeconds: circadian.wakingTimeLeftSeconds,
+      };
+    }
 
     const fullyPopulatedAssignment = await db.dailyAssignment.findFirst({
       where: { id: assignment.id },
@@ -300,7 +383,13 @@ export async function getOrCreateTodayAssignment(groupId: string) {
       },
     });
 
-    return { success: true, assignment: fullyPopulatedAssignment };
+    return { 
+      success: true, 
+      assignment: fullyPopulatedAssignment,
+      isSleepMode: circadian.isSleepMode,
+      sleepTimeLeftSeconds: circadian.sleepTimeLeftSeconds,
+      wakingTimeLeftSeconds: circadian.wakingTimeLeftSeconds,
+    };
   } catch (error: any) {
     return { error: error?.message || "Failed to retrieve or roll daily assignment." };
   }

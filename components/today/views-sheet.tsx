@@ -29,7 +29,7 @@ export function ViewsSheet({ isOpen, onClose, views }: ViewsSheetProps) {
             <div key={v.id || idx} className="flex items-center gap-3">
               <Avatar src={v.user?.image} name={v.user?.name} size={32} />
               <div className="flex flex-col">
-                <span className="text-white text-[12px] font-bold">@{v.user?.name || "user"}</span>
+                <span className="text-white text-[12px] font-bold">@{v.user?.handle || v.user?.name || "User"}</span>
                 <span className="text-white/40 text-[9px] font-medium">Watched today</span>
               </div>
             </div>

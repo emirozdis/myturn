@@ -3,14 +3,11 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-function getSecondsUntilMidnight(timezone: string): number {
+function getSecondsUntilNextCircadianEvent(timezone: string) {
   try {
     const now = new Date();
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
@@ -23,19 +20,45 @@ function getSecondsUntilMidnight(timezone: string): number {
     const secPart = parts.find((p) => p.type === "second")?.value || "0";
     
     let hour = parseInt(hourPart, 10);
-    if (hour === 24) hour = 0; // Guard for certain environment formatting styles
+    if (hour === 24) hour = 0;
     const minute = parseInt(minPart, 10);
     const second = parseInt(secPart, 10);
     
     const currentSeconds = hour * 3600 + minute * 60 + second;
-    const totalSecondsInDay = 24 * 3600;
+    const isSleepMode = hour >= 0 && hour < 9;
     
-    return Math.max(0, totalSecondsInDay - currentSeconds);
+    if (isSleepMode) {
+      // Countdown to 9:00 AM local time
+      return {
+        seconds: Math.max(0, 32400 - currentSeconds),
+        isSleepMode: true,
+      };
+    } else {
+      // Countdown to 12:00 AM local time
+      return {
+        seconds: Math.max(0, 86400 - currentSeconds),
+        isSleepMode: false,
+      };
+    }
   } catch (e) {
-    // Graceful fallback to UTC if target timezone is missing or unsupported
     const now = new Date();
-    const currentSeconds = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
-    return Math.max(0, 24 * 3600 - currentSeconds);
+    const hour = now.getUTCHours();
+    const minute = now.getUTCMinutes();
+    const second = now.getUTCSeconds();
+    const currentSeconds = hour * 3600 + minute * 60 + second;
+    
+    const isSleepMode = hour >= 0 && hour < 9;
+    if (isSleepMode) {
+      return {
+        seconds: Math.max(0, 32400 - currentSeconds),
+        isSleepMode: true,
+      };
+    } else {
+      return {
+        seconds: Math.max(0, 86400 - currentSeconds),
+        isSleepMode: false,
+      };
+    }
   }
 }
 
@@ -63,19 +86,30 @@ function TimeUnit({ value, label }: { value: string; label: string }) {
   );
 }
 
-export function CountdownTimer({ timezone = "UTC" }: { timezone?: string }) {
-  const [time, setTime] = useState(() => getSecondsUntilMidnight(timezone));
+export function CountdownTimer({
+  timezone = "UTC",
+  onStateChange,
+}: {
+  timezone?: string;
+  onStateChange?: (isSleepMode: boolean) => void;
+}) {
+  const [state, setState] = useState(() => getSecondsUntilNextCircadianEvent(timezone));
 
   useEffect(() => {
-    // Reset timer state cleanly whenever the selected group's timezone changes
-    setTime(getSecondsUntilMidnight(timezone));
+    const nextState = getSecondsUntilNextCircadianEvent(timezone);
+    setState(nextState);
+    onStateChange?.(nextState.isSleepMode);
 
     const id = setInterval(() => {
-      setTime(getSecondsUntilMidnight(timezone));
+      const updated = getSecondsUntilNextCircadianEvent(timezone);
+      setState(updated);
+      onStateChange?.(updated.isSleepMode);
     }, 1000);
 
     return () => clearInterval(id);
-  }, [timezone]);
+  }, [timezone, onStateChange]);
+
+  const time = state.seconds;
 
   const h = String(Math.floor(time / 3600)).padStart(2, "0");
   const m = String(Math.floor((time % 3600) / 60)).padStart(2, "0");
