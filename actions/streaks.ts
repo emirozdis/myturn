@@ -3,7 +3,7 @@
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { getVibeArchetype } from "@/lib/vibe";
-import { supabaseServer } from "@/lib/supabase";
+import { generateSignedMediaUrl } from "@/lib/media-signing";
 
 export async function getStreaksData(groupId: string) {
   try {
@@ -65,21 +65,19 @@ export async function getStreaksData(groupId: string) {
           
           let resolvedClips: any[] = [];
           if (type === "vlogged" && matchingAssignment.clips && matchingAssignment.clips.length > 0) {
-            resolvedClips = await Promise.all(
-              matchingAssignment.clips.map(async (clip) => {
-                try {
-                  const { data: videoData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.videoUrl, 3600);
-                  const { data: thumbData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.thumbnailUrl, 3600);
-                  return {
-                    ...clip,
-                    videoUrl: videoData?.signedUrl || clip.videoUrl,
-                    thumbnailUrl: thumbData?.signedUrl || clip.thumbnailUrl,
-                  };
-                } catch {
-                  return clip;
-                }
-              })
-            );
+            resolvedClips = matchingAssignment.clips.map((clip) => {
+              const videoUrl = clip.videoUrl.startsWith("http") || clip.videoUrl.startsWith("/") 
+                ? clip.videoUrl 
+                : generateSignedMediaUrl("vlogs", clip.videoUrl);
+              const thumbnailUrl = clip.thumbnailUrl.startsWith("http") || clip.thumbnailUrl.startsWith("/") 
+                ? clip.thumbnailUrl 
+                : generateSignedMediaUrl("vlogs", clip.thumbnailUrl);
+              return {
+                ...clip,
+                videoUrl,
+                thumbnailUrl,
+              };
+            });
           }
 
           return {

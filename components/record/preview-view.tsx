@@ -1,5 +1,4 @@
 "use client";
-
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Loader2, ChevronRight, Clock, MapPin, AlertCircle, Check, X } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
@@ -21,7 +20,6 @@ export function GroupSelectorSheet({ isOpen, onClose, userGroups, selectedGroup,
         <h3 className="text-white text-sm font-bold">Choose a Group</h3>
         <button onClick={onClose} className="text-xs text-white/50 hover:text-white">Cancel</button>
       </div>
-
       <div className="flex-1 overflow-y-auto space-y-2.5 pr-0.5 scrollbar-hide pb-6">
         {userGroups.map((group) => {
           const isCurrent = group.id === selectedGroup?.id;
@@ -72,7 +70,6 @@ export function UploadSuccessOverlay() {
           alt="Success Check"
         />
       </motion.div>
-
       <motion.span
         initial={{ y: 12, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -81,7 +78,6 @@ export function UploadSuccessOverlay() {
       >
         Vlog Shared Successfully!
       </motion.span>
-
       <motion.span
         initial={{ y: 12, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -172,7 +168,6 @@ export function PreviewView(props: PreviewViewProps) {
           />
         </div>
       )}
-
       <div
         style={{ paddingTop: "max(14px, env(safe-area-inset-top, 14px))" }}
         className="flex items-center justify-between px-4 pb-3.5 border-b border-white/5 bg-neutral-900/60 backdrop-blur-md relative z-10 flex-shrink-0"
@@ -188,7 +183,6 @@ export function PreviewView(props: PreviewViewProps) {
         <span className="text-white text-sm font-extrabold tracking-tight">New Post</span>
         <div className="w-12 h-6" />
       </div>
-
       <div className="flex-1 overflow-y-auto scrollbar-hide p-4 flex flex-col gap-6">
         <div className="flex gap-4 items-start">
           <div className="flex flex-col items-center flex-shrink-0">
@@ -199,13 +193,17 @@ export function PreviewView(props: PreviewViewProps) {
                   if (!isPreviewFullscreen) onOpenFullscreen();
                   else onCloseFullscreen();
                 }}
-                className={
+                transition={{
+                  layout: { type: "spring", damping: 30, stiffness: 250, mass: 0.9 },
+                }}
+                className={`overflow-hidden ${
                   isPreviewFullscreen
                     ? "fixed inset-0 z-[100] bg-black flex flex-col justify-between cursor-default"
-                    : "absolute inset-0 bg-neutral-900 shadow-lg cursor-pointer group overflow-hidden"
-                }
+                    : "absolute inset-0 bg-neutral-900 shadow-lg cursor-pointer group"
+                }`}
                 style={{
                   borderRadius: isPreviewFullscreen ? 0 : 16,
+                  willChange: "transform",
                 }}
               >
                 <motion.video
@@ -217,9 +215,11 @@ export function PreviewView(props: PreviewViewProps) {
                   muted={!isPreviewFullscreen}
                   playsInline
                   onTimeUpdate={onMiniTimeUpdate}
-                  className={`absolute inset-0 w-full h-full object-cover transition-transform ${recordedFacingMode === "user" ? "-scale-x-100" : ""}`}
+                  transition={{
+                    layout: { type: "spring", damping: 30, stiffness: 250, mass: 0.9 },
+                  }}
+                  className={`absolute inset-0 w-full h-full object-cover ${recordedFacingMode === "user" ? "-scale-x-100" : ""}`}
                 />
-
                 <AnimatePresence>
                   {!isPreviewFullscreen && (
                     <motion.div
@@ -227,6 +227,7 @@ export function PreviewView(props: PreviewViewProps) {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
+                      transition={{ duration: 0.18 }}
                       className="absolute inset-0 pointer-events-none"
                     >
                       <div
@@ -239,21 +240,18 @@ export function PreviewView(props: PreviewViewProps) {
                         }}
                         className="absolute inset-0 rounded-2xl z-10 pointer-events-none"
                       />
-
                       <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20 overflow-hidden">
                         <div
                           className="h-full bg-[#e07c30] transition-all duration-100 ease-linear"
                           style={{ width: `${miniProgress}%` }}
                         />
                       </div>
-
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity z-20 pointer-events-none">
                         <span className="text-white text-[9px] font-bold bg-black/50 px-2 py-0.5 rounded-full uppercase tracking-wider font-mono">Unmute</span>
                       </div>
                     </motion.div>
                   )}
                 </AnimatePresence>
-
                 <AnimatePresence>
                   {isPreviewFullscreen && (
                     <motion.div
@@ -261,10 +259,10 @@ export function PreviewView(props: PreviewViewProps) {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
+                      transition={{ duration: 0.25, delay: 0.1 }}
                       className="absolute inset-0 pointer-events-none flex flex-col justify-between"
                     >
                       <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/60 pointer-events-none z-10" />
-
                       <div className="relative z-20 p-4 pt-12 flex justify-between items-center pointer-events-auto">
                         <span className="text-white text-sm font-bold tracking-tight drop-shadow-md">Fullscreen Preview</span>
                         <button
@@ -275,11 +273,9 @@ export function PreviewView(props: PreviewViewProps) {
                           <span>Close</span>
                         </button>
                       </div>
-
                       <div className="relative z-20 p-6 mt-auto text-center pointer-events-auto">
                         <span className="text-white/60 text-xs drop-shadow font-medium tracking-wide">Tap anywhere to return</span>
                       </div>
-
                       <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20 z-20 overflow-hidden">
                         <div
                           className="h-full bg-[#e07c30] transition-all duration-100 ease-linear"
@@ -291,12 +287,10 @@ export function PreviewView(props: PreviewViewProps) {
                 </AnimatePresence>
               </motion.div>
             </div>
-
             <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-2 block text-center select-none">
               Tap to preview
             </span>
           </div>
-
           <div className="flex-1 h-full min-w-0">
             <textarea
               value={caption}
@@ -308,15 +302,12 @@ export function PreviewView(props: PreviewViewProps) {
             />
           </div>
         </div>
-
         <hr className="border-t border-white/5" />
-
         <div className="flex flex-col gap-3">
           <div className="flex justify-between items-center px-1">
             <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Post Destination</span>
             <span className="text-[10px] font-semibold text-[#e07c30]">Select Group</span>
           </div>
-
           <div
             onClick={() => { if (!isUploading) onOpenGroupSelector(); }}
             style={glassStyle(0.04, 16, 0.08)}
@@ -338,10 +329,8 @@ export function PreviewView(props: PreviewViewProps) {
             <ChevronRight size={16} className="text-white/30" />
           </div>
         </div>
-
         <div className="flex flex-col gap-3">
           <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">Vlogging Context</span>
-
           <div
             style={glassStyle(0.04, 16, 0.08)}
             className="rounded-2xl border border-white/5 p-4 flex flex-col gap-3.5 text-xs text-white"
@@ -355,7 +344,6 @@ export function PreviewView(props: PreviewViewProps) {
             </div>
           </div>
         </div>
-
         {checkingTurn ? (
           <div className="flex items-center gap-2 px-1 text-[10px] text-white/50 animate-pulse">
             <Loader2 size={12} className="animate-spin text-[#e07c30]" />
@@ -372,7 +360,6 @@ export function PreviewView(props: PreviewViewProps) {
             </div>
           )
         )}
-
         <div className="flex flex-col gap-3">
           <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">Location details</span>
           <div
@@ -391,7 +378,6 @@ export function PreviewView(props: PreviewViewProps) {
           </div>
         </div>
       </div>
-
       <div className="p-4 border-t border-white/5 bg-neutral-900/40 backdrop-blur-md flex-shrink-0">
         <button
           onClick={onPublish}
@@ -408,7 +394,6 @@ export function PreviewView(props: PreviewViewProps) {
           )}
         </button>
       </div>
-
       <GroupSelectorSheet
         isOpen={showGroupDrawer}
         onClose={onCloseGroupDrawer}
@@ -416,7 +401,6 @@ export function PreviewView(props: PreviewViewProps) {
         selectedGroup={selectedGroup}
         onSelectGroup={onSelectGroup}
       />
-
       <AnimatePresence>
         {uploadSuccess && <UploadSuccessOverlay />}
       </AnimatePresence>

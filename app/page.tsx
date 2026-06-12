@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  ArrowLeft, EyeOff, Eye, Camera, User, Loader2, Bell, Check, Sparkles, MapPin, 
-  Share, PlusSquare, MoreVertical, MonitorDown, Info, ShieldCheck, Copy 
+import {
+  ArrowLeft, EyeOff, Eye, Camera, User, Loader2, Bell, Check, Sparkles, MapPin,
+  Share, PlusSquare, MoreVertical, MonitorDown, Info, ShieldCheck, Copy
 } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
@@ -266,9 +266,9 @@ function InstallEnforcerScreen() {
   };
 
   const isWrongBrowser = (os === "ios" && browser !== "safari") || (os === "android" && browser !== "chrome");
-  const isDevBypass = process.env.NEXT_PUBLIC_DEVELOPMENT === "true";
+  const isDevBypass = process.env.NEXT_PUBLIC_DEVELOPMENT === "true" || process.env.NODE_ENV === "development";
   const showRecommendBrowser = isWrongBrowser && !dismissedWarning && !isDevBypass;
-  
+
   const storeName = os === "android" ? "Play Store" : "App Store";
   const isApple = os === "ios";
 
@@ -289,7 +289,7 @@ function InstallEnforcerScreen() {
               <div className="absolute inset-0 bg-white/5 blur-3xl rounded-full" />
               <img src={browserIcon} className="w-28 h-28 object-contain relative z-10 drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]" alt={recommendedBrowser} />
             </div>
-            
+
             <h2 className="text-white text-[28px] font-bold mb-3 tracking-tight">Open in {recommendedBrowser}</h2>
             <p className="text-white/60 text-[15px] leading-relaxed mb-8">
               We recommend using <strong>{recommendedBrowser}</strong> to ensure camera and notification features work flawlessly.
@@ -377,7 +377,7 @@ function InstallEnforcerScreen() {
                     <p className="text-white/80 text-[14px] font-medium leading-relaxed">Click the <strong className="text-white">Install</strong> icon in your browser's address bar.</p>
                   </div>
                 )}
-                
+
                 <div className="mt-6 text-center bg-[#e07c30]/10 border border-[#e07c30]/20 py-3.5 rounded-2xl shadow-inner">
                   <span className="text-[#e07c30] text-[14px] font-semibold flex items-center justify-center gap-2">
                     <Sparkles size={16} />
@@ -419,7 +419,7 @@ function InstallEnforcerScreen() {
                 <Info size={22} className="text-[#e07c30]" />
                 <h3 className="text-white text-xl font-bold tracking-tight">Why No {storeName}?</h3>
               </div>
-              
+
               <div className="flex-1 space-y-4 text-[13px] leading-relaxed text-white/70 overflow-y-auto scrollbar-hide mb-6">
                 <div>
                   <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-1 text-[#e07c30]/90">Store Costs & Barriers</h4>
@@ -438,7 +438,7 @@ function InstallEnforcerScreen() {
                 </div>
               </div>
 
-              <button 
+              <button
                 onClick={() => setShowStoreModal(false)}
                 style={{ background: ACCENT }}
                 className="w-full py-3.5 rounded-[18px] text-black font-extrabold text-sm active:scale-[0.98] transition-all hover:opacity-95 shadow-md flex items-center justify-center flex-shrink-0"
@@ -459,6 +459,13 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Evaluate config flags for social logic UI rendering
+  const allowRegistration = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== "false";
+  const allowSocial = process.env.NEXT_PUBLIC_ALLOW_SOCIAL_LOGIN !== "false";
+  const googleEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_LOGIN !== "false";
+  const appleEnabled = process.env.NEXT_PUBLIC_ENABLE_APPLE_LOGIN !== "false";
+  const facebookEnabled = process.env.NEXT_PUBLIC_ENABLE_FACEBOOK_LOGIN === "true";
 
   const handleSignIn = async () => {
     setError("");
@@ -517,28 +524,40 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
           {loading ? "Signing In..." : "Sign In"}
         </button>
 
-        <div className="flex items-center gap-4 mb-8 flex-shrink-0">
-          <div className="flex-1 h-[1px] bg-white/10" />
-          <span className="text-white/40 text-[13px]">or continue with</span>
-          <div className="flex-1 h-[1px] bg-white/10" />
-        </div>
+        {allowSocial && (googleEnabled || appleEnabled || facebookEnabled) && (
+          <>
+            <div className="flex items-center gap-4 mb-8 flex-shrink-0">
+              <div className="flex-1 h-[1px] bg-white/10" />
+              <span className="text-white/40 text-[13px]">or continue with</span>
+              <div className="flex-1 h-[1px] bg-white/10" />
+            </div>
 
-        <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
-          <button onClick={() => signIn("google")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
-            <GoogleIcon />
-          </button>
-          <button onClick={() => signIn("apple")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
-            <AppleIcon />
-          </button>
-          <button onClick={() => alert("Facebook login coming soon!")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
-            <FacebookIcon />
-          </button>
-        </div>
+            <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
+              {googleEnabled && (
+                <button onClick={() => signIn("google")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                  <GoogleIcon />
+                </button>
+              )}
+              {appleEnabled && (
+                <button onClick={() => signIn("apple")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                  <AppleIcon />
+                </button>
+              )}
+              {facebookEnabled && (
+                <button onClick={() => alert("Facebook login coming soon!")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                  <FacebookIcon />
+                </button>
+              )}
+            </div>
+          </>
+        )}
 
-        <div className="text-center mt-auto flex-shrink-0 pt-4">
-          <span className="text-white/50 text-[14px]">Don't have an account? </span>
-          <button onClick={() => onNavigate("signup")} className="text-[#e07c30] text-[14px] font-bold hover:underline">Sign Up</button>
-        </div>
+        {allowRegistration && (
+          <div className="text-center mt-auto flex-shrink-0 pt-4">
+            <span className="text-white/50 text-[14px]">Don't have an account? </span>
+            <button onClick={() => onNavigate("signup")} className="text-[#e07c30] text-[14px] font-bold hover:underline">Sign Up</button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -550,6 +569,13 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Evaluate config flags for social logic UI rendering
+  const allowRegistration = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== "false";
+  const allowSocial = process.env.NEXT_PUBLIC_ALLOW_SOCIAL_LOGIN !== "false";
+  const googleEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_LOGIN !== "false";
+  const appleEnabled = process.env.NEXT_PUBLIC_ENABLE_APPLE_LOGIN !== "false";
+  const facebookEnabled = process.env.NEXT_PUBLIC_ENABLE_FACEBOOK_LOGIN === "true";
 
   const handleSignUp = async () => {
     setError("");
@@ -579,6 +605,28 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
       }
     }
   };
+
+  // Gracefully block rendering if manual URL states access registration while closed
+  if (!allowRegistration) {
+    return (
+      <div className="flex-1 flex flex-col pt-4 min-h-0 items-center justify-center text-center px-4">
+        <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+          <User className="text-white/30" size={24} />
+        </div>
+        <h1 className="text-white text-2xl font-bold tracking-tight mb-2">Registration Closed</h1>
+        <p className="text-white/60 text-xs sm:text-sm max-w-xs mb-6 leading-relaxed">
+          User registrations are currently disabled on this platform. If you already have an account, please log in.
+        </p>
+        <button
+          onClick={() => onNavigate("signin")}
+          style={{ background: ACCENT }}
+          className="w-full max-w-xs py-3.5 rounded-full text-black font-bold text-sm transition-transform active:scale-[0.98]"
+        >
+          Go to Sign In
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col pt-4 min-h-0">
@@ -612,23 +660,33 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
           {loading ? "Creating Account..." : "Sign Up"}
         </button>
 
-        <div className="flex items-center gap-4 mb-8 flex-shrink-0">
-          <div className="flex-1 h-[1px] bg-white/10" />
-          <span className="text-white/40 text-[13px]">or continue with</span>
-          <div className="flex-1 h-[1px] bg-white/10" />
-        </div>
+        {allowSocial && (googleEnabled || appleEnabled || facebookEnabled) && (
+          <>
+            <div className="flex items-center gap-4 mb-8 flex-shrink-0">
+              <div className="flex-1 h-[1px] bg-white/10" />
+              <span className="text-white/40 text-[13px]">or continue with</span>
+              <div className="flex-1 h-[1px] bg-white/10" />
+            </div>
 
-        <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
-          <button onClick={() => signIn("google")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
-            <GoogleIcon />
-          </button>
-          <button onClick={() => signIn("apple")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
-            <AppleIcon />
-          </button>
-          <button onClick={() => alert("Facebook login coming soon!")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
-            <FacebookIcon />
-          </button>
-        </div>
+            <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
+              {googleEnabled && (
+                <button onClick={() => signIn("google")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                  <GoogleIcon />
+                </button>
+              )}
+              {appleEnabled && (
+                <button onClick={() => signIn("apple")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                  <AppleIcon />
+                </button>
+              )}
+              {facebookEnabled && (
+                <button onClick={() => alert("Facebook login coming soon!")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                  <FacebookIcon />
+                </button>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="text-center mt-auto flex-shrink-0 pt-4">
           <span className="text-white/50 text-[14px]">Already have an account? </span>
@@ -1125,8 +1183,8 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
             onClick={handleJoin}
             disabled={code.length < 4 || loading}
             className={`w-full py-4 rounded-[18px] font-bold text-[16px] transition-all mb-4 flex items-center justify-center gap-2 ${code.length >= 4
-                ? "bg-[#e07c30] text-black active:scale-[0.98] shadow-lg"
-                : "bg-white/5 text-white/30 border border-white/5"
+              ? "bg-[#e07c30] text-black active:scale-[0.98] shadow-lg"
+              : "bg-white/5 text-white/30 border border-white/5"
               }`}
           >
             {loading && <Loader2 size={18} className="animate-spin" />}
@@ -1164,6 +1222,8 @@ export default function OnboardingPage() {
   const [signUpName, setSignUpName] = useState("");
   const [warningOs, setWarningOs] = useState<"ios" | "android" | null>(null);
 
+  const allowRegistration = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== "false";
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const ua = window.navigator.userAgent || "";
@@ -1197,7 +1257,7 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (status === "authenticated" && session) {
-      if (["intro1", "intro2", "intro3", "installPwa", "browserWarning", "signin", "signup"].includes(step)) {
+      if (["intro1", "intro2", "intro3", "installPwa", "browserWarning", "signin"].includes(step)) {
         router.push("/today");
       }
     }
@@ -1218,7 +1278,7 @@ export default function OnboardingPage() {
 
     if (typeof window !== "undefined") {
       const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
-      const isDevBypass = process.env.NEXT_PUBLIC_DEVELOPMENT === "true";
+      const isDevBypass = process.env.NEXT_PUBLIC_DEVELOPMENT === "true" || process.env.NODE_ENV === "development";
 
       if (!isStandalone && !isDevBypass && (newStep === "signin" || newStep === "signup")) {
         setDirection(order["installPwa"] >= order[step] ? 1 : -1);
@@ -1322,12 +1382,12 @@ export default function OnboardingPage() {
                   onClick={() => {
                     if (step === "intro1") navigate("intro2");
                     else if (step === "intro2") navigate("intro3");
-                    else navigate("signup");
+                    else navigate(allowRegistration ? "signup" : "signin");
                   }}
                   className="w-full mt-8 py-4 rounded-full text-black font-bold text-[16px] transition-transform active:scale-[0.98] shadow-lg pointer-events-auto"
                   style={{ background: ACCENT }}
                 >
-                  {step === "intro3" ? "Get Started" : "Next"}
+                  {step === "intro3" ? (allowRegistration ? "Get Started" : "Log In") : "Next"}
                 </button>
               </motion.div>
             )}

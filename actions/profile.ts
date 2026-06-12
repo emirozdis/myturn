@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 import { getVibeArchetype } from "@/lib/vibe";
+import { generateSignedMediaUrl } from "@/lib/media-signing";
 
 export async function getUserPublicProfile(userId: string) {
   try {
@@ -35,10 +36,7 @@ export async function getUserPublicProfile(userId: string) {
 
     let avatarUrl = user.image;
     if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {
-      try {
-        const { data: signedData } = await supabaseServer.storage.from("avatars").createSignedUrl(user.image, 3600);
-        if (signedData) avatarUrl = signedData.signedUrl;
-      } catch {}
+      avatarUrl = generateSignedMediaUrl("avatars", user.image);
     }
 
     return {
@@ -74,11 +72,9 @@ export async function uploadAvatar(base64Data: string) {
       data: { image: path },
     });
 
-    const { data: signedData } = await supabaseServer.storage
-      .from("avatars")
-      .createSignedUrl(path, 3600);
+    const imageUrl = generateSignedMediaUrl("avatars", path);
 
-    return { success: true, imagePath: path, imageUrl: signedData?.signedUrl };
+    return { success: true, imagePath: path, imageUrl };
   } catch (error: any) {
     return { error: error?.message || "Failed to upload avatar" };
   }
@@ -130,29 +126,24 @@ export async function getProfileData() {
       take: 6,
     });
 
-    const clips = await Promise.all(
-      rawClips.map(async (clip) => {
-        try {
-          const { data: videoData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.videoUrl, 3600);
-          const { data: thumbData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.thumbnailUrl, 3600);
-          
-          return {
-            ...clip,
-            videoUrl: videoData?.signedUrl || clip.videoUrl,
-            thumbnailUrl: thumbData?.signedUrl || clip.thumbnailUrl,
-          };
-        } catch {
-          return clip;
-        }
-      })
-    );
+    const clips = rawClips.map((clip) => {
+      const videoUrl = clip.videoUrl.startsWith("http") || clip.videoUrl.startsWith("/") 
+        ? clip.videoUrl 
+        : generateSignedMediaUrl("vlogs", clip.videoUrl);
+      const thumbnailUrl = clip.thumbnailUrl.startsWith("http") || clip.thumbnailUrl.startsWith("/") 
+        ? clip.thumbnailUrl 
+        : generateSignedMediaUrl("vlogs", clip.thumbnailUrl);
+
+      return {
+        ...clip,
+        videoUrl,
+        thumbnailUrl,
+      };
+    });
 
     let avatarUrl = user.image;
     if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {
-      try {
-        const { data: signedData } = await supabaseServer.storage.from("avatars").createSignedUrl(user.image, 3600);
-        if (signedData) avatarUrl = signedData.signedUrl;
-      } catch {}
+      avatarUrl = generateSignedMediaUrl("avatars", user.image);
     }
 
     const highestMemberXp = await db.groupMember.findFirst({

@@ -5,6 +5,7 @@ import { getAuthSession } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 import { sendPushToUser } from "@/actions/push";
 import { calculateGroupLevel, getVibeArchetype } from "@/lib/vibe";
+import { generateSignedMediaUrl } from "@/lib/media-signing";
 
 function getVlogCircadianState(timezone: string) {
   const now = new Date();
@@ -411,22 +412,19 @@ export async function getLatestCompilation(groupId: string) {
 
     if (!assignment || assignment.clips.length === 0) return { success: false };
 
-    // Resolve signed URLs
-    const resolvedClips = await Promise.all(
-      assignment.clips.map(async (clip) => {
-        try {
-          const { data: videoData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.videoUrl, 3600);
-          const { data: thumbData } = await supabaseServer.storage.from("vlogs").createSignedUrl(clip.thumbnailUrl, 3600);
-          return {
-            ...clip,
-            videoUrl: videoData?.signedUrl || clip.videoUrl,
-            thumbnailUrl: thumbData?.signedUrl || clip.thumbnailUrl,
-          };
-        } catch {
-          return clip;
-        }
-      })
-    );
+    const resolvedClips = assignment.clips.map((clip) => {
+      const videoUrl = clip.videoUrl.startsWith("http") || clip.videoUrl.startsWith("/") 
+        ? clip.videoUrl 
+        : generateSignedMediaUrl("vlogs", clip.videoUrl);
+      const thumbnailUrl = clip.thumbnailUrl.startsWith("http") || clip.thumbnailUrl.startsWith("/") 
+        ? clip.thumbnailUrl 
+        : generateSignedMediaUrl("vlogs", clip.thumbnailUrl);
+      return {
+        ...clip,
+        videoUrl,
+        thumbnailUrl,
+      };
+    });
 
     return {
       success: true,
@@ -437,10 +435,14 @@ export async function getLatestCompilation(groupId: string) {
   }
 }
 
-export async function getSignedUploadUrls(groupId: string, assignmentId: string, ext: string = "webm") {
+export async function getSignedUploadUrls(groupId: string, assignmentId: string, ext: string = "webm", duration: number = 0) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
+
+    if (duration < 5 || duration > 120) {
+      return { error: "Video clip must be between 5 and 120 seconds." };
+    }
 
     const timestamp = Date.now();
     const videoPath = `${groupId}/${assignmentId}/${timestamp}-vlog.${ext}`;
@@ -470,10 +472,15 @@ export async function createClip(data: {
   thumbnailUrl: string;
   location?: string;
   caption?: string;
+  duration?: number;
 }) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
+
+    if (data.duration === undefined || data.duration < 5 || data.duration > 120) {
+      return { error: "Video clip must be between 5 and 120 seconds." };
+    }
 
     const assignment = await db.dailyAssignment.findUnique({ where: { id: data.assignmentId } });
     if (!assignment) return { error: "Active daily assignment not found" };
@@ -705,9 +712,8 @@ export async function deleteComment(commentId: string) {
 
 export async function getSignedReadUrl(bucket: "vlogs" | "thumbnails" | "avatars", path: string) {
   try {
-    const response = await supabaseServer.storage.from(bucket).createSignedUrl(path, 3600);
-    if (response.error) throw new Error(response.error.message);
-    return { success: true, url: response.data.signedUrl };
+    const url = generateSignedMediaUrl(bucket, path);
+    return { success: true, url };
   } catch (error: any) {
     return { error: error?.message || "Failed to generate read URL." };
   }

@@ -5,6 +5,12 @@ import { db } from "@/lib/db";
 
 export async function signUpUser(data: { name: string; email: string; password: string }) {
   try {
+    // Prevent registration if system flag is disabled
+    const allowRegistration = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== "false";
+    if (!allowRegistration) {
+      return { error: "User registration is currently disabled by the system administrator." };
+    }
+
     if (!data.name || !data.email || !data.password) {
       return { error: "Name, email, and password are required." };
     }

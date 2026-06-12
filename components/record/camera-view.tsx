@@ -38,6 +38,12 @@ export function CameraView({
   onStartRecording,
   onStopRecording,
 }: CameraViewProps) {
+  const formatTime = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+    const s = (totalSeconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
   return (
     <motion.div
       key="camera-view"
@@ -67,6 +73,17 @@ export function CameraView({
         </div>
       )}
 
+      {/* Show the <5s error if triggered after hitting stop */}
+      {isTurnAuthorized && error && !isRecording && (
+        <div
+          style={{ marginTop: "max(12px, env(safe-area-inset-top, 12px))" }}
+          className="absolute top-4 inset-x-4 z-20 p-3 bg-red-950/80 backdrop-blur-md border border-red-500/20 rounded-2xl flex items-center gap-2.5 shadow-lg"
+        >
+          <AlertCircle size={14} className="text-red-400 flex-shrink-0" />
+          <p className="text-white text-[11px] font-semibold leading-tight">{error}</p>
+        </div>
+      )}
+
       <div
         style={{ paddingTop: "max(12px, env(safe-area-inset-top, 12px))" }}
         className="flex items-center justify-between z-10 p-4"
@@ -76,7 +93,7 @@ export function CameraView({
             size={10}
             className={`${isRecording ? "text-red-500 animate-pulse" : "text-white"}`}
           />
-          <span>{isRecording ? `REC 00:${String(recordTime).padStart(2, "0")}` : "STANDBY"}</span>
+          <span>{isRecording ? `REC ${formatTime(recordTime)}` : "STANDBY"}</span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onToggleCamera} className="p-2 rounded-full bg-black/40 border border-white/10 text-white backdrop-blur shadow-md hover:bg-white/10 transition">
@@ -90,7 +107,7 @@ export function CameraView({
 
       <div className="absolute left-3.5 bottom-12 flex flex-col gap-[2px] w-2.5 h-24 bg-black/30 rounded-full p-[2px] justify-end overflow-hidden border border-white/10 z-10 shadow-md">
         {[1, 2, 3, 4, 5, 6].map((bar) => {
-          const isActive = isRecording && (recordTime / 10 >= bar - 1);
+          const isActive = isRecording && (recordTime / 20 >= bar - 1);
           return (
             <div
               key={bar}
@@ -121,19 +138,26 @@ export function CameraView({
           </div>
         ) : <div className="w-[84px]" />}
 
-        <button
-          onClick={isRecording ? onStopRecording : onStartRecording}
-          disabled={!isTurnAuthorized || isUploading}
-          className="w-14 h-14 rounded-full border-[3px] border-white flex items-center justify-center bg-black/40 disabled:opacity-30 shadow-xl relative focus:outline-none"
-        >
-          <motion.div
-            animate={{
-              scale: isRecording ? 0.6 : 1,
-              borderRadius: isRecording ? "8px" : "9999px",
-            }}
-            className="w-10 h-10 bg-red-500"
-          />
-        </button>
+        <div className="relative flex flex-col items-center justify-center">
+          {isRecording && recordTime >= 105 && (
+            <span className="absolute -top-10 left-1/2 -translate-x-1/2 text-white font-bold text-[10px] tracking-wide whitespace-nowrap bg-red-600/90 px-2.5 py-1 rounded-full backdrop-blur-md border border-red-500/50 shadow-md animate-pulse">
+              {120 - recordTime}s remaining
+            </span>
+          )}
+          <button
+            onClick={isRecording ? onStopRecording : onStartRecording}
+            disabled={!isTurnAuthorized || isUploading}
+            className="w-14 h-14 rounded-full border-[3px] border-white flex items-center justify-center bg-black/40 disabled:opacity-30 shadow-xl relative focus:outline-none"
+          >
+            <motion.div
+              animate={{
+                scale: isRecording ? 0.6 : 1,
+                borderRadius: isRecording ? "8px" : "9999px",
+              }}
+              className="w-10 h-10 bg-red-500"
+            />
+          </button>
+        </div>
 
         <div className="w-[84px]" />
       </div>

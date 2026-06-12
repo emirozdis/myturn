@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -16,6 +15,7 @@ export default function RecordPage() {
   const [step, setStep] = useState<"CAMERA" | "PREVIEW">("CAMERA");
   const [isRecording, setIsRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
+  const [finalDuration, setFinalDuration] = useState(0);
   const [cameraZoom, setCameraZoom] = useState("1x");
   const [zoomSupported, setZoomSupported] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
@@ -46,6 +46,7 @@ export default function RecordPage() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const isCheckingTurnRef = useRef(false);
+  const recordTimeRef = useRef(0);
 
   useEffect(() => {
     if (recordedBlob) {
@@ -227,18 +228,23 @@ export default function RecordPage() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isRecording) {
+      recordTimeRef.current = 0;
       interval = setInterval(() => {
         setRecordTime((t) => {
-          if (t >= 59) {
-            stopRecording();
-            return 60;
-          }
-          return t + 1;
+          const nextTime = t + 1;
+          recordTimeRef.current = nextTime;
+          return nextTime;
         });
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [isRecording]);
+
+  useEffect(() => {
+    if (recordTime >= 120 && isRecording) {
+      stopRecording();
+    }
+  }, [recordTime, isRecording]);
 
   const toggleCamera = () => setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
 
@@ -266,6 +272,7 @@ export default function RecordPage() {
   };
 
   const startRecording = () => {
+    setError("");
     if (!streamRef.current) return;
     chunksRef.current = [];
     setRecordedFacingMode(facingMode);
@@ -282,9 +289,15 @@ export default function RecordPage() {
     };
 
     mediaRecorder.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: mimeType });
-      setRecordedBlob(blob);
-      handleStepChange("PREVIEW");
+      const duration = recordTimeRef.current;
+      setFinalDuration(duration);
+      if (duration >= 5) {
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        setRecordedBlob(blob);
+        handleStepChange("PREVIEW");
+      } else {
+        setError("Video clip must be at least 5 seconds long.");
+      }
       setIsRecording(false);
       setRecordTime(0);
     };
@@ -293,6 +306,7 @@ export default function RecordPage() {
     mediaRecorder.start();
     setIsRecording(true);
     setRecordTime(0);
+    recordTimeRef.current = 0;
   };
 
   const stopRecording = () => {
@@ -320,7 +334,7 @@ export default function RecordPage() {
       }
 
       const ext = recordedBlob.type.includes("mp4") ? "mp4" : "webm";
-      const res = await getSignedUploadUrls(activeGroupId, assignment.id, ext);
+      const res = await getSignedUploadUrls(activeGroupId, assignment.id, ext, finalDuration);
 
       if (res.error || !res.video || !res.thumbnail) {
         throw new Error(res.error || "Failed to generate signed urls.");
@@ -348,6 +362,7 @@ export default function RecordPage() {
         thumbnailUrl: res.thumbnail.path,
         location: locationName,
         caption,
+        duration: finalDuration,
       });
       if (clipRes.error) throw new Error(clipRes.error);
 

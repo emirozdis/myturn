@@ -273,3 +273,11 @@ model UnlockedAchievement {
   @@index([userId])
   @@map("unlocked_achievements")
 }
+
+model BetaApplication {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("beta_applications")
+}

@@ -2,7 +2,7 @@ import { AuthOptions, getServerSession } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import AppleProvider from "next-auth/providers/apple";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
@@ -32,22 +32,25 @@ export const authOptions: AuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          throw new Error("Invalid credentials");
+          return null;
         }
+
+        // Normalize the email input during sign-in to match sign-up constraints
+        const emailNormalized = credentials.email.toLowerCase().trim();
 
         // Prisma query to find the user
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+          where: { email: emailNormalized },
         });
 
         if (!user || !user.password) {
-          throw new Error("Invalid credentials");
+          return null;
         }
 
         const isPasswordValid = await compare(credentials.password, user.password);
 
         if (!isPasswordValid) {
-          throw new Error("Invalid credentials");
+          return null;
         }
 
         return {
@@ -60,6 +63,44 @@ export const authOptions: AuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user, account }) {
+      const allowRegistration = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== "false";
+
+      // Intercept and validate social providers (any provider that is not "credentials")
+      if (account?.provider && account.provider !== "credentials") {
+        const allowSocial = process.env.NEXT_PUBLIC_ALLOW_SOCIAL_LOGIN !== "false";
+        if (!allowSocial) return false;
+
+        // Individual social provider checks
+        if (account.provider === "google") {
+          const googleEnabled = process.env.NEXT_PUBLIC_ENABLE_GOOGLE_LOGIN !== "false";
+          if (!googleEnabled) return false;
+        }
+        if (account.provider === "apple") {
+          const appleEnabled = process.env.NEXT_PUBLIC_ENABLE_APPLE_LOGIN !== "false";
+          if (!appleEnabled) return false;
+        }
+        if (account.provider === "facebook") {
+          const facebookEnabled = process.env.NEXT_PUBLIC_ENABLE_FACEBOOK_LOGIN === "true";
+          if (!facebookEnabled) return false;
+        }
+
+        // Check if this social login is a registration attempt (new user)
+        const userEmail = user.email?.toLowerCase().trim();
+        if (userEmail) {
+          const existingUser = await prisma.user.findUnique({
+            where: { email: userEmail },
+          });
+
+          // Block the auth flow if user does not exist and registration is disabled
+          if (!existingUser && !allowRegistration) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;

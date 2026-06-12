@@ -15,8 +15,9 @@ export function OrientationManager() {
 
       // Attempt to natively unlock orientation on supported Android/PWA contexts
       try {
-        if (screen.orientation && screen.orientation.unlock) {
-          screen.orientation.unlock();
+        const orientation = screen.orientation as any;
+        if (orientation && orientation.unlock) {
+          orientation.unlock();
         }
       } catch (e) {
         // Silently ignore if unsupported (e.g. iOS Safari)
@@ -27,8 +28,9 @@ export function OrientationManager() {
 
       // Attempt to natively re-lock orientation to portrait
       try {
-        if (screen.orientation && screen.orientation.lock) {
-          screen.orientation.lock("portrait").catch(() => {});
+        const orientation = screen.orientation as any;
+        if (orientation && orientation.lock) {
+          orientation.lock("portrait").catch(() => {});
         }
       } catch (e) {
         // Silently ignore if unsupported
