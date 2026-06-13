@@ -1,10 +1,11 @@
+// ./components/today/video-feed.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MapPin, Heart, MessageCircle, Volume2
+  MapPin, Heart, MessageCircle, Volume2, VolumeX, Maximize, Minimize
 } from "lucide-react";
 import { Avatar } from "@/components/shared/avatar";
 import { CommentsSheet } from "./comments-sheet";
@@ -69,18 +70,12 @@ export function VideoFeed({
   isSleepMode,
 }: VideoFeedProps) {
   const router = useRouter();
-  const [showHint, setShowHint] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
 
-  // Show contextual tap-to-unmute hint when the video is present but not expanded yet
+  // Sync mute state with expansion state natively
   useEffect(() => {
-    if (activeClipUrl && !isVideoExpanded) {
-      setShowHint(true);
-      const timer = setTimeout(() => setShowHint(false), 2500);
-      return () => clearTimeout(timer);
-    } else {
-      setShowHint(false);
-    }
-  }, [activeClipUrl, isVideoExpanded]);
+    setIsMuted(!isVideoExpanded);
+  }, [isVideoExpanded]);
 
   // Filter out the vlogger (assignment owner) from the views list
   const displayViews = activeClip?.views?.filter((v: any) => v.user?.id !== assignment?.userId) || [];
@@ -106,31 +101,14 @@ export function VideoFeed({
         className="absolute inset-0 rounded-3xl pointer-events-none z-10"
       />
 
-      <AnimatePresence>
-        {showHint && (
-          <motion.div
-            initial={{ opacity: 0, y: -15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-black/70 backdrop-blur-md px-4 py-2.5 rounded-full border border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.5)] pointer-events-none flex items-center gap-2"
-          >
-            <Volume2 size={14} className="text-white" />
-            <span className="text-white text-xs font-bold tracking-wide">Tap to expand & unmute</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {isSleepMode && !activeClipUrl ? (
         <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
-          {/* Sharp Background Image */}
           <div 
             className="absolute inset-0 bg-cover bg-center z-0"
             style={{ backgroundImage: "url('/assets/images/resting.jpeg')" }}
           />
 
-          {/* Progressive Top Blur Overlay Layer (Most blurry at the top, fading to 0% at center) */}
           <div className="absolute top-0 left-0 right-0 h-[60%] overflow-hidden z-10 pointer-events-none">
-            {/* Blurred Copy of Background Image */}
             <div 
               className="absolute inset-0 bg-cover bg-center filter blur-[28px] scale-[1.08] origin-top"
               style={{ 
@@ -139,13 +117,11 @@ export function VideoFeed({
                 WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
               }}
             />
-            {/* Supporting dark gradient overlay to ensure text readability */}
             <div 
               className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent"
             />
           </div>
 
-          {/* Text Content cleanly placed directly on top of the blurry part */}
           <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-6 text-center">
             <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">MyTurn is Resting</h2>
             <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
@@ -171,21 +147,18 @@ export function VideoFeed({
           src={activeClipUrl}
           autoPlay
           loop
-          muted={!isVideoExpanded}
+          muted={isMuted}
           playsInline
           className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
         />
       ) : (
         <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
-          {/* Sharp Background Image */}
           <div 
             className="absolute inset-0 bg-cover bg-center z-0"
             style={{ backgroundImage: "url('/assets/images/no-clip-yet.jpeg')" }}
           />
 
-          {/* Progressive Top Blur Overlay Layer */}
           <div className="absolute top-0 left-0 right-0 h-[60%] overflow-hidden z-10 pointer-events-none">
-            {/* Blurred Copy of Background Image */}
             <div 
               className="absolute inset-0 bg-cover bg-center filter blur-[28px] scale-[1.08] origin-top"
               style={{ 
@@ -194,13 +167,11 @@ export function VideoFeed({
                 WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
               }}
             />
-            {/* Dark gradient overlay to preserve contrast */}
             <div 
               className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent"
             />
           </div>
 
-          {/* Text Content & Actions placed nicely on top of the blurry part */}
           <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-4 text-center">
             {isCurrentUserVlogger ? (
               <>
@@ -251,6 +222,19 @@ export function VideoFeed({
       {!(isSleepMode && !activeClipUrl) && (
         <>
           {activeClipUrl && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMuted((prev) => !prev);
+              }}
+              style={glassStyle(0.04, 16, 0.08)}
+              className="absolute top-3 left-3 z-30 w-[26px] h-[26px] rounded-full text-white/90 hover:text-white transition-all shadow-md active:scale-95 flex items-center justify-center"
+            >
+              {isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+            </button>
+          )}
+
+          {activeClipUrl && (
             <div style={glassStyle(0.04, 16, 0.08)} className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white text-[9px] font-semibold z-10 shadow-md max-w-[140px]">
               <MapPin size={10} className="text-white/60 flex-shrink-0" />
               <span className="truncate">{activeClip?.location || "Live Vlog"}</span>
@@ -281,7 +265,7 @@ export function VideoFeed({
                   )}
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 pr-2">
                   <button onClick={onLike} className="flex items-center gap-1 cursor-pointer">
                     <Heart
                       size={16}
@@ -303,6 +287,14 @@ export function VideoFeed({
                   <button onClick={onOpenComments} className="flex items-center gap-1 cursor-pointer">
                     <MessageCircle size={16} className="text-white/95" />
                     <span className="text-[11px] font-bold text-white/95">{commentList.length}</span>
+                  </button>
+                  <span className="w-[1px] h-3.5 bg-white/20" />
+                  <button onClick={(e) => { e.stopPropagation(); onToggleExpand(); }} className="flex items-center gap-1 cursor-pointer hover:scale-110 transition-transform">
+                    {isVideoExpanded ? (
+                      <Minimize size={16} className="text-white/95" />
+                    ) : (
+                      <Maximize size={16} className="text-white/95" />
+                    )}
                   </button>
                 </div>
               </div>
