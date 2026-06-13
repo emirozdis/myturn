@@ -79,79 +79,26 @@ const getAssignmentDateStr = (asg: any) => {
 
 function NotificationEnforcer({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
-  const [permissions, setPermissions] = useState<{
-    notifications: PermissionState | "default";
-    camera: PermissionState;
-    microphone: PermissionState;
-    location: PermissionState;
-  }>({
-    notifications: "default",
-    camera: "prompt",
-    microphone: "prompt",
-    location: "prompt",
-  });
+  const [permission, setPermission] = useState<PermissionState | "default">("default");
 
   const [isSupported, setIsSupported] = useState(true);
   const [subscribingNotifications, setSubscribingNotifications] = useState(false);
-  const [subscribingCameraMic, setSubscribingCameraMic] = useState(false);
-  const [subscribingLocation, setSubscribingLocation] = useState(false);
-  
   const [notificationsError, setNotificationsError] = useState("");
-  const [cameraMicError, setCameraMicError] = useState("");
-  const [locationError, setLocationError] = useState("");
 
   const checkPermissions = useCallback(async () => {
-    const states = {
-      notifications: "default" as PermissionState | "default",
-      camera: "prompt" as PermissionState,
-      microphone: "prompt" as PermissionState,
-      location: "prompt" as PermissionState,
-    };
+    let state: PermissionState | "default" = "default";
 
-    // 1. Notifications
+    // Check Notifications Support and Permission
     if (typeof window !== "undefined") {
       if (!("Notification" in window)) {
         setIsSupported(false);
-        states.notifications = "granted"; // bypass if unsupported
+        state = "granted"; // bypass enforcer screen if unsupported
       } else {
-        states.notifications = window.Notification.permission;
+        state = window.Notification.permission;
       }
     }
 
-    // 2. Camera
-    try {
-      const res = await navigator.permissions.query({ name: "camera" as any });
-      states.camera = res.state;
-      res.onchange = () => {
-        setPermissions((prev) => ({ ...prev, camera: res.state }));
-      };
-    } catch {
-      states.camera = "prompt";
-    }
-
-    // 3. Microphone
-    try {
-      const res = await navigator.permissions.query({ name: "microphone" as any });
-      states.microphone = res.state;
-      res.onchange = () => {
-        setPermissions((prev) => ({ ...prev, microphone: res.state }));
-      };
-    } catch {
-      states.microphone = "prompt";
-    }
-
-    // 4. Location
-    try {
-      const res = await navigator.permissions.query({ name: "geolocation" as any });
-      states.location = res.state;
-      res.onchange = () => {
-        setPermissions((prev) => ({ ...prev, location: res.state }));
-      };
-    } catch {
-      states.location = "prompt";
-    }
-
-    setPermissions(states);
+    setPermission(state);
     setLoading(false);
   }, []);
 
@@ -164,7 +111,7 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
     setNotificationsError("");
     try {
       const result = await window.Notification.requestPermission();
-      setPermissions((prev) => ({ ...prev, notifications: result }));
+      setPermission(result);
 
       if (result === "granted") {
         const registration = await registerPushServiceWorker();
@@ -186,51 +133,7 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleRequestCameraMic = async () => {
-    setSubscribingCameraMic(true);
-    setCameraMicError("");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      setPermissions((prev) => ({ ...prev, camera: "granted", microphone: "granted" }));
-    } catch (err: any) {
-      console.error("Camera/Mic request failed:", err);
-      setCameraMicError("Blocked. Please allow Camera & Microphone access in your browser's site settings.");
-      await checkPermissions();
-    } finally {
-      setSubscribingCameraMic(false);
-    }
-  };
-
-  const handleRequestLocation = async () => {
-    setSubscribingLocation(true);
-    setLocationError("");
-    if (!("geolocation" in navigator)) {
-      setLocationError("Location services not supported on this browser.");
-      setSubscribingLocation(false);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setPermissions((prev) => ({ ...prev, location: "granted" }));
-        setSubscribingLocation(false);
-      },
-      (err) => {
-        console.error("Geolocation failed:", err);
-        setLocationError("Blocked. Please allow Location access in your browser's site settings.");
-        setSubscribingLocation(false);
-        checkPermissions();
-      },
-      { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 }
-    );
-  };
-
-  const isNotificationsGranted = permissions.notifications === "granted";
-  const isCameraMicGranted = permissions.camera === "granted" && permissions.microphone === "granted";
-  const isLocationGranted = permissions.location === "granted";
-
-  const allGranted = isNotificationsGranted && isCameraMicGranted && isLocationGranted;
+  const isNotificationsGranted = permission === "granted";
 
   if (loading) {
     return (
@@ -240,26 +143,28 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
     );
   }
 
-  if (isSupported && !allGranted) {
+  if (isSupported && !isNotificationsGranted) {
     return (
       <div className="absolute inset-0 z-[100] flex flex-col pt-8 min-h-0 px-6 pb-6 bg-[#161618] sm:rounded-[40px] animate-fade-in select-none">
-        <div className="mb-4 flex-shrink-0 mt-4">
-          <motion.img
-            initial={{ scale: 0.8, rotate: -5 }}
-            animate={{ scale: [0.95, 1.05, 0.95], rotate: [-2, 2, -2] }}
-            transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
-            src="/assets/icons/notification.png"
-            alt="Permissions Required"
-            className="w-28 h-28 object-contain relative z-10 drop-shadow-2xl mb-4"
-          />
-          <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Enable Permissions</h1>
-          <p className="text-white/60 text-[13px] leading-relaxed">
-            MyTurn requires access to notifications, your camera, microphone, and location context to enable close-friend daily vlogging.
+        <div className="mb-4 flex-shrink-0 mt-4 text-center">
+          <div className="flex justify-center mb-6">
+            <motion.img
+              initial={{ scale: 0.8, rotate: -5 }}
+              animate={{ scale: [0.95, 1.05, 0.95], rotate: [-2, 2, -2] }}
+              transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
+              src="/assets/icons/notification.png"
+              alt="Notifications Required"
+              className="w-28 h-28 object-contain relative z-10 drop-shadow-2xl mb-4"
+            />
+          </div>
+          <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Enable Notifications</h1>
+          <p className="text-white/60 text-[13px] leading-relaxed max-w-sm mx-auto">
+            MyTurn requires notifications to alert you when it's your turn, friends post, and when daily recaps are ready.
           </p>
         </div>
 
-        <div className="flex-1 flex flex-col gap-3.5 overflow-y-auto scrollbar-hide pb-2 justify-start">
-          {/* Card 1: Notifications */}
+        <div className="flex-1 flex flex-col justify-start max-w-sm mx-auto w-full gap-4">
+          {/* Card: Notifications */}
           <div
             style={glassStyle(0.04, 16, 0.08)}
             className="p-4 rounded-[22px] border border-white/5 flex flex-col gap-3"
@@ -287,7 +192,7 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
                 color: isNotificationsGranted ? "#22c55e" : "#000",
                 border: isNotificationsGranted ? "1px solid rgba(34,197,94,0.3)" : "none"
               }}
-              className="w-full py-2.5 rounded-xl font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 rounded-xl font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer"
             >
               {subscribingNotifications ? (
                 <Loader2 size={14} className="animate-spin text-black" />
@@ -298,92 +203,6 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
                 </>
               ) : (
                 "Enable Notifications"
-              )}
-            </button>
-          </div>
-
-          {/* Card 2: Camera & Microphone */}
-          <div
-            style={glassStyle(0.04, 16, 0.08)}
-            className="p-4 rounded-[22px] border border-white/5 flex flex-col gap-3"
-          >
-            <div className="flex items-center gap-3.5">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/10"
-                style={{ background: isCameraMicGranted ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.03)" }}
-              >
-                <Camera size={20} className={isCameraMicGranted ? "text-emerald-400" : "text-white/60"} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-white font-bold text-[14px]">Camera & Microphone</h4>
-                <p className="text-white/40 text-[10.5px] leading-tight mt-0.5">
-                  Used to record raw audio-visual moments directly when it's your turn.
-                </p>
-              </div>
-            </div>
-            {cameraMicError && <p className="text-red-500 text-[10.5px] font-semibold leading-relaxed whitespace-pre-line">{cameraMicError}</p>}
-            <button
-              onClick={handleRequestCameraMic}
-              disabled={isCameraMicGranted || subscribingCameraMic}
-              style={{
-                background: isCameraMicGranted ? "rgba(34,197,94,0.15)" : ACCENT,
-                color: isCameraMicGranted ? "#22c55e" : "#000",
-                border: isCameraMicGranted ? "1px solid rgba(34,197,94,0.3)" : "none"
-              }}
-              className="w-full py-2.5 rounded-xl font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
-            >
-              {subscribingCameraMic ? (
-                <Loader2 size={14} className="animate-spin text-black" />
-              ) : isCameraMicGranted ? (
-                <>
-                  <Check size={14} strokeWidth={3} />
-                  <span>Access Granted</span>
-                </>
-              ) : (
-                "Grant Camera & Mic Access"
-              )}
-            </button>
-          </div>
-
-          {/* Card 3: Location Services */}
-          <div
-            style={glassStyle(0.04, 16, 0.08)}
-            className="p-4 rounded-[22px] border border-white/5 flex flex-col gap-3"
-          >
-            <div className="flex items-center gap-3.5">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/10"
-                style={{ background: isLocationGranted ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.03)" }}
-              >
-                <MapPin size={20} className={isLocationGranted ? "text-emerald-400" : "text-white/60"} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-white font-bold text-[14px]">Location Services</h4>
-                <p className="text-white/40 text-[10.5px] leading-tight mt-0.5">
-                  Adds contextual city or neighborhood overlays to your daily clip uploads.
-                </p>
-              </div>
-            </div>
-            {locationError && <p className="text-red-500 text-[10.5px] font-semibold leading-relaxed whitespace-pre-line">{locationError}</p>}
-            <button
-              onClick={handleRequestLocation}
-              disabled={isLocationGranted || subscribingLocation}
-              style={{
-                background: isLocationGranted ? "rgba(34,197,94,0.15)" : ACCENT,
-                color: isLocationGranted ? "#22c55e" : "#000",
-                border: isLocationGranted ? "1px solid rgba(34,197,94,0.3)" : "none"
-              }}
-              className="w-full py-2.5 rounded-xl font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5"
-            >
-              {subscribingLocation ? (
-                <Loader2 size={14} className="animate-spin text-black" />
-              ) : isLocationGranted ? (
-                <>
-                  <Check size={14} strokeWidth={3} />
-                  <span>Location Allowed</span>
-                </>
-              ) : (
-                "Allow Location Access"
               )}
             </button>
           </div>

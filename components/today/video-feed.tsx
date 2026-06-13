@@ -163,9 +163,9 @@ export function VideoFeed({
           dragElastic={0.2}
           onDragEnd={(e, { offset }) => {
             const swipeThreshold = 40;
-            if (offset.x < -swipeThreshold && currentClipSubIndex < activeSlotClips.length - 1) {
+            if (offset.x < -swipeThreshold) {
               onNextSubClip();
-            } else if (offset.x > swipeThreshold && currentClipSubIndex > 0) {
+            } else if (offset.x > swipeThreshold) {
               onPrevSubClip();
             }
           }}
@@ -194,16 +194,12 @@ export function VideoFeed({
 
           {/* Invisible Tap Zones for Manual Forward/Back Control */}
           <div className="absolute inset-y-0 left-0 w-[25%] z-20 pointer-events-auto" onClick={(e) => {
-            if (currentClipSubIndex > 0) {
-              e.stopPropagation();
-              onPrevSubClip();
-            }
+            e.stopPropagation();
+            onPrevSubClip();
           }} />
           <div className="absolute inset-y-0 right-0 w-[25%] z-20 pointer-events-auto" onClick={(e) => {
-            if (currentClipSubIndex < activeSlotClips.length - 1) {
-              e.stopPropagation();
-              onNextSubClip();
-            }
+            e.stopPropagation();
+            onNextSubClip();
           }} />
 
           <video
@@ -219,9 +215,7 @@ export function VideoFeed({
               if (!isNaN(progress)) setVideoProgress(progress);
             }}
             onEnded={() => {
-              if (currentClipSubIndex < activeSlotClips.length - 1) {
-                onNextSubClip();
-              }
+              onNextSubClip();
             }}
             className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
           />

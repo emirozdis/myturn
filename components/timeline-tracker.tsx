@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { ACCENT, TIMELINE_POINTS } from "@/lib/theme";
 
 export function TimelineTracker({
@@ -63,9 +63,6 @@ export function TimelineTracker({
                           : "1.5px solid rgba(255,255,255,0.2)",
                   }}
                 >
-                  {isCurrent && (
-                    <Camera size={7} className="text-white" strokeWidth={2.5} />
-                  )}
                 </div>
                 <span
                   className="text-[9px] font-medium transition-colors"

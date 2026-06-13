@@ -283,16 +283,51 @@ export function useTodayPage() {
   const isCurrentUserVlogger = assignment?.userId === session?.user?.id;
 
   const handleNextSubClip = useCallback(() => {
-    if (currentClipSubIndex < activeSlotClips.length - 1) {
+    const slotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+    
+    if (currentClipSubIndex < slotClips.length - 1) {
       setCurrentClipSubIndex(prev => prev + 1);
+    } else {
+      // Find the next sequential timeline slot index that contains clips
+      let nextSlot = -1;
+      for (let s = currentHourIndex + 1; s <= 5; s++) {
+        const hasClips = clips.some(c => getSlotForClip(c.recordedAt) === s);
+        if (hasClips) {
+          nextSlot = s;
+          break;
+        }
+      }
+
+      if (nextSlot !== -1) {
+        prevHourIndexRef.current = nextSlot; // Bypasses the auto-focus useEffect to preserve index 0
+        setCurrentHourIndex(nextSlot);
+        setCurrentClipSubIndex(0);
+      }
     }
-  }, [currentClipSubIndex, activeSlotClips.length]);
+  }, [clips, currentHourIndex, currentClipSubIndex]);
 
   const handlePrevSubClip = useCallback(() => {
     if (currentClipSubIndex > 0) {
       setCurrentClipSubIndex(prev => prev - 1);
+    } else {
+      // Find the previous timeline slot index that contains clips
+      let prevSlot = -1;
+      for (let s = currentHourIndex - 1; s >= 0; s--) {
+        const hasClips = clips.some(c => getSlotForClip(c.recordedAt) === s);
+        if (hasClips) {
+          prevSlot = s;
+          break;
+        }
+      }
+
+      if (prevSlot !== -1) {
+        const prevSlotClips = clips.filter(c => getSlotForClip(c.recordedAt) === prevSlot);
+        prevHourIndexRef.current = prevSlot; // Bypasses the auto-focus useEffect to preserve index length - 1
+        setCurrentHourIndex(prevSlot);
+        setCurrentClipSubIndex(Math.max(0, prevSlotClips.length - 1));
+      }
     }
-  }, [currentClipSubIndex]);
+  }, [clips, currentHourIndex, currentClipSubIndex]);
 
   useEffect(() => {
     if (activeClip) {
