@@ -8,7 +8,7 @@ import { getUserGroups } from "@/actions/group";
 import { CameraView } from "@/components/record/camera-view";
 import { PreviewView } from "@/components/record/preview-view";
 import { RecordLoadingState } from "@/components/record/record-loading-state";
-import { generateThumbnail } from "@/components/record/utils";
+import { generateThumbnail, generateBlurThumbnail } from "@/components/record/utils";
 
 export default function RecordPage() {
   const { data: session } = useSession();
@@ -247,7 +247,6 @@ export default function RecordPage() {
   }, [recordTime, isRecording]);
 
   const toggleCamera = () => {
-    // Prevent camera switching during active recording to prevent stream interruptions
     if (isRecording) return;
     setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
   };
@@ -325,7 +324,6 @@ export default function RecordPage() {
     };
 
     mediaRecorderRef.current = mediaRecorder;
-    // 1-second chunks fix iOS recording freezing video bug while allowing audio to continue
     mediaRecorder.start(1000); 
     setIsRecording(true);
     setRecordTime(0);
@@ -360,6 +358,7 @@ export default function RecordPage() {
       const timestamp = Date.now();
       const videoPath = `${activeGroupId}/${assignment.id}/${timestamp}-vlog.${ext}`;
       const thumbPath = `${activeGroupId}/${assignment.id}/${timestamp}-thumb.jpg`;
+      const thumbBlurPath = `${activeGroupId}/${assignment.id}/${timestamp}-thumb-blur.jpg`;
 
       // 1. Upload Video through internal API
       const videoData = new FormData();
@@ -376,7 +375,7 @@ export default function RecordPage() {
          throw new Error(errText || "Failed to save video clip.");
       }
 
-      // 2. Upload Thumbnail through internal API
+      // 2. Upload High-Quality Frame Preview
       const thumbBlob = await generateThumbnail(recordedBlob, recordedFacingMode);
       const thumbData = new FormData();
       thumbData.append("file", thumbBlob, "thumb.jpg");
@@ -392,12 +391,29 @@ export default function RecordPage() {
          throw new Error(errText || "Failed to save frame thumbnail.");
       }
 
-      // 3. Create Clip Record
+      // 3. Upload Ultra-Lightweight LQIP Placeholder
+      const thumbBlurBlob = await generateBlurThumbnail(recordedBlob, recordedFacingMode);
+      const thumbBlurData = new FormData();
+      thumbBlurData.append("file", thumbBlurBlob, "thumb-blur.jpg");
+      thumbBlurData.append("bucket", "vlogs");
+      thumbBlurData.append("path", thumbBlurPath);
+
+      const thumbBlurUploadRes = await fetch("/api/media", {
+        method: "POST",
+        body: thumbBlurData,
+      });
+      if (!thumbBlurUploadRes.ok) {
+         const errText = await thumbBlurUploadRes.text();
+         throw new Error(errText || "Failed to save blur thumbnail.");
+      }
+
+      // 4. Create Clip Record
       const clipRes = await createClip({
         groupId: activeGroupId,
         assignmentId: assignment.id,
         videoUrl: videoPath,
         thumbnailUrl: thumbPath,
+        thumbnailBlurUrl: thumbBlurPath,
         location: locationName,
         caption,
         duration: finalDuration,

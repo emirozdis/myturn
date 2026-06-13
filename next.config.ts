@@ -2,14 +2,15 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  allowedDevOrigins: ["192.168.0.49", "8f4c-78-167-0-206.ngrok-free.app"],
+  allowedDevOrigins: ["192.168.0.49", "8f4c-78-167-0-206.ngrok-free.app","adfa-78-167-4-110.ngrok-free.app"],
   experimental: {
     serverActions: {
       allowedOrigins: [
         "localhost:3000",
         "n3dwc3pf-3000.euw.devtunnels.ms",
         "8f4c-78-167-0-206.ngrok-free.app",
-        "192.168.0.49"
+        "192.168.0.49",
+        "adfa-78-167-4-110.ngrok-free.app"
       ]
     }
   },

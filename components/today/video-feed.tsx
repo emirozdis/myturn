@@ -1,7 +1,6 @@
-// ./components/today/video-feed.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -11,13 +10,20 @@ import { Avatar } from "@/components/shared/avatar";
 import { CommentsSheet } from "./comments-sheet";
 import { ViewsSheet } from "./views-sheet";
 import { glassStyle } from "../shared/glass-style";
+import { useHls } from "@/components/shared/use-hls";
 
 type VideoFeedProps = {
   isVideoExpanded: boolean;
   onToggleExpand: () => void;
   assignment: any;
+  activeSlotClips: any[];
+  currentClipSubIndex: number;
+  onNextSubClip: () => void;
+  onPrevSubClip: () => void;
   activeClip: any;
   activeClipUrl: string | null;
+  activeClipThumbnailUrl: string | null;
+  activeClipThumbnailBlurUrl: string | null;
   isCurrentUserVlogger: boolean;
   liked: boolean;
   likeCount: number;
@@ -45,8 +51,14 @@ export function VideoFeed({
   isVideoExpanded,
   onToggleExpand,
   assignment,
+  activeSlotClips,
+  currentClipSubIndex,
+  onNextSubClip,
+  onPrevSubClip,
   activeClip,
   activeClipUrl,
+  activeClipThumbnailUrl,
+  activeClipThumbnailBlurUrl,
   isCurrentUserVlogger,
   liked,
   likeCount,
@@ -71,13 +83,21 @@ export function VideoFeed({
 }: VideoFeedProps) {
   const router = useRouter();
   const [isMuted, setIsMuted] = useState(true);
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Sync mute state with expansion state natively
+  useHls(videoRef, activeClipUrl);
+
   useEffect(() => {
     setIsMuted(!isVideoExpanded);
   }, [isVideoExpanded]);
 
-  // Filter out the vlogger (assignment owner) from the views list
+  useEffect(() => {
+    setIsVideoLoaded(false);
+    setVideoProgress(0);
+  }, [activeClipUrl, currentClipSubIndex]);
+
   const displayViews = activeClip?.views?.filter((v: any) => v.user?.id !== assignment?.userId) || [];
 
   return (
@@ -117,9 +137,7 @@ export function VideoFeed({
                 WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
               }}
             />
-            <div 
-              className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent"
-            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent" />
           </div>
 
           <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-6 text-center">
@@ -127,30 +145,99 @@ export function VideoFeed({
             <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
               Quiet hours are active. Pokes and rolls are paused. Next vlogger selection rolls at 9:00 AM local time.
             </p>
-
             <div className="flex flex-col gap-2.5 w-full">
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  router.push("/streaks");
-                }}
+                onClick={(e) => { e.stopPropagation(); router.push("/streaks"); }}
                 style={glassStyle(0.08, 16, 0.12)}
-                className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center"
+                className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center pointer-events-auto"
               >
-                <span>Watch Last Completed Vlog</span>
+                Watch Last Completed Vlog
               </button>
             </div>
           </div>
         </div>
       ) : activeClipUrl ? (
-        <video
-          src={activeClipUrl}
-          autoPlay
-          loop
-          muted={isMuted}
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
-        />
+        <motion.div
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.2}
+          onDragEnd={(e, { offset }) => {
+            const swipeThreshold = 40;
+            if (offset.x < -swipeThreshold && currentClipSubIndex < activeSlotClips.length - 1) {
+              onNextSubClip();
+            } else if (offset.x > swipeThreshold && currentClipSubIndex > 0) {
+              onPrevSubClip();
+            }
+          }}
+          className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-black touch-pan-y"
+        >
+          {/* Top Story Indicators */}
+          {activeSlotClips.length > 1 && (
+            <div className="absolute top-2.5 left-6 right-6 flex gap-2 z-40 pointer-events-none">
+              {activeSlotClips.map((c, idx) => {
+                const isActive = idx === currentClipSubIndex;
+                const isDone = idx < currentClipSubIndex;
+                return (
+                  <div key={c.id || idx} className="h-[3px] flex-1 rounded-full overflow-hidden bg-white/20 shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+                    <div 
+                      className={`h-full ${isDone ? 'bg-white/80' : 'bg-white'}`} 
+                      style={{ 
+                        width: isActive ? `${videoProgress}%` : isDone ? '100%' : '0%',
+                        transition: isActive ? "width 0.1s linear" : "none" 
+                      }} 
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Invisible Tap Zones for Manual Forward/Back Control */}
+          <div className="absolute inset-y-0 left-0 w-[25%] z-20 pointer-events-auto" onClick={(e) => {
+            if (currentClipSubIndex > 0) {
+              e.stopPropagation();
+              onPrevSubClip();
+            }
+          }} />
+          <div className="absolute inset-y-0 right-0 w-[25%] z-20 pointer-events-auto" onClick={(e) => {
+            if (currentClipSubIndex < activeSlotClips.length - 1) {
+              e.stopPropagation();
+              onNextSubClip();
+            }
+          }} />
+
+          <video
+            key={activeClip.id}
+            ref={videoRef}
+            autoPlay
+            loop={activeSlotClips.length <= 1}
+            muted={isMuted}
+            playsInline
+            onTimeUpdate={(e) => {
+              if (e.currentTarget.currentTime > 0) setIsVideoLoaded(true);
+              const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
+              if (!isNaN(progress)) setVideoProgress(progress);
+            }}
+            onEnded={() => {
+              if (currentClipSubIndex < activeSlotClips.length - 1) {
+                onNextSubClip();
+              }
+            }}
+            className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
+          />
+          <AnimatePresence>
+            {!isVideoLoaded && activeClipThumbnailBlurUrl && (
+              <motion.img
+                initial={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                src={activeClipThumbnailBlurUrl}
+                alt="Loading vlog..."
+                className="absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none"
+              />
+            )}
+          </AnimatePresence>
+        </motion.div>
       ) : (
         <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
           <div 
@@ -167,9 +254,7 @@ export function VideoFeed({
                 WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
               }}
             />
-            <div 
-              className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent"
-            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent" />
           </div>
 
           <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-4 text-center">
@@ -182,9 +267,9 @@ export function VideoFeed({
                 <button
                   onClick={(e) => { e.stopPropagation(); router.push("/record"); }}
                   style={glassStyle(0.08, 16, 0.12)}
-                  className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center"
+                  className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center pointer-events-auto"
                 >
-                  <span>Record Now</span>
+                  Record Now
                 </button>
               </>
             ) : (
@@ -199,12 +284,10 @@ export function VideoFeed({
                   onClick={onPoke}
                   disabled={poking || pokeCooldown > 0}
                   style={glassStyle(0.08, 16, 0.12)}
-                  className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
+                  className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50 pointer-events-auto"
                 >
                   {pokeCooldown > 0 ? (
-                    <span>
-                      Poke Cooldown ({Math.floor(pokeCooldown / 60)}:{(pokeCooldown % 60).toString().padStart(2, "0")})
-                    </span>
+                    <span>Poke Cooldown ({Math.floor(pokeCooldown / 60)}:{(pokeCooldown % 60).toString().padStart(2, "0")})</span>
                   ) : poking ? (
                     <span>Poking...</span>
                   ) : (
@@ -223,30 +306,27 @@ export function VideoFeed({
         <>
           {activeClipUrl && (
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsMuted((prev) => !prev);
-              }}
+              onClick={(e) => { e.stopPropagation(); setIsMuted((prev) => !prev); }}
               style={glassStyle(0.04, 16, 0.08)}
-              className="absolute top-3 left-3 z-30 w-[26px] h-[26px] rounded-full text-white/90 hover:text-white transition-all shadow-md active:scale-95 flex items-center justify-center"
+              className={`absolute ${activeSlotClips.length > 1 ? "top-6" : "top-3"} left-3 z-30 w-[26px] h-[26px] rounded-full text-white/90 hover:text-white transition-all shadow-md active:scale-95 flex items-center justify-center pointer-events-auto`}
             >
               {isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
             </button>
           )}
 
           {activeClipUrl && (
-            <div style={glassStyle(0.04, 16, 0.08)} className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white text-[9px] font-semibold z-10 shadow-md max-w-[140px]">
+            <div style={glassStyle(0.04, 16, 0.08)} className={`absolute ${activeSlotClips.length > 1 ? "top-6" : "top-3"} right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white text-[9px] font-semibold z-30 shadow-md max-w-[140px] pointer-events-auto`}>
               <MapPin size={10} className="text-white/60 flex-shrink-0" />
               <span className="truncate">{activeClip?.location || "Live Vlog"}</span>
             </div>
           )}
 
           {activeClipUrl && (
-            <div className="mt-auto relative z-10 flex flex-col w-full">
-              <div className="py-2 px-3.5 flex items-center justify-between flex-shrink-0">
+            <div className="mt-auto relative z-30 flex flex-col w-full pointer-events-none">
+              <div className="py-2 px-3.5 flex items-center justify-between flex-shrink-0 pointer-events-auto">
                 <div
                   onClick={onOpenViews}
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
                 >
                   <div className="flex -space-x-1.5">
                     {displayViews.slice(0, 3).map((view: any, idx: number) => (

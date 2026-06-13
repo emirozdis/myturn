@@ -5,6 +5,7 @@ const SIGNING_SECRET = process.env.NEXTAUTH_SECRET || "default-media-signing-sec
 /**
  * Generates a secure, temporary, and cryptographically signed application-level URL 
  * to retrieve private media assets via the local `/api/media` endpoint.
+ * Outputs dynamic route path compatible with HLS relative mapping.
  */
 export function generateSignedMediaUrl(bucket: string, path: string, expiresInSeconds = 3600): string {
   const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
@@ -14,8 +15,9 @@ export function generateSignedMediaUrl(bucket: string, path: string, expiresInSe
     .update(payload)
     .digest("hex");
   
-  const encodedPath = encodeURIComponent(path);
-  return `/api/media?bucket=${bucket}&path=${encodedPath}&expires=${expiresAt}&sig=${signature}`;
+  // Format as /api/media/bucket/path allowing dynamic Next.js param capturing
+  const cleanPath = path.startsWith("/") ? path.substring(1) : path;
+  return `/api/media/${bucket}/${cleanPath}?expires=${expiresAt}&sig=${signature}`;
 }
 
 /**

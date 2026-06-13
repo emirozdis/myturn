@@ -179,14 +179,18 @@ model Friendship {
 }
 
 model Clip {
-  id            String   @id @default(cuid())
-  assignmentId  String
-  userId        String
-  groupId       String
-  videoUrl      String
-  thumbnailUrl  String
-  location      String?
-  recordedAt    DateTime @default(now())
+  id                String   @id @default(cuid())
+  assignmentId      String
+  userId            String
+  groupId           String
+  videoUrl          String
+  thumbnailUrl      String
+  thumbnailBlurUrl  String?
+  hlsUrl            String?
+  transcodeStatus   String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, FAILED_PERMANENTLY
+  transcodeAttempts Int      @default(0)
+  location          String?
+  recordedAt        DateTime @default(now())
 
   assignment DailyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)

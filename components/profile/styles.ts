@@ -23,5 +23,5 @@ export const profileStyles = {
   section: { padding: "0 16px", marginBottom: 16 },
 };
 
-export type ProfilePanel = "editProfile" | "accountDetails" | "privacy" | "notifications" | "logoutConfirm" | null;
+export type ProfilePanel = "editProfile" | "accountDetails" | "privacy" | "notifications" | "logoutConfirm" | "advanced" | null;
 export type ActivityTab = "vlogs" | "rank";

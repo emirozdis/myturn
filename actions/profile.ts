@@ -5,6 +5,7 @@ import { getAuthSession } from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase";
 import { getVibeArchetype } from "@/lib/vibe";
 import { generateSignedMediaUrl } from "@/lib/media-signing";
+import { generateMissingThumbnails } from "@/lib/transcoder";
 
 export async function getUserPublicProfile(userId: string) {
   try {
@@ -126,20 +127,49 @@ export async function getProfileData() {
       take: 6,
     });
 
-    const clips = rawClips.map((clip) => {
-      const videoUrl = clip.videoUrl.startsWith("http") || clip.videoUrl.startsWith("/") 
-        ? clip.videoUrl 
-        : generateSignedMediaUrl("vlogs", clip.videoUrl);
-      const thumbnailUrl = clip.thumbnailUrl.startsWith("http") || clip.thumbnailUrl.startsWith("/") 
-        ? clip.thumbnailUrl 
-        : generateSignedMediaUrl("vlogs", clip.thumbnailUrl);
+    const clips: any[] = [];
+    for (const clip of rawClips) {
+      let activeClip = clip;
+      // Guarantee both thumbnail properties are set and verified
+      if (!clip.thumbnailUrl || !clip.thumbnailBlurUrl) {
+        const updatedThumbs = await generateMissingThumbnails(clip.id);
+        if (updatedThumbs) {
+          activeClip = {
+            ...clip,
+            thumbnailUrl: updatedThumbs.thumbnailUrl,
+            thumbnailBlurUrl: updatedThumbs.thumbnailBlurUrl,
+          };
+        }
+      }
 
-      return {
-        ...clip,
+      // Keep HLS stream URL and raw file URL completely separate for client-side selection
+      const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
+        ? activeClip.videoUrl 
+        : generateSignedMediaUrl("vlogs", activeClip.videoUrl);
+
+      const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
+        ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
+            ? activeClip.hlsUrl 
+            : generateSignedMediaUrl("vlogs", activeClip.hlsUrl))
+        : null;
+
+      const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
+        ? activeClip.thumbnailUrl 
+        : generateSignedMediaUrl("vlogs", activeClip.thumbnailUrl);
+
+      const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
+      const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
+        ? thumbnailBlurTarget 
+        : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+
+      clips.push({
+        ...activeClip,
         videoUrl,
+        hlsUrl,
         thumbnailUrl,
-      };
-    });
+        thumbnailBlurUrl,
+      });
+    }
 
     let avatarUrl = user.image;
     if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {

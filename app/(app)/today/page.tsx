@@ -16,8 +16,12 @@ export default function TodayPage() {
     liked,
     likeCount,
     assignment,
+    activeSlotClips,
+    currentClipSubIndex,
     activeClip,
     activeClipUrl,
+    activeClipThumbnailUrl,
+    activeClipThumbnailBlurUrl,
     uploadedSlots,
     isCurrentUserVlogger,
     refreshing,
@@ -39,6 +43,8 @@ export default function TodayPage() {
     handleSendComment,
     handleDeleteComment,
     handlePoke,
+    handleNextSubClip,
+    handlePrevSubClip,
     isSleepMode,
   } = useTodayPage();
 
@@ -65,8 +71,14 @@ export default function TodayPage() {
         isVideoExpanded={isVideoExpanded}
         onToggleExpand={() => setIsVideoExpanded((prev) => !prev)}
         assignment={assignment}
+        activeSlotClips={activeSlotClips}
+        currentClipSubIndex={currentClipSubIndex}
+        onNextSubClip={handleNextSubClip}
+        onPrevSubClip={handlePrevSubClip}
         activeClip={activeClip}
         activeClipUrl={activeClipUrl}
+        activeClipThumbnailUrl={activeClipThumbnailUrl}
+        activeClipThumbnailBlurUrl={activeClipThumbnailBlurUrl}
         isCurrentUserVlogger={isCurrentUserVlogger}
         liked={liked}
         likeCount={likeCount}
@@ -103,4 +115,3 @@ export default function TodayPage() {
     </motion.div>
   );
 }
-

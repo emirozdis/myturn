@@ -6,6 +6,7 @@ import { getAuthSession } from "@/lib/auth";
 import { sendPushToUser } from "@/actions/push";
 import { calculateGroupLevel, getVibeArchetype } from "@/lib/vibe";
 import { generateSignedMediaUrl } from "@/lib/media-signing";
+import { generateMissingThumbnails } from "@/lib/transcoder";
 
 function getVlogCircadianState(timezone: string) {
   const now = new Date();
@@ -384,6 +385,19 @@ export async function getOrCreateTodayAssignment(groupId: string) {
       },
     });
 
+    // Check dynamically if any retrieved clip has no regular or blur thumbnail
+    if (fullyPopulatedAssignment && fullyPopulatedAssignment.clips) {
+      for (const clip of fullyPopulatedAssignment.clips) {
+        if (!clip.thumbnailUrl || !clip.thumbnailBlurUrl) {
+          const updated = await generateMissingThumbnails(clip.id);
+          if (updated) {
+            clip.thumbnailUrl = updated.thumbnailUrl;
+            clip.thumbnailBlurUrl = updated.thumbnailBlurUrl;
+          }
+        }
+      }
+    }
+
     return { 
       success: true, 
       assignment: fullyPopulatedAssignment,
@@ -412,19 +426,49 @@ export async function getLatestCompilation(groupId: string) {
 
     if (!assignment || assignment.clips.length === 0) return { success: false };
 
-    const resolvedClips = assignment.clips.map((clip) => {
-      const videoUrl = clip.videoUrl.startsWith("http") || clip.videoUrl.startsWith("/") 
-        ? clip.videoUrl 
-        : generateSignedMediaUrl("vlogs", clip.videoUrl);
-      const thumbnailUrl = clip.thumbnailUrl.startsWith("http") || clip.thumbnailUrl.startsWith("/") 
-        ? clip.thumbnailUrl 
-        : generateSignedMediaUrl("vlogs", clip.thumbnailUrl);
-      return {
-        ...clip,
+    const resolvedClips: any[] = [];
+    for (const clip of assignment.clips) {
+      let activeClip = clip;
+      // Guarantee both thumbnail properties are set and verified
+      if (!clip.thumbnailUrl || !clip.thumbnailBlurUrl) {
+        const updated = await generateMissingThumbnails(clip.id);
+        if (updated) {
+          activeClip = {
+            ...clip,
+            thumbnailUrl: updated.thumbnailUrl,
+            thumbnailBlurUrl: updated.thumbnailBlurUrl,
+          };
+        }
+      }
+
+      // Split the raw file URL and adaptive URL signature so the client can toggle ABR
+      const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
+        ? activeClip.videoUrl 
+        : generateSignedMediaUrl("vlogs", activeClip.videoUrl);
+
+      const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
+        ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
+            ? activeClip.hlsUrl 
+            : generateSignedMediaUrl("vlogs", activeClip.hlsUrl))
+        : null;
+
+      const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
+        ? activeClip.thumbnailUrl 
+        : generateSignedMediaUrl("vlogs", activeClip.thumbnailUrl);
+
+      const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
+      const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
+        ? thumbnailBlurTarget 
+        : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+
+      resolvedClips.push({
+        ...activeClip,
         videoUrl,
+        hlsUrl,
         thumbnailUrl,
-      };
-    });
+        thumbnailBlurUrl,
+      });
+    }
 
     return {
       success: true,
@@ -440,6 +484,7 @@ export async function createClip(data: {
   assignmentId: string;
   videoUrl: string;
   thumbnailUrl: string;
+  thumbnailBlurUrl?: string;
   location?: string;
   caption?: string;
   duration?: number;
@@ -468,7 +513,9 @@ export async function createClip(data: {
         groupId: data.groupId,
         videoUrl: data.videoUrl,
         thumbnailUrl: data.thumbnailUrl,
+        thumbnailBlurUrl: data.thumbnailBlurUrl || null,
         location: data.location || "Earth",
+        transcodeStatus: "PENDING", 
       },
     });
 

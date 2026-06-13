@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Play, Sparkles, Clock, Calendar, Clapperboard } from "lucide-react";
 import { ParticleEffect } from "@/components/achievements/particle-effect";
 import { glassStyle } from "@/components/shared/glass-style";
+import { useHls } from "@/components/shared/use-hls";
 
 export function CompilationReadyModal({ 
   assignment, 
@@ -19,8 +20,29 @@ export function CompilationReadyModal({
   const [playbackMode, setPlaybackMode] = useState<"full" | "highlights">("full");
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
   const [showConfetti, setShowConfetti] = useState(true);
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const [disableAbr, setDisableAbr] = useState(false);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Sync state to prevent hydration mismatches and guarantee responsive ABR toggling tracking
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setDisableAbr(localStorage.getItem("disable_abr") === "true");
+    }
+  }, []);
 
   const compilationClips = assignment?.clips || [];
+
+  const currentClip = compilationClips[currentClipIndex];
+  const activeUrl = (!disableAbr && currentClip?.hlsUrl) ? currentClip.hlsUrl : currentClip?.videoUrl;
+
+  useHls(videoRef, isPlayingCompilation ? activeUrl : null);
+
+  // Reset local state on clip transitions
+  useEffect(() => {
+    setIsVideoLoaded(false);
+  }, [currentClipIndex]);
 
   // Disable the confetti particles exactly 3 seconds after the modal has mounted
   useEffect(() => {
@@ -267,21 +289,41 @@ export function CompilationReadyModal({
                }
             }} />
 
-            <video
-              key={compilationClips[currentClipIndex].id}
-              src={compilationClips[currentClipIndex].videoUrl}
-              autoPlay
-              playsInline
-              onEnded={() => {
-                if (currentClipIndex < compilationClips.length - 1) {
-                  setCurrentClipIndex(prev => prev + 1);
-                } else {
-                  setIsPlayingCompilation(false);
-                  onClose();
-                }
-              }}
-              className="absolute inset-0 w-full h-full object-cover z-0"
-            />
+            <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-black">
+              <video
+                key={compilationClips[currentClipIndex].id}
+                ref={videoRef}
+                autoPlay
+                playsInline
+                onTimeUpdate={(e) => {
+                  if (e.currentTarget.currentTime > 0) {
+                    setIsVideoLoaded(true);
+                  }
+                }}
+                onEnded={() => {
+                  if (currentClipIndex < compilationClips.length - 1) {
+                    setCurrentClipIndex(prev => prev + 1);
+                  } else {
+                    setIsPlayingCompilation(false);
+                    onClose();
+                  }
+                }}
+                className="absolute inset-0 w-full h-full object-cover z-0"
+              />
+              <AnimatePresence>
+                {!isVideoLoaded && compilationClips[currentClipIndex]?.thumbnailBlurUrl && (
+                  <motion.img
+                    initial={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    src={compilationClips[currentClipIndex].thumbnailBlurUrl}
+                    alt="Loading clip..."
+                    className="absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none"
+                  />
+                )}
+              </AnimatePresence>
+            </div>
+            
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-10" />
 
             <div 

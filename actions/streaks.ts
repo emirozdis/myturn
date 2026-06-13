@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { getVibeArchetype } from "@/lib/vibe";
 import { generateSignedMediaUrl } from "@/lib/media-signing";
+import { generateMissingThumbnails } from "@/lib/transcoder";
 
 export async function getStreaksData(groupId: string) {
   try {
@@ -65,19 +66,49 @@ export async function getStreaksData(groupId: string) {
           
           let resolvedClips: any[] = [];
           if (type === "vlogged" && matchingAssignment.clips && matchingAssignment.clips.length > 0) {
-            resolvedClips = matchingAssignment.clips.map((clip) => {
-              const videoUrl = clip.videoUrl.startsWith("http") || clip.videoUrl.startsWith("/") 
-                ? clip.videoUrl 
-                : generateSignedMediaUrl("vlogs", clip.videoUrl);
-              const thumbnailUrl = clip.thumbnailUrl.startsWith("http") || clip.thumbnailUrl.startsWith("/") 
-                ? clip.thumbnailUrl 
-                : generateSignedMediaUrl("vlogs", clip.thumbnailUrl);
-              return {
-                ...clip,
+            resolvedClips = [];
+            for (const clip of matchingAssignment.clips) {
+              let activeClip = clip;
+              // Guarantee both thumbnail properties are set and verified
+              if (!clip.thumbnailUrl || !clip.thumbnailBlurUrl) {
+                const updatedThumbs = await generateMissingThumbnails(clip.id);
+                if (updatedThumbs) {
+                  activeClip = {
+                    ...clip,
+                    thumbnailUrl: updatedThumbs.thumbnailUrl,
+                    thumbnailBlurUrl: updatedThumbs.thumbnailBlurUrl,
+                  };
+                }
+              }
+
+              // Keep HLS stream URL and raw file URL completely separate for client-side selection
+              const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
+                ? activeClip.videoUrl 
+                : generateSignedMediaUrl("vlogs", activeClip.videoUrl);
+
+              const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
+                ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
+                    ? activeClip.hlsUrl 
+                    : generateSignedMediaUrl("vlogs", activeClip.hlsUrl))
+                : null;
+
+              const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
+                ? activeClip.thumbnailUrl 
+                : generateSignedMediaUrl("vlogs", activeClip.thumbnailUrl);
+
+              const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
+              const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
+                ? thumbnailBlurTarget 
+                : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+
+              resolvedClips.push({
+                ...activeClip,
                 videoUrl,
+                hlsUrl,
                 thumbnailUrl,
-              };
-            });
+                thumbnailBlurUrl,
+              });
+            }
           }
 
           return {

@@ -10,6 +10,7 @@ import { ProfileHeader } from "@/components/profile/profile-header";
 import { ProfileContent } from "@/components/profile/profile-content";
 import { EditProfilePanel } from "@/components/profile/edit-profile-panel";
 import { NotificationsPanel } from "@/components/profile/notifications-panel";
+import { AdvancedPanel } from "@/components/profile/advanced-panel";
 import { ClipPlaybackModal } from "@/components/profile/clip-playback-modal";
 import { ActivityTab, ProfilePanel } from "@/components/profile/styles";
 
@@ -199,6 +200,12 @@ export default function ProfilePage() {
       <AnimatePresence>
         {panel === "notifications" && (
           <NotificationsPanel key="np" onBack={() => setPanel(null)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {panel === "advanced" && (
+          <AdvancedPanel key="ap" onBack={() => setPanel(null)} />
         )}
       </AnimatePresence>
     </motion.div>

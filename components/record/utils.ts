@@ -1,3 +1,4 @@
+// ./components/record/utils.ts
 import { PROMPTS } from "@/lib/theme";
 
 export function getCurrentTimePeriodLabel(): string {
@@ -15,6 +16,9 @@ export function getDailyPrompt(): string {
   return PROMPTS[day % PROMPTS.length];
 }
 
+/**
+ * Capture standard high-quality JPEG preview frame.
+ */
 export async function generateThumbnail(videoBlob: Blob, recordedFacingMode: "user" | "environment"): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
@@ -54,7 +58,61 @@ export async function generateThumbnail(videoBlob: Blob, recordedFacingMode: "us
       canvas.toBlob((b) => {
         if (b) resolve(b);
         else reject(new Error("Canvas toBlob failed"));
-      }, "image/jpeg", 0.8);
+      }, "image/jpeg", 0.80);
+    };
+
+    video.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error("Video error"));
+    };
+  });
+}
+
+/**
+ * Capture an optimized LQIP (Low Quality Image Placeholder).
+ * Sized at 80px x 142px (preserving vertical 9:16 aspect ratio) and compressed at 35%.
+ * Average output is around 1KB - 2KB, preserving colors, highlights, and primary shapes beautifully when blurred.
+ */
+export async function generateBlurThumbnail(videoBlob: Blob, recordedFacingMode: "user" | "environment"): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.src = URL.createObjectURL(videoBlob);
+    video.muted = true;
+    video.playsInline = true;
+
+    const timeout = setTimeout(() => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 80;
+      canvas.height = 142;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#111";
+        ctx.fillRect(0, 0, 80, 142);
+      }
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error("Timeout toBlob")), "image/jpeg", 0.35);
+    }, 3000);
+
+    video.onloadedmetadata = () => {
+      video.currentTime = Math.min(0.5, video.duration / 2);
+    };
+
+    video.onseeked = () => {
+      clearTimeout(timeout);
+      const canvas = document.createElement("canvas");
+      canvas.width = 80;
+      canvas.height = 142;
+      const ctx = canvas.getContext("2d");
+
+      if (recordedFacingMode === "user" && ctx) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+
+      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((b) => {
+        if (b) resolve(b);
+        else reject(new Error("LQIP Canvas toBlob failed"));
+      }, "image/jpeg", 0.35); // Optimized 35% compression ratio
     };
 
     video.onerror = () => {

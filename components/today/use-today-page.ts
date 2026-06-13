@@ -7,11 +7,52 @@ import {
   getSignedReadUrl,
   toggleReaction,
   addComment,
-  trackView,
   deleteComment,
   pokeVlogger,
 } from "@/actions/vlog";
 import { getSlotForClip, getCachedToday } from "./utils";
+
+const VIEWED_CLIPS_KEY = "myturn_viewed_clips";
+
+// Helper to retrieve viewed clips from localStorage, cleaning up entries older than 24 hours (1 day)
+function getViewedClips(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(VIEWED_CLIPS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    
+    const now = Date.now();
+    const updated: Record<string, number> = {};
+    let changed = false;
+    for (const [id, timestamp] of Object.entries(parsed)) {
+      if (typeof timestamp === "number" && now - timestamp < 24 * 60 * 60 * 1000) {
+        updated[id] = timestamp;
+      } else {
+        changed = true;
+      }
+    }
+    if (changed) {
+      localStorage.setItem(VIEWED_CLIPS_KEY, JSON.stringify(updated));
+    }
+    return updated;
+  } catch (e) {
+    console.error("Failed to read viewed clips:", e);
+    return {};
+  }
+}
+
+// Helper to save a viewed clip with current timestamp in localStorage
+function markClipAsViewed(clipId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const current = getViewedClips();
+    current[clipId] = Date.now();
+    localStorage.setItem(VIEWED_CLIPS_KEY, JSON.stringify(current));
+  } catch (e) {
+    console.error("Failed to mark clip as viewed:", e);
+  }
+}
 
 export function useTodayPage() {
   const { data: session } = useSession();
@@ -22,15 +63,55 @@ export function useTodayPage() {
   const cachedData = getCachedToday();
   const [assignment, setAssignment] = useState<any>(cachedData?.assignment || null);
   const [clips, setClips] = useState<any[]>(cachedData?.clips || []);
-  const [resolvedClipUrls, setResolvedClipUrls] = useState<Record<string, string>>(cachedData?.resolvedClipUrls || {});
+
+  const [resolvedClipUrls, setResolvedClipUrls] = useState<Record<string, string>>(() => {
+    if (!cachedData?.resolvedClipUrls) return {};
+    const disableAbr = typeof window !== "undefined" && localStorage.getItem("disable_abr") === "true";
+    const firstCachedUrl = Object.values(cachedData.resolvedClipUrls)[0] as string | undefined;
+
+    if (firstCachedUrl) {
+      const isCachedHls = firstCachedUrl.includes(".m3u8");
+      if (disableAbr && isCachedHls) return {};
+      if (!disableAbr && !isCachedHls && cachedData.clips?.some((c: any) => c.transcodeStatus === "COMPLETED")) return {};
+    }
+    return cachedData.resolvedClipUrls;
+  });
+
+  const [resolvedClipThumbnails, setResolvedClipThumbnails] = useState<Record<string, string>>(cachedData?.resolvedClipThumbnails || {});
+  const [resolvedClipBlurThumbnails, setResolvedClipBlurThumbnails] = useState<Record<string, string>>(cachedData?.resolvedClipBlurThumbnails || {});
   const [isSleepMode, setIsSleepMode] = useState<boolean>(cachedData?.isSleepMode || false);
 
+  // Initialize selected slot index focusing on the oldest unseen clip of the day (falling back to the latest clip)
   const [currentHourIndex, setCurrentHourIndex] = useState(() => {
     if (cachedData?.clips && cachedData.clips.length > 0) {
+      const viewed = getViewedClips();
+      const oldestUnseen = cachedData.clips.find((c: any) => !viewed[c.id]);
+      if (oldestUnseen) {
+        return getSlotForClip(oldestUnseen.recordedAt);
+      }
       const latestClip = cachedData.clips[cachedData.clips.length - 1];
       return getSlotForClip(latestClip.recordedAt);
     }
     return getSlotForClip(new Date());
+  });
+
+  // Initialize selected sub-clip index focusing on the oldest unseen clip inside the initial active slot
+  const [currentClipSubIndex, setCurrentClipSubIndex] = useState(() => {
+    if (cachedData?.clips && cachedData.clips.length > 0) {
+      const viewed = getViewedClips();
+      const oldestUnseen = cachedData.clips.find((c: any) => !viewed[c.id]);
+      if (oldestUnseen) {
+        const slot = getSlotForClip(oldestUnseen.recordedAt);
+        const slotClips = cachedData.clips.filter((c: any) => getSlotForClip(c.recordedAt) === slot);
+        const idx = slotClips.findIndex((c: any) => c.id === oldestUnseen.id);
+        return Math.max(0, idx);
+      }
+      const latestClip = cachedData.clips[cachedData.clips.length - 1];
+      const latestSlot = getSlotForClip(latestClip.recordedAt);
+      const slotClips = cachedData.clips.filter((c: any) => getSlotForClip(c.recordedAt) === latestSlot);
+      return Math.max(0, slotClips.length - 1);
+    }
+    return 0;
   });
 
   const [refreshing, setRefreshing] = useState(false);
@@ -71,27 +152,55 @@ export function useTodayPage() {
       const fetchedClips = res.assignment?.clips || [];
       setClips(fetchedClips);
 
-      if (fetchedClips.length > 0) {
+      const viewed = getViewedClips();
+      const oldestUnseen = fetchedClips.find((c: any) => !viewed[c.id]);
+
+      if (oldestUnseen) {
+        const slot = getSlotForClip(oldestUnseen.recordedAt);
+        setCurrentHourIndex(slot);
+        const slotClips = fetchedClips.filter((c: any) => getSlotForClip(c.recordedAt) === slot);
+        const idx = slotClips.findIndex((c: any) => c.id === oldestUnseen.id);
+        setCurrentClipSubIndex(Math.max(0, idx));
+      } else if (fetchedClips.length > 0) {
         const latestClip = fetchedClips[fetchedClips.length - 1];
-        setCurrentHourIndex(getSlotForClip(latestClip.recordedAt));
+        const latestSlot = getSlotForClip(latestClip.recordedAt);
+        setCurrentHourIndex(latestSlot);
+        const slotClips = fetchedClips.filter((c: any) => getSlotForClip(c.recordedAt) === latestSlot);
+        setCurrentClipSubIndex(Math.max(0, slotClips.length - 1));
       } else {
         setCurrentHourIndex(getSlotForClip(new Date()));
+        setCurrentClipSubIndex(0);
       }
 
       const urls: Record<string, string> = {};
+      const thumbUrls: Record<string, string> = {};
+      const blurThumbUrls: Record<string, string> = {};
+      const disableAbr = typeof window !== "undefined" && localStorage.getItem("disable_abr") === "true";
+
       for (const clip of fetchedClips) {
-        const urlRes = await getSignedReadUrl("vlogs", clip.videoUrl);
-        if (urlRes.success && urlRes.url) {
-          urls[clip.id] = urlRes.url;
-        }
+        const videoTarget = (!disableAbr && clip.transcodeStatus === "COMPLETED" && clip.hlsUrl) ? clip.hlsUrl : clip.videoUrl;
+        const urlRes = await getSignedReadUrl("vlogs", videoTarget);
+        if (urlRes.success && urlRes.url) urls[clip.id] = urlRes.url;
+
+        const thumbRes = await getSignedReadUrl("vlogs", clip.thumbnailUrl);
+        if (thumbRes.success && thumbRes.url) thumbUrls[clip.id] = thumbRes.url;
+
+        const blurTarget = clip.thumbnailBlurUrl || clip.thumbnailUrl;
+        const blurThumbRes = await getSignedReadUrl("vlogs", blurTarget);
+        if (blurThumbRes.success && blurThumbRes.url) blurThumbUrls[clip.id] = blurThumbRes.url;
       }
+      
       setResolvedClipUrls(urls);
+      setResolvedClipThumbnails(thumbUrls);
+      setResolvedClipBlurThumbnails(blurThumbUrls);
 
       if (typeof window !== "undefined") {
         localStorage.setItem(`cached_today_${activeGroupId}`, JSON.stringify({
           assignment: res.assignment,
           clips: fetchedClips,
           resolvedClipUrls: urls,
+          resolvedClipThumbnails: thumbUrls,
+          resolvedClipBlurThumbnails: blurThumbUrls,
           isSleepMode: res.isSleepMode || false,
         }));
       }
@@ -99,9 +208,10 @@ export function useTodayPage() {
       setAssignment(null);
       setClips([]);
       setResolvedClipUrls({});
+      setResolvedClipThumbnails({});
+      setResolvedClipBlurThumbnails({});
       setIsSleepMode(false);
     }
-
     isFetchingRef.current = false;
   };
 
@@ -110,14 +220,10 @@ export function useTodayPage() {
 
     const handleGroupChange = (e: Event) => {
       const customEvent = e as CustomEvent<any>;
-      if (customEvent.detail) {
-        loadTodayVlogs(customEvent.detail);
-      }
+      if (customEvent.detail) loadTodayVlogs(customEvent.detail);
     };
 
-    const handleRefreshed = () => {
-      loadTodayVlogs();
-    };
+    const handleRefreshed = () => loadTodayVlogs();
 
     window.addEventListener("group-changed", handleGroupChange);
     window.addEventListener("vlogs-refreshed", handleRefreshed);
@@ -127,10 +233,66 @@ export function useTodayPage() {
     };
   }, []);
 
-  const activeClip = [...clips].reverse().find((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+  // Filter clips belonging specifically to the chosen slot on the timeline
+  const activeSlotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+
+  const clipIdsStr = clips.map(c => c.id).join(",");
+  const prevClipIdsStrRef = useRef(clipIdsStr);
+  const prevHourIndexRef = useRef(currentHourIndex);
+
+  // Set the sub-index to the oldest unseen clip in this slot whenever the parent hour slot timeline index changes or clips load/switch
+  useEffect(() => {
+    const slotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+    
+    const hourChanged = prevHourIndexRef.current !== currentHourIndex;
+    const clipsListChanged = prevClipIdsStrRef.current !== clipIdsStr;
+
+    if (hourChanged || clipsListChanged) {
+      prevHourIndexRef.current = currentHourIndex;
+      prevClipIdsStrRef.current = clipIdsStr;
+
+      const viewed = getViewedClips();
+      const oldestUnseenInSlot = slotClips.find((c) => !viewed[c.id]);
+
+      if (oldestUnseenInSlot) {
+        const idx = slotClips.findIndex((c) => c.id === oldestUnseenInSlot.id);
+        setCurrentClipSubIndex(Math.max(0, idx));
+      } else {
+        if (slotClips.length > 0) {
+          setCurrentClipSubIndex(slotClips.length - 1);
+        } else {
+          setCurrentClipSubIndex(0);
+        }
+      }
+    }
+  }, [currentHourIndex, clips, clipIdsStr]);
+
+  // Prevent out-of-bounds index errors if clips are deleted remotely
+  useEffect(() => {
+    if (currentClipSubIndex >= activeSlotClips.length && activeSlotClips.length > 0) {
+      setCurrentClipSubIndex(Math.max(0, activeSlotClips.length - 1));
+    }
+  }, [activeSlotClips.length, currentClipSubIndex]);
+
+  const activeClip = activeSlotClips[currentClipSubIndex] || null;
   const activeClipUrl = activeClip ? resolvedClipUrls[activeClip.id] : null;
+  const activeClipThumbnailUrl = activeClip ? resolvedClipThumbnails[activeClip.id] : null;
+  const activeClipThumbnailBlurUrl = activeClip ? resolvedClipBlurThumbnails[activeClip.id] : null;
+  
   const uploadedSlots = clips.map((clip) => getSlotForClip(clip.recordedAt));
   const isCurrentUserVlogger = assignment?.userId === session?.user?.id;
+
+  const handleNextSubClip = useCallback(() => {
+    if (currentClipSubIndex < activeSlotClips.length - 1) {
+      setCurrentClipSubIndex(prev => prev + 1);
+    }
+  }, [currentClipSubIndex, activeSlotClips.length]);
+
+  const handlePrevSubClip = useCallback(() => {
+    if (currentClipSubIndex > 0) {
+      setCurrentClipSubIndex(prev => prev - 1);
+    }
+  }, [currentClipSubIndex]);
 
   useEffect(() => {
     if (activeClip) {
@@ -138,9 +300,13 @@ export function useTodayPage() {
       setLiked(false);
       setCommentList(activeClip.comments || []);
 
-      const recordViewEvent = async () => {
-        const res = await trackView(activeClip.id);
-        if (res.success && !res.alreadyViewed) {
+      // Avoid marking temporary/transitional clips as viewed immediately (e.g., during index adjustments or fast skipping).
+      // Wait for 1.2 seconds of continuous viewing to mark as viewed.
+      const timer = setTimeout(() => {
+        const viewed = getViewedClips();
+        if (!viewed[activeClip.id]) {
+          markClipAsViewed(activeClip.id);
+          
           setClips(prev => prev.map(c => c.id === activeClip.id ? { 
             ...c, 
             views: [...(c.views || []), { 
@@ -153,15 +319,10 @@ export function useTodayPage() {
               } 
             }] 
           } : c));
-
-          if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
-            res.newlyUnlocked.forEach((id: string) => {
-              window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
-            });
-          }
         }
-      };
-      recordViewEvent();
+      }, 1200);
+
+      return () => clearTimeout(timer);
     } else {
       setLikeCount(0);
       setLiked(false);
@@ -257,8 +418,12 @@ export function useTodayPage() {
     liked,
     likeCount,
     assignment,
+    activeSlotClips,
+    currentClipSubIndex,
     activeClip,
     activeClipUrl,
+    activeClipThumbnailUrl,
+    activeClipThumbnailBlurUrl,
     uploadedSlots,
     isCurrentUserVlogger,
     refreshing,
@@ -280,6 +445,8 @@ export function useTodayPage() {
     handleSendComment,
     handleDeleteComment,
     handlePoke,
+    handleNextSubClip,
+    handlePrevSubClip,
     isSleepMode,
     setIsSleepMode,
   };

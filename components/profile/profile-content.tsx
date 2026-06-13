@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Clapperboard, Users, Bell, UserCircle, ChevronRight, LogOut, Loader2, Trash2, X } from "lucide-react";
+import { Clapperboard, Users, Bell, UserCircle, ChevronRight, LogOut, Sliders } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
@@ -43,6 +43,7 @@ export function ProfileContent({
   const settingsRows = [
     { icon: UserCircle, label: "Edit Profile", sub: "Update your information", panel: "editProfile" as const },
     { icon: Bell, label: "Push Notifications", sub: "Configure daily alerts", panel: "notifications" as const },
+    { icon: Sliders, label: "Advanced Settings", sub: "ABR controls & storage resets", panel: "advanced" as const },
   ];
 
   return (

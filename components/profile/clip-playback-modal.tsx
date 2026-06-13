@@ -1,7 +1,9 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useRef, useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Trash2, X } from "lucide-react";
+import { useHls } from "@/components/shared/use-hls";
 
 type ClipPlaybackModalProps = {
   clip: any;
@@ -11,6 +13,21 @@ type ClipPlaybackModalProps = {
 };
 
 export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPlaybackModalProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const [disableAbr, setDisableAbr] = useState(false);
+
+  // Sync state to prevent hydration mismatches and guarantee responsive ABR toggling tracking
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setDisableAbr(localStorage.getItem("disable_abr") === "true");
+    }
+  }, []);
+  
+  const activeUrl = (!disableAbr && clip?.hlsUrl) ? clip.hlsUrl : clip?.videoUrl;
+
+  useHls(videoRef, activeUrl);
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -19,13 +36,34 @@ export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPla
       transition={{ ease: [0.16, 1, 0.3, 1], duration: 0.3 }}
       className="absolute inset-0 z-50 bg-black flex flex-col justify-between"
     >
-      <video
-        src={clip.videoUrl}
-        autoPlay
-        loop
-        playsInline
-        className="absolute inset-0 w-full h-full object-cover z-0"
-      />
+      <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-black">
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          playsInline
+          onTimeUpdate={(e) => {
+            // Guarantee transition happens only AFTER first real frame is painted by the GPU
+            if (e.currentTarget.currentTime > 0) {
+              setIsVideoLoaded(true);
+            }
+          }}
+          className="absolute inset-0 w-full h-full object-cover z-0"
+        />
+        <AnimatePresence>
+          {!isVideoLoaded && (clip?.thumbnailBlurUrl || clip?.thumbnailUrl) && (
+            <motion.img
+              initial={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              src={clip.thumbnailBlurUrl || clip.thumbnailUrl}
+              alt="Loading vlog..."
+              className="absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none"
+            />
+          )}
+        </AnimatePresence>
+      </div>
+
       <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-10" />
 
       <div className="relative z-20 p-4 pt-12 flex justify-between items-center">
