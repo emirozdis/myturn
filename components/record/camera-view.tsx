@@ -96,7 +96,11 @@ export function CameraView({
           <span>{isRecording ? `REC ${formatTime(recordTime)}` : "STANDBY"}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={onToggleCamera} className="p-2 rounded-full bg-black/40 border border-white/10 text-white backdrop-blur shadow-md hover:bg-white/10 transition">
+          <button 
+            onClick={onToggleCamera} 
+            disabled={isRecording}
+            className={`p-2 rounded-full bg-black/40 border border-white/10 text-white backdrop-blur shadow-md transition ${isRecording ? "opacity-30 cursor-not-allowed" : "hover:bg-white/10"}`}
+          >
             <RefreshCcw size={14} />
           </button>
           <button onClick={onToggleFlash} className={`p-2 rounded-full bg-black/40 border border-white/10 backdrop-blur shadow-md hover:bg-white/10 transition ${flashActive ? "text-amber-400" : "text-white"}`}>

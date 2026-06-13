@@ -1,4 +1,3 @@
-// ./app/(app)/record/page.tsx
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -247,7 +246,11 @@ export default function RecordPage() {
     }
   }, [recordTime, isRecording]);
 
-  const toggleCamera = () => setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
+  const toggleCamera = () => {
+    // Prevent camera switching during active recording to prevent stream interruptions
+    if (isRecording) return;
+    setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
+  };
 
   const toggleFlash = async () => {
     const next = !flashActive;

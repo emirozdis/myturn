@@ -1,8 +1,10 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import {
-  MapPin, Heart, MessageCircle
+  MapPin, Heart, MessageCircle, Volume2
 } from "lucide-react";
 import { Avatar } from "@/components/shared/avatar";
 import { CommentsSheet } from "./comments-sheet";
@@ -67,6 +69,18 @@ export function VideoFeed({
   isSleepMode,
 }: VideoFeedProps) {
   const router = useRouter();
+  const [showHint, setShowHint] = useState(false);
+
+  // Show contextual tap-to-unmute hint when the video is present but not expanded yet
+  useEffect(() => {
+    if (activeClipUrl && !isVideoExpanded) {
+      setShowHint(true);
+      const timer = setTimeout(() => setShowHint(false), 2500);
+      return () => clearTimeout(timer);
+    } else {
+      setShowHint(false);
+    }
+  }, [activeClipUrl, isVideoExpanded]);
 
   // Filter out the vlogger (assignment owner) from the views list
   const displayViews = activeClip?.views?.filter((v: any) => v.user?.id !== assignment?.userId) || [];
@@ -91,6 +105,20 @@ export function VideoFeed({
         }}
         className="absolute inset-0 rounded-3xl pointer-events-none z-10"
       />
+
+      <AnimatePresence>
+        {showHint && (
+          <motion.div
+            initial={{ opacity: 0, y: -15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="absolute top-20 left-1/2 -translate-x-1/2 z-40 bg-black/70 backdrop-blur-md px-4 py-2.5 rounded-full border border-white/20 shadow-[0_4px_16px_rgba(0,0,0,0.5)] pointer-events-none flex items-center gap-2"
+          >
+            <Volume2 size={14} className="text-white" />
+            <span className="text-white text-xs font-bold tracking-wide">Tap to expand & unmute</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {isSleepMode && !activeClipUrl ? (
         <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
