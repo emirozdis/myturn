@@ -98,7 +98,10 @@ export function VideoFeed({
     setVideoProgress(0);
   }, [activeClipUrl, currentClipSubIndex]);
 
-  const displayViews = activeClip?.views?.filter((v: any) => v.user?.id !== assignment?.userId) || [];
+  // Robustly extract the vlogger to prevent their own profile rendering on views lists
+  const displayViews = activeClip?.views?.filter(
+    (v: any) => v.user?.id !== assignment?.userId && v.user?.id !== activeClip?.userId
+  ) || [];
 
   return (
     <div

@@ -1,4 +1,3 @@
-// ./actions/vlog.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -865,8 +864,13 @@ export async function trackView(clipId: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    const clip = await db.clip.findUnique({ where: { id: clipId }, select: { groupId: true, views: true } });
+    const clip = await db.clip.findUnique({ where: { id: clipId }, select: { groupId: true, views: true, userId: true } });
     if (!clip) return { error: "Clip details unresolved" };
+
+    // Explicitly block recording a view if the vlogger is watching their own clip
+    if (clip.userId === session.user.id) {
+      return { success: true, alreadyViewed: true, isOwnClip: true };
+    }
 
     const existing = await db.view.findUnique({
       where: { clipId_userId: { clipId, userId: session.user.id } },

@@ -9,6 +9,7 @@ import {
   addComment,
   deleteComment,
   pokeVlogger,
+  trackView,
 } from "@/actions/vlog";
 import { getSlotForClip, getCachedToday } from "./utils";
 
@@ -332,7 +333,7 @@ export function useTodayPage() {
   useEffect(() => {
     if (activeClip) {
       setLikeCount(activeClip.reactions?.length || 0);
-      setLiked(false);
+      setLiked(activeClip.reactions?.some((r: any) => r.userId === session?.user?.id) || false);
       setCommentList(activeClip.comments || []);
 
       // Avoid marking temporary/transitional clips as viewed immediately (e.g., during index adjustments or fast skipping).
@@ -342,18 +343,30 @@ export function useTodayPage() {
         if (!viewed[activeClip.id]) {
           markClipAsViewed(activeClip.id);
           
-          setClips(prev => prev.map(c => c.id === activeClip.id ? { 
-            ...c, 
-            views: [...(c.views || []), { 
-              id: "temp-view", 
-              user: { 
-                id: session?.user?.id, 
-                name: session?.user?.name, 
-                image: session?.user?.image, 
-                handle: (session?.user as any)?.handle 
-              } 
-            }] 
-          } : c));
+          const isOwnClip = activeClip.userId === session?.user?.id || assignment?.userId === session?.user?.id;
+          
+          trackView(activeClip.id).then((res) => {
+            if (res.success && res.newlyUnlocked && res.newlyUnlocked.length > 0) {
+              res.newlyUnlocked.forEach((id: string) => {
+                window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
+              });
+            }
+          }).catch((e) => console.error("Failed to track view:", e));
+
+          if (!isOwnClip) {
+            setClips(prev => prev.map(c => c.id === activeClip.id ? { 
+              ...c, 
+              views: [...(c.views || []), { 
+                id: `temp-view-${Date.now()}`, 
+                user: { 
+                  id: session?.user?.id, 
+                  name: session?.user?.name, 
+                  image: session?.user?.image, 
+                  handle: (session?.user as any)?.handle 
+                } 
+              }] 
+            } : c));
+          }
         }
       }, 1200);
 
@@ -363,7 +376,7 @@ export function useTodayPage() {
       setLiked(false);
       setCommentList([]);
     }
-  }, [activeClip, session]);
+  }, [activeClip, session, assignment?.userId]);
 
   useEffect(() => {
     if (assignment?.pokes?.[0]) {
