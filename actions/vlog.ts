@@ -1,8 +1,8 @@
+// ./actions/vlog.ts
 "use server";
 
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
-import { supabaseServer } from "@/lib/supabase";
 import { sendPushToUser } from "@/actions/push";
 import { calculateGroupLevel, getVibeArchetype } from "@/lib/vibe";
 import { generateSignedMediaUrl } from "@/lib/media-signing";
@@ -432,36 +432,6 @@ export async function getLatestCompilation(groupId: string) {
     };
   } catch (error) {
     return { error: "Failed to fetch latest compilation" };
-  }
-}
-
-export async function getSignedUploadUrls(groupId: string, assignmentId: string, ext: string = "webm", duration: number = 0) {
-  try {
-    const session = await getAuthSession();
-    if (!session?.user?.id) return { error: "Unauthorized" };
-
-    if (duration < 5 || duration > 120) {
-      return { error: "Video clip must be between 5 and 120 seconds." };
-    }
-
-    const timestamp = Date.now();
-    const videoPath = `${groupId}/${assignmentId}/${timestamp}-vlog.${ext}`;
-    const thumbPath = `${groupId}/${assignmentId}/${timestamp}-thumb.jpg`;
-
-    const videoResponse = await supabaseServer.storage.from("vlogs").createSignedUploadUrl(videoPath);
-    const thumbResponse = await supabaseServer.storage.from("vlogs").createSignedUploadUrl(thumbPath);
-
-    if (videoResponse.error || thumbResponse.error) {
-      throw new Error("Storage Error: Failed to generate signed URLs.");
-    }
-
-    return {
-      success: true,
-      video: { path: videoPath, url: videoResponse.data.signedUrl },
-      thumbnail: { path: thumbPath, url: thumbResponse.data.signedUrl }
-    };
-  } catch (error: any) {
-    return { error: error?.message || "Failed to generate signed upload URLs." };
   }
 }
 

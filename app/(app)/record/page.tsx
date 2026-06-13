@@ -4,7 +4,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSession } from "next-auth/react";
-import { getOrCreateTodayAssignment, getSignedUploadUrls, createClip } from "@/actions/vlog";
+import { getOrCreateTodayAssignment, createClip } from "@/actions/vlog";
 import { getUserGroups } from "@/actions/group";
 import { CameraView } from "@/components/record/camera-view";
 import { PreviewView } from "@/components/record/preview-view";
@@ -354,36 +354,52 @@ export default function RecordPage() {
       }
 
       const ext = recordedBlob.type.includes("mp4") ? "mp4" : "webm";
-      const res = await getSignedUploadUrls(activeGroupId, assignment.id, ext, finalDuration);
+      const timestamp = Date.now();
+      const videoPath = `${activeGroupId}/${assignment.id}/${timestamp}-vlog.${ext}`;
+      const thumbPath = `${activeGroupId}/${assignment.id}/${timestamp}-thumb.jpg`;
 
-      if (res.error || !res.video || !res.thumbnail) {
-        throw new Error(res.error || "Failed to generate signed urls.");
+      // 1. Upload Video through internal API
+      const videoData = new FormData();
+      videoData.append("file", recordedBlob, `video.${ext}`);
+      videoData.append("bucket", "vlogs");
+      videoData.append("path", videoPath);
+      
+      const videoUploadRes = await fetch("/api/media", {
+        method: "POST",
+        body: videoData,
+      });
+      if (!videoUploadRes.ok) {
+         const errText = await videoUploadRes.text();
+         throw new Error(errText || "Failed to save video clip.");
       }
 
-      const videoUploadRes = await fetch(res.video.url, {
-        method: "PUT",
-        body: recordedBlob,
-        headers: { "Content-Type": recordedBlob.type },
-      });
-      if (!videoUploadRes.ok) throw new Error("Failed to save video clip.");
-
+      // 2. Upload Thumbnail through internal API
       const thumbBlob = await generateThumbnail(recordedBlob, recordedFacingMode);
-      const thumbUploadRes = await fetch(res.thumbnail.url, {
-        method: "PUT",
-        body: thumbBlob,
-        headers: { "Content-Type": "image/jpeg" },
-      });
-      if (!thumbUploadRes.ok) throw new Error("Failed to save frame thumbnail.");
+      const thumbData = new FormData();
+      thumbData.append("file", thumbBlob, "thumb.jpg");
+      thumbData.append("bucket", "vlogs");
+      thumbData.append("path", thumbPath);
 
+      const thumbUploadRes = await fetch("/api/media", {
+        method: "POST",
+        body: thumbData,
+      });
+      if (!thumbUploadRes.ok) {
+         const errText = await thumbUploadRes.text();
+         throw new Error(errText || "Failed to save frame thumbnail.");
+      }
+
+      // 3. Create Clip Record
       const clipRes = await createClip({
         groupId: activeGroupId,
         assignmentId: assignment.id,
-        videoUrl: res.video.path,
-        thumbnailUrl: res.thumbnail.path,
+        videoUrl: videoPath,
+        thumbnailUrl: thumbPath,
         location: locationName,
         caption,
         duration: finalDuration,
       });
+      
       if (clipRes.error) throw new Error(clipRes.error);
 
       if (clipRes.newlyUnlocked?.length) {
