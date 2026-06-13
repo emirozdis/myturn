@@ -1,3 +1,4 @@
+// ./lib/media-permissions.ts
 export type MediaPermissionResult =
   | { ok: true; stream: MediaStream }
   | { ok: false; reason: "denied" | "unavailable" | "error"; message?: string };
@@ -38,7 +39,20 @@ export function stopMediaStream(stream: MediaStream | null | undefined) {
 }
 
 export function getRecordingMimeType(): string {
-  const types = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
+  if (typeof window === "undefined") return "video/webm";
+  const isIOS = typeof navigator !== "undefined" && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+  const types = isIOS 
+    ? [
+        "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+        "video/mp4",
+        "video/webm"
+      ]
+    : [
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+        "video/mp4"
+      ];
+      
   for (const type of types) {
     if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) {
       return type;

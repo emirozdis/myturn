@@ -1,3 +1,4 @@
+// ./app/(app)/record/page.tsx
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -278,8 +279,26 @@ export default function RecordPage() {
     setRecordedFacingMode(facingMode);
 
     let mimeType = "video/webm;codecs=vp8,opus";
-    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported("video/mp4")) {
-      mimeType = "video/mp4";
+    if (typeof MediaRecorder !== "undefined") {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const types = isIOS 
+        ? [
+            "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+            "video/mp4",
+            "video/webm"
+          ]
+        : [
+            "video/webm;codecs=vp8,opus",
+            "video/webm",
+            "video/mp4"
+          ];
+          
+      for (const t of types) {
+        if (MediaRecorder.isTypeSupported(t)) {
+          mimeType = t;
+          break;
+        }
+      }
     }
 
     const mediaRecorder = new MediaRecorder(streamRef.current, { mimeType, videoBitsPerSecond: 3000000 });
@@ -292,7 +311,7 @@ export default function RecordPage() {
       const duration = recordTimeRef.current;
       setFinalDuration(duration);
       if (duration >= 5) {
-        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const blob = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || mimeType });
         setRecordedBlob(blob);
         handleStepChange("PREVIEW");
       } else {
@@ -303,7 +322,8 @@ export default function RecordPage() {
     };
 
     mediaRecorderRef.current = mediaRecorder;
-    mediaRecorder.start();
+    // 1-second chunks fix iOS recording freezing video bug while allowing audio to continue
+    mediaRecorder.start(1000); 
     setIsRecording(true);
     setRecordTime(0);
     recordTimeRef.current = 0;
