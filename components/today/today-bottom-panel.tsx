@@ -1,3 +1,4 @@
+// ./components/today/today-bottom-panel.tsx
 "use client";
 
 import { useState } from "react";
@@ -13,6 +14,7 @@ type TodayBottomPanelProps = {
   isCurrentUserVlogger: boolean;
   activeClipUrl: string | null;
   currentHourIndex: number;
+  actualHourIndex: number;
   uploadedSlots: number[];
   onHourChange: (index: number) => void;
   isSleepMode: boolean;
@@ -24,6 +26,7 @@ export function TodayBottomPanel({
   isCurrentUserVlogger,
   activeClipUrl,
   currentHourIndex,
+  actualHourIndex,
   uploadedSlots,
   onHourChange,
   isSleepMode,
@@ -35,7 +38,7 @@ export function TodayBottomPanel({
 
   return (
     <div
-      className={`flex-shrink-0 rounded-[24px] flex flex-col gap-3.5 shadow-lg transition-all duration-500 ${
+      className={`mb-2 flex-shrink-0 rounded-[24px] flex flex-col gap-3.5 shadow-lg transition-all duration-500 ${
         isVideoExpanded
           ? "max-h-0 opacity-0 overflow-hidden pointer-events-none p-0"
           : "max-h-[320px] opacity-100"
@@ -103,6 +106,7 @@ export function TodayBottomPanel({
         <div className="rounded-[20px] p-1.5">
           <TimelineTracker
             currentHourIndex={currentHourIndex}
+            actualHourIndex={actualHourIndex}
             onHourChange={onHourChange}
             uploadedSlots={uploadedSlots}
           />

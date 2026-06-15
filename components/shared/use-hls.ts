@@ -1,3 +1,4 @@
+// ./components/shared/use-hls.ts
 "use client";
 
 import { useEffect } from "react";
@@ -21,7 +22,7 @@ export function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, src: 
       if (Hls.isSupported()) {
         hls = new Hls({
           maxMaxBufferLength: 10,       // Maximize efficiency: Limit 10s pre-buffer
-          capLevelToPlayerSize: true,   // Protect limits: Prevents pulling 1080p chunks for small screens
+          capLevelToPlayerSize: false,  // FIX: Disabled to prevent low-res capping on Retina/DPI displays
         });
         hls.loadSource(src);
         hls.attachMedia(video);

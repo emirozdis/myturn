@@ -1,3 +1,4 @@
+// ./app/(app)/layout.tsx
 "use client";
 
 import { useState, useCallback, useEffect, ReactNode } from "react";
@@ -29,11 +30,19 @@ import { signOut } from "next-auth/react";
 import { LogoutConfirmSheet } from "@/components/profile/logout-confirm-sheet";
 import { BottomSheet } from "@/components/shared/bottom-sheet";
 
+// Imports for Optimistic Tab rendering
+import { TodaySkeleton } from "@/components/today/today-skeleton";
+import { StreaksSkeleton } from "@/components/streaks/streaks-skeleton";
+import { SocialSkeleton } from "@/components/social/social-skeleton";
+import { ProfileSkeleton } from "@/components/profile/profile-skeleton";
+import { RecordLoadingState } from "@/components/record/record-loading-state";
+
 export interface GroupConfig {
   id: string;
   name: string;
   emoji: string;
   memberCount: number;
+  members?: { id: string; name: string | null; image: string | null }[];
 }
 
 type ModalTask = 
@@ -42,23 +51,18 @@ type ModalTask =
   | { type: "achievement"; config: any }
   | { type: "levelUp"; config: any };
 
-// Scans localStorage and deletes ONLY older modal presentation flags from previous days (retaining other groups' active flags for today)
-const cleanupStaleStorageKeys = (groupId: string, currentDateStr: string) => {
+const cleanupStaleStorageKeys = (type: "reveal" | "recap", groupId: string, currentDateStr: string) => {
   if (typeof window === "undefined") return;
   try {
     const keysToRemove: string[] = [];
+    const prefix = type === "reveal" ? `revealed_vlogger_${groupId}_` : `seen_recap_${groupId}_`;
 
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key) {
-        // Safe-check both patterns and parse the trailing date string dynamically
-        if (key.startsWith("revealed_vlogger_") || key.startsWith("seen_recap_")) {
-          const parts = key.split("_");
-          const keyDate = parts[parts.length - 1]; // Extracts YYYY-MM-DD safely
-          
-          if (keyDate && keyDate !== currentDateStr) {
-            keysToRemove.push(key);
-          }
+      if (key && key.startsWith(prefix)) {
+        const keyDate = key.replace(prefix, "");
+        if (keyDate && keyDate !== currentDateStr) {
+          keysToRemove.push(key);
         }
       }
     }
@@ -78,33 +82,24 @@ const getAssignmentDateStr = (asg: any) => {
 };
 
 function NotificationEnforcer({ children }: { children: ReactNode }) {
-  const [loading, setLoading] = useState(true);
-  const [permission, setPermission] = useState<PermissionState | "default">("default");
-
+  // Initialize states with a default optimistic assumptions to allow immediate first-paint SSR and avoid spinners
+  const [permission, setPermission] = useState<PermissionState | "default">("granted");
   const [isSupported, setIsSupported] = useState(true);
+  const [initialized, setInitialized] = useState(false);
+
   const [subscribingNotifications, setSubscribingNotifications] = useState(false);
   const [notificationsError, setNotificationsError] = useState("");
 
-  const checkPermissions = useCallback(async () => {
-    let state: PermissionState | "default" = "default";
-
-    // Check Notifications Support and Permission
+  useEffect(() => {
     if (typeof window !== "undefined") {
       if (!("Notification" in window)) {
         setIsSupported(false);
-        state = "granted"; // bypass enforcer screen if unsupported
       } else {
-        state = window.Notification.permission;
+        setPermission(window.Notification.permission);
       }
+      setInitialized(true);
     }
-
-    setPermission(state);
-    setLoading(false);
   }, []);
-
-  useEffect(() => {
-    checkPermissions();
-  }, [checkPermissions]);
 
   const handleRequestNotifications = async () => {
     setSubscribingNotifications(true);
@@ -135,15 +130,7 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
 
   const isNotificationsGranted = permission === "granted";
 
-  if (loading) {
-    return (
-      <div className="absolute inset-0 z-[100] bg-[#161618] sm:rounded-[32px] flex items-center justify-center">
-        <Loader2 size={32} className="animate-spin text-[#e07c30]" />
-      </div>
-    );
-  }
-
-  if (isSupported && !isNotificationsGranted) {
+  if (initialized && isSupported && !isNotificationsGranted) {
     return (
       <div className="absolute inset-0 z-[100] flex flex-col pt-8 min-h-0 px-6 pb-6 bg-[#161618] sm:rounded-[40px] animate-fade-in select-none">
         <div className="mb-4 flex-shrink-0 mt-4 text-center">
@@ -164,7 +151,6 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
         </div>
 
         <div className="flex-1 flex flex-col justify-start max-w-sm mx-auto w-full gap-4">
-          {/* Card: Notifications */}
           <div
             style={glassStyle(0.04, 16, 0.08)}
             className="p-4 rounded-[22px] border border-white/5 flex flex-col gap-3"
@@ -217,7 +203,9 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const activeTab = pathname.split("/").pop() || "today";
+
+  // Handle immediate visual UI handoff for BottomNav router intercept
+  const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
 
   const [groupsLoading, setGroupsLoading] = useState(() => {
     if (typeof window !== "undefined") {
@@ -267,11 +255,30 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [leavingGroup, setLeavingGroup] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // Queue Modals Configuration
   const [modalQueue, setModalQueue] = useState<ModalTask[]>([]);
   
   const enqueueModal = useCallback((task: ModalTask) => {
-    setModalQueue((prev) => [...prev, task]);
+    setModalQueue((prev) => {
+      const isDuplicate = prev.some((existing) => {
+        if (existing.type !== task.type) return false;
+        
+        if (("groupId" in existing) && ("groupId" in task)) {
+          if (existing.groupId !== task.groupId) return false;
+          if (getAssignmentDateStr(existing.assignment) !== getAssignmentDateStr(task.assignment)) return false;
+          return true;
+        }
+        
+        if (("config" in existing) && ("config" in task)) {
+          if (existing.config.id !== task.config.id) return false;
+          return true;
+        }
+
+        return false;
+      });
+
+      if (isDuplicate) return prev;
+      return [...prev, task];
+    });
   }, []);
   
   const dequeueModal = useCallback(() => {
@@ -310,7 +317,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
         const dateStr = getAssignmentDateStr(res.assignment);
         if (dateStr) {
-          cleanupStaleStorageKeys(groupId, dateStr);
+          cleanupStaleStorageKeys("reveal", groupId, dateStr);
           const storageKey = `revealed_vlogger_${groupId}_${dateStr}`;
           if (!localStorage.getItem(storageKey)) {
             enqueueModal({ type: "reveal", groupId, assignment: res.assignment });
@@ -328,7 +335,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       if (res.success && res.assignment) {
         const dateStr = getAssignmentDateStr(res.assignment);
         if (dateStr) {
-          cleanupStaleStorageKeys(groupId, dateStr);
+          cleanupStaleStorageKeys("recap", groupId, dateStr);
           const seenKey = `seen_recap_${groupId}_${dateStr}`;
           if (!localStorage.getItem(seenKey)) {
              enqueueModal({ type: "compilation", groupId, assignment: res.assignment });
@@ -372,6 +379,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     loadGroups();
   }, [loadGroups]);
 
+  // Once the route actually transitions server-side, remove the optimistic override flag entirely
+  useEffect(() => {
+    setOptimisticTab(null);
+  }, [pathname]);
+
   const handleGroupIndexChange = useCallback(
     (index: number) => {
       setActiveGroupIndex(index);
@@ -385,6 +397,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     },
     [groups, checkRevealStatus, checkGlobalCompilation]
   );
+
+  const handleNav = (id: string, href: string) => {
+    const activeRouteTab = pathname.split("/").pop() || "today";
+    if (activeRouteTab === id) return;
+    
+    // Instantly intercept UI for lighting fast response while router works in background
+    setOptimisticTab(id);
+    router.push(href);
+  };
 
   useEffect(() => {
     const handleOpenSheet = (e: Event) => {
@@ -562,15 +583,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     signOut({ callbackUrl: "/" });
   };
 
-  const isRecordPreview = activeTab === "record" && recordStep === "PREVIEW";
-  const showMainChrome = activeTab !== "streaks" && !isRecordPreview;
-  const isTodayTab = activeTab === "today";
-  const isStreaksTab = activeTab === "streaks";
+  const activeRouteTab = pathname.split("/").pop() || "today";
+  const currentViewTab = optimisticTab || activeRouteTab;
+
+  const isRecordPreview = currentViewTab === "record" && recordStep === "PREVIEW";
+  const showMainChrome = currentViewTab !== "streaks" && !isRecordPreview;
+  const isTodayTab = currentViewTab === "today";
+  const isStreaksTab = currentViewTab === "streaks";
   const showGroupHeader = groups.length > 1 && (isStreaksTab || isTodayTab);
-  const showBottomNav = activeTab !== "record" || recordStep === "CAMERA";
+  const showBottomNav = currentViewTab !== "record" || recordStep === "CAMERA";
+  
+  // Guard evaluation prevents showing "No Groups" screen immediately if data hasn't processed
   const hasNoGroups = groups.length === 0 && !groupsLoading;
 
-  const isBypassPage = pathname === "/social" || pathname === "/profile";
+  const isBypassPage = 
+    currentViewTab === "social" || 
+    currentViewTab === "profile" || 
+    pathname.startsWith("/social") || 
+    pathname.startsWith("/profile");
+
   const showNoGroupsScreen = hasNoGroups && !isBypassPage;
 
   if (typeof window !== "undefined" && groups[activeGroupIndex]) {
@@ -579,10 +610,24 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   const isSwipeableTab = isTodayTab || isStreaksTab;
 
+  const renderOptimisticSkeleton = () => {
+    switch (optimisticTab) {
+      case "today": return <TodaySkeleton />;
+      case "streaks": return <StreaksSkeleton />;
+      case "social": return <SocialSkeleton />;
+      case "profile": return <ProfileSkeleton />;
+      case "record": return <RecordLoadingState />;
+      default: return null;
+    }
+  };
+
+  // Instant UI handoff logic
+  const activeContentLayer = optimisticTab ? renderOptimisticSkeleton() : children;
+
   const pageContent = (
     <div
       className={`relative flex-1 min-h-0 flex flex-col transition-all duration-300 ease-out ${
-        showMainChrome ? "px-4 pb-4" : "p-0"
+        showMainChrome ? "px-4" : "p-0"
       }`}
       style={{
         paddingTop: showGroupHeader
@@ -590,14 +635,33 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           : isRecordPreview
             ? "0px"
             : "max(16px, env(safe-area-inset-top, 0px))",
+        paddingBottom: "0px",
       }}
     >
-      <div className="flex-1 w-full h-full flex flex-col min-h-0 relative">{children}</div>
+      <div 
+        className="flex-1 w-full h-full flex flex-col min-h-0 relative overflow-y-auto overflow-x-hidden scrollbar-hide"
+        style={{
+          paddingBottom: showBottomNav ? "80px" : "24px",
+        }}
+      >
+        {activeContentLayer}
+      </div>
     </div>
   );
 
   return (
     <div className="fixed inset-0 sm:relative sm:min-h-screen bg-black flex sm:items-center sm:justify-center p-0 sm:p-4 overflow-hidden select-none">
+      {/* Scope background overrides for native child navbar components dynamically */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        .navbar-blur-container > div, 
+        .navbar-blur-container > nav {
+          background: transparent !important;
+          background-color: transparent !important;
+          border-color: transparent !important;
+          box-shadow: none !important;
+        }
+      `}} />
+
       <div
         className="absolute inset-0 sm:relative sm:w-[393px] sm:h-[812px] sm:rounded-[48px] sm:p-[8px] flex flex-col justify-between transition-all duration-300 overflow-hidden"
         style={{
@@ -618,11 +682,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </div>
 
             <div className="relative z-10 flex-1 flex flex-col h-full justify-between overflow-hidden">
-              {groupsLoading ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 gap-4">
-                  <Loader2 size={32} className="animate-spin text-[#e07c30]" />
-                </div>
-              ) : showNoGroupsScreen ? (
+              {showNoGroupsScreen ? (
                 <div className="flex-1 flex flex-col justify-center px-6 py-8 relative overflow-hidden animate-fade-in">
                   <div 
                     className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full pointer-events-none filter blur-[90px] opacity-20"
@@ -675,7 +735,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     </div>
 
                     <button
-                      onClick={() => router.push("/social")}
+                      onClick={() => handleNav("social", "/social")}
                       style={{ 
                         background: `linear-gradient(135deg, ${ACCENT}, #ff9a44)`,
                         boxShadow: "0 6px 24px rgba(224,124,48,0.3)"
@@ -713,15 +773,75 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               )}
 
               <div
-                className={`transition-all duration-300 ease-in-out flex-shrink-0 z-20 relative ${
-                  showBottomNav ? "overflow-visible" : "overflow-hidden"
+                className={`absolute bottom-0 left-0 right-0 z-30 transition-all duration-300 ease-in-out ${
+                  showBottomNav ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"
                 }`}
-                style={{
-                  height: showBottomNav ? "auto" : "0px",
-                  opacity: showBottomNav ? 1 : 0,
-                }}
               >
-                <BottomNavRouter />
+                {/* Advanced Multi-Layer Progressive Gradient Blur Overlay */}
+                <div className="absolute bottom-0 left-0 right-0 h-[110px] pointer-events-none overflow-hidden select-none">
+                  {/* Layer 1: ultra-subtle blur starting at the very top */}
+                  <div 
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      backdropFilter: "blur(2px)",
+                      WebkitBackdropFilter: "blur(2px)",
+                      maskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 12%, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 45%)",
+                      WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 12%, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 45%)",
+                    }}
+                  />
+                  {/* Layer 2: soft blur transitioning through the upper-mid segment */}
+                  <div 
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      backdropFilter: "blur(4px)",
+                      WebkitBackdropFilter: "blur(4px)",
+                      maskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 20%, rgba(0,0,0,1) 40%, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 75%)",
+                      WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 20%, rgba(0,0,0,1) 40%, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 75%)",
+                    }}
+                  />
+                  {/* Layer 3: medium blur across the mid-to-lower segment */}
+                  <div 
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      backdropFilter: "blur(8px)",
+                      WebkitBackdropFilter: "blur(8px)",
+                      maskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(0,0,0,1) 60%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 90%)",
+                      WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(0,0,0,1) 60%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 90%)",
+                    }}
+                  />
+                  {/* Layer 4: deep blur intensifying near the bottom */}
+                  <div 
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      backdropFilter: "blur(16px)",
+                      WebkitBackdropFilter: "blur(16px)",
+                      maskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 60%, rgba(0,0,0,1) 80%, rgba(0,0,0,1) 100%)",
+                      WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 60%, rgba(0,0,0,1) 80%, rgba(0,0,0,1) 100%)",
+                    }}
+                  />
+                  {/* Layer 5: maximum blur concentrated at the absolute bottom edge */}
+                  <div 
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      backdropFilter: "blur(24px)",
+                      WebkitBackdropFilter: "blur(24px)",
+                      maskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 80%, rgba(0,0,0,1) 100%)",
+                      WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 80%, rgba(0,0,0,1) 100%)",
+                    }}
+                  />
+                  {/* Darkening gradient overlay for optimal legibility of navbar icons */}
+                  <div 
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                      background: "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.25) 40%, rgba(0,0,0,0.92) 100%)",
+                    }}
+                  />
+                </div>
+
+                {/* Interactive Navbar Element */}
+                <div className="relative z-10 w-full navbar-blur-container">
+                  <BottomNavRouter optimisticTab={optimisticTab} onNavigate={handleNav} />
+                </div>
               </div>
             </div>
 
@@ -854,7 +974,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         className="px-4 py-2 rounded-xl text-black text-xs font-bold flex items-center gap-1.5 transition-colors"
                       >
                         {copySuccess ? <Check size={12} strokeWidth={3} /> : <Copy size={12} />}
-                        {copySuccess ? "Copied" : "Copy Code"}
+                        {copySuccess ? "Copy Code" : "Copy Code"}
                       </button>
                     </div>
 
@@ -948,7 +1068,6 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               onConfirm={handleLogout}
             />
 
-            {/* Centralized Sequential UI Queuing Engine for Overlay Events */}
             <AnimatePresence mode="wait">
               {activeModal?.type === "compilation" && (
                 <CompilationReadyModal 

@@ -64,7 +64,18 @@ export async function getSocialData() {
       user: p.requester,
     }));
 
-    const sentRequests = await db.friendship.findMany({
+    // Query pending outgoing friend requests (sent requests)
+    const sentRequestsRaw = await db.friendship.findMany({
+      where: { requesterId: userId, status: "pending" },
+      include: { addressee: { select: { id: true, name: true, handle: true, image: true } } },
+    });
+
+    const sentRequests = sentRequestsRaw.map((s) => ({
+      id: s.id,
+      user: s.addressee,
+    }));
+
+    const sentRequestsForExclude = await db.friendship.findMany({
       where: { requesterId: userId },
     });
 
@@ -72,7 +83,7 @@ export async function getSocialData() {
       userId,
       ...friends.map((f) => f.id),
       ...pendingRaw.map((p) => p.requesterId),
-      ...sentRequests.map((s) => s.addresseeId),
+      ...sentRequestsForExclude.map((s) => s.addresseeId),
     ];
 
     const suggestionsRaw = await db.user.findMany({
@@ -106,6 +117,7 @@ export async function getSocialData() {
       success: true,
       friends,
       pendingRequests,
+      sentRequests,
       suggestions,
       groups: activeGroups,
       trending,
@@ -183,6 +195,29 @@ export async function respondFriendRequest(requestId: string, accept: boolean) {
         where: { id: requestId }
       });
     }
+
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+export async function cancelFriendRequest(requestId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+
+    const request = await db.friendship.findUnique({
+      where: { id: requestId }
+    });
+
+    if (!request || request.requesterId !== session.user.id) {
+      return { error: "Request not found or unauthorized." };
+    }
+
+    await db.friendship.delete({
+      where: { id: requestId }
+    });
 
     return { success: true };
   } catch (err: any) {

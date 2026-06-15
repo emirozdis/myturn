@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { getSocialData, sendFriendRequest, respondFriendRequest } from "@/actions/social";
+import { getSocialData, sendFriendRequest, respondFriendRequest, cancelFriendRequest } from "@/actions/social";
 import { joinGroup, createGroup, getGroupDetails } from "@/actions/group";
 import { RefreshingBadge } from "@/components/shared/refreshing-badge";
 import { ToastBanner } from "@/components/shared/toast-banner";
@@ -180,6 +180,7 @@ export default function SocialPage() {
     const res = await sendFriendRequest(userId);
     if (res.success) {
       showToast("Friend request sent!", "success");
+      loadSocial();
     } else {
       showToast(res.error || "Failed to send request.", "error");
       setSocialData((prev: any) => {
@@ -204,9 +205,28 @@ export default function SocialPage() {
     const res = await respondFriendRequest(requestId, accept);
     if (res.success) {
       showToast(accept ? "Friend request accepted!" : "Friend request declined.", "success");
-      if (accept) loadSocial();
+      loadSocial();
     } else {
       showToast(res.error || "Failed to respond.", "error");
+      loadSocial();
+    }
+  };
+
+  const handleCancelRequest = async (requestId: string) => {
+    setSocialData((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        sentRequests: prev.sentRequests.filter((r: any) => r.id !== requestId),
+      };
+    });
+
+    const res = await cancelFriendRequest(requestId);
+    if (res.success) {
+      showToast("Friend request withdrawn.", "success");
+      loadSocial();
+    } else {
+      showToast(res.error || "Failed to withdraw request.", "error");
       loadSocial();
     }
   };
@@ -215,7 +235,7 @@ export default function SocialPage() {
     return <SocialSkeleton />;
   }
 
-  const { friends = [], groups = [], suggestions = [], trending = [], pendingRequests = [] } = socialData;
+  const { friends = [], groups = [], suggestions = [], trending = [], pendingRequests = [], sentRequests = [] } = socialData;
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -247,7 +267,9 @@ export default function SocialPage() {
         return (
           <RequestsTab
             pendingRequests={pendingRequests}
+            sentRequests={sentRequests}
             onRespond={handleRespondRequest}
+            onCancelRequest={handleCancelRequest}
           />
         );
       case "Discover":

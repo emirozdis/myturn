@@ -1,12 +1,54 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MapPin, Calendar, Crown, Clapperboard, Users, Loader2, AlertCircle } from "lucide-react";
+import { MapPin, Calendar, Crown, Clapperboard, Users, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import { Avatar } from "@/components/shared/avatar";
 import { getVibeBadgeStyle } from "@/lib/vibe";
 import { glassStyle } from "@/components/shared/glass-style";
 import { getUserPublicProfile } from "@/actions/profile";
 import { StatPill } from "./stat-pill";
+
+function UserProfileSkeleton() {
+  return (
+    <div className="flex flex-col gap-6 animate-pulse select-none">
+      {/* Header Area */}
+      <div className="flex items-start gap-4">
+        <div className="w-[72px] h-[72px] rounded-full bg-white/[0.05] flex-shrink-0" />
+        <div className="flex flex-col flex-1 gap-2 pt-2">
+          <div className="h-5 w-32 rounded-md bg-white/[0.05]" />
+          <div className="h-3.5 w-20 rounded-md bg-white/[0.03]" />
+          <div className="flex gap-2 mt-1">
+            <div className="h-5 w-24 rounded-full bg-white/[0.03]" />
+            <div className="h-5 w-16 rounded-full bg-white/[0.03]" />
+          </div>
+        </div>
+      </div>
+
+      {/* Bio, Location and Date Meta */}
+      <div className="flex flex-col gap-2.5">
+        <div className="h-4 w-full rounded-md bg-white/[0.03]" />
+        <div className="h-4 w-[85%] rounded-md bg-white/[0.03]" />
+        <div className="flex gap-3 mt-1.5">
+          <div className="h-3 w-20 rounded-md bg-white/[0.03]" />
+          <div className="h-3 w-24 rounded-md bg-white/[0.03]" />
+        </div>
+      </div>
+
+      {/* Stats Cards Row */}
+      <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, height: 90 }} className="flex justify-between items-center px-6">
+        <div className="flex-1 flex flex-col items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-white/[0.03]" />
+          <div className="h-3 w-12 rounded-sm bg-white/[0.03]" />
+        </div>
+        <div className="w-[1px] h-10 bg-white/5" />
+        <div className="flex-1 flex flex-col items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-white/[0.03]" />
+          <div className="h-3 w-12 rounded-sm bg-white/[0.03]" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function UserProfileSheetContent({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<any>(null);
@@ -28,12 +70,7 @@ export function UserProfileSheetContent({ userId }: { userId: string }) {
   }, [userId]);
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <Loader2 size={28} className="animate-spin text-[#e07c30] mb-4" />
-        <span className="text-white/40 text-xs font-semibold">Loading profile...</span>
-      </div>
-    );
+    return <UserProfileSkeleton />;
   }
 
   if (errorMsg || !profile) {
@@ -58,20 +95,44 @@ export function UserProfileSheetContent({ userId }: { userId: string }) {
           <h3 className="text-white text-xl font-bold tracking-tight truncate">{profile.name}</h3>
           <span className="text-white/50 text-xs font-medium mb-2.5">@{profile.handle}</span>
 
-          <div
-            style={{
-              ...vibeStyle,
-              padding: "3px 8px",
-              borderRadius: 10,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              border: vibeStyle.border,
-              alignSelf: "flex-start",
-            }}
-          >
-            <Crown size={12} fill="currentColor" />
-            <span className="text-[9px] font-black uppercase tracking-wider">{profile.archetype}</span>
+          <div className="flex gap-2 items-center flex-wrap">
+            <div
+              style={{
+                ...vibeStyle,
+                padding: "3px 8px",
+                borderRadius: 10,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                border: vibeStyle.border,
+                alignSelf: "flex-start",
+              }}
+            >
+              <Crown size={12} fill="currentColor" />
+              <span className="text-[9px] font-black uppercase tracking-wider">{profile.archetype}</span>
+            </div>
+
+            {/* Glowing Experience Points (XP) Badge */}
+            <div
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "#ff9a44",
+                padding: "3px 8px",
+                borderRadius: 10,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: "9px",
+                fontWeight: 900,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                boxShadow: "0 4px 12px rgba(255, 154, 68, 0.05)",
+              }}
+            >
+              <Sparkles size={11} className="text-[#ff9a44]" />
+              <span>{profile.xp} XP</span>
+            </div>
           </div>
         </div>
       </div>

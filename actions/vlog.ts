@@ -1,3 +1,4 @@
+// ./actions/vlog.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -279,11 +280,49 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     where: { groupId, date: yesterdayDate },
   });
 
-  let pool = group.members;
-  if (group.members.length > 1 && yesterdayAssignment) {
-    pool = group.members.filter((m) => m.userId !== yesterdayAssignment.userId);
+  // Cycle Distribution Logic (Shuffle Bag implementation)
+  // Ensures every group member gets exactly 1 random turn per full cycle
+  const recentAssignments = await db.dailyAssignment.findMany({
+    where: { groupId, date: { lt: localDate } },
+    orderBy: { date: "desc" },
+    take: group.members.length * 2, // Grab enough history to identify the cycle boundary
+  });
+
+  const currentMemberIds = new Set(group.members.map((m) => m.userId));
+  const seenInCycle = new Set<string>();
+
+  for (const asg of recentAssignments) {
+    // Ignore historical assignments from users who are no longer in the group
+    if (!currentMemberIds.has(asg.userId)) continue;
+    
+    // If we hit someone already in the current cycle set, the previous cycle has officially ended.
+    if (seenInCycle.has(asg.userId)) break;
+    
+    seenInCycle.add(asg.userId);
+    
+    // If the cycle currently holds everyone in the group, a perfect cycle was just completed.
+    if (seenInCycle.size === currentMemberIds.size) break;
   }
 
+  // Define our eligible candidate pool to only those who HAVE NOT vlogged in the current cycle
+  let pool = group.members.filter((m) => !seenInCycle.has(m.userId));
+
+  // If the pool is empty, it means a perfect cycle just completed and everyone is eligible again.
+  if (pool.length === 0) {
+    pool = [...group.members];
+  }
+
+  // Anti-Consecutive Guard: Ensure yesterday's vlogger doesn't go twice in a row (unless they are the only member)
+  if (pool.length > 1 && yesterdayAssignment) {
+    pool = pool.filter((m) => m.userId !== yesterdayAssignment.userId);
+  }
+
+  // Absolute fallback guard incase filters errantly empty the array
+  if (pool.length === 0 && group.members.length > 0) {
+    pool = [...group.members];
+  }
+
+  // Randomize the pick from the filtered equal-distribution cycle pool
   const chosenMember = pool[Math.floor(Math.random() * pool.length)];
 
   const assignment = await db.dailyAssignment.create({

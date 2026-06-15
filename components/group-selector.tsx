@@ -1,8 +1,10 @@
+// ./components/group-selector.tsx
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Repeat } from "lucide-react";
 import { glassStyle } from "./shared/glass-style";
+import { Avatar } from "@/components/shared/avatar";
 
 const FADE_BLUR_TRANSITION = { duration: 0.2, ease: [0.4, 0, 0.2, 1] as const };
 
@@ -43,7 +45,7 @@ export function GroupSelector({
             className="flex items-center gap-3 min-w-0 flex-1"
           >
             {/* Emoji Circle */}
-            <div className="w-12 h-12 rounded-full bg-[#1c1c1c] border-[1.5px] border-[#e07c30]/40 flex items-center justify-center flex-shrink-0 shadow-inner">
+            <div className="w-12 h-12 rounded-full bg-[#1c1c1c] border-[1.5px] border-white/10 flex items-center justify-center flex-shrink-0 shadow-inner">
               <span className="text-xl leading-none" aria-hidden>
                 {active.emoji || "🏠"}
               </span>
@@ -68,9 +70,15 @@ export function GroupSelector({
         <div className="flex items-center gap-3 flex-shrink-0 pl-2">
           <div className="flex items-center">
             <div className="flex -space-x-1.5">
-              <img src="/profile.jpg" alt="" className="w-6 h-6 rounded-full border-[2px] border-[#131313] object-cover relative z-30" />
-              <img src="/image1.png" alt="" className="w-6 h-6 rounded-full border-[2px] border-[#131313] object-cover relative z-20" />
-              <img src="/profile.jpg" alt="" className="w-6 h-6 rounded-full border-[2px] border-[#131313] object-cover relative z-10" />
+              {active.members?.slice(0, 3).map((member: any, idx: number) => (
+                <div
+                  key={member.id}
+                  className="rounded-full border-[2px] border-[#131313] overflow-hidden"
+                  style={{ zIndex: 30 - idx }}
+                >
+                  <Avatar src={member.image} name={member.name} size={24} />
+                </div>
+              ))}
             </div>
             {active.memberCount > 3 && (
               <span className="text-white/70 text-[11px] font-bold ml-1.5">

@@ -1,3 +1,4 @@
+// ./app/page.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -1224,6 +1225,13 @@ export default function OnboardingPage() {
 
   const allowRegistration = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== "false";
 
+  // Prevent authenticated users from flashing the onboarding UI before server middleware can engage
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.replace("/today");
+    }
+  }, [status, router]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const ua = window.navigator.userAgent || "";
@@ -1254,14 +1262,6 @@ export default function OnboardingPage() {
       setWarningOs(detectedWarningOs);
     }
   }, []);
-
-  useEffect(() => {
-    if (status === "authenticated" && session) {
-      if (["intro1", "intro2", "intro3", "installPwa", "browserWarning", "signin"].includes(step)) {
-        router.push("/today");
-      }
-    }
-  }, [session, status, router, step]);
 
   const navigate = (newStep: Step) => {
     const order: Record<Step, number> = {
@@ -1326,12 +1326,9 @@ export default function OnboardingPage() {
   const isIntro = step.startsWith("intro");
   const introIndex = isIntro ? parseInt(step.replace("intro", "")) - 1 : -1;
 
-  if (status === "loading") {
-    return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center text-white/50">
-        <Loader2 size={32} className="animate-spin text-[#e07c30]" />
-      </div>
-    );
+  if (status === "loading" || status === "authenticated") {
+    // Renders a completely blank background to prevent the spinner flash while the middleware decides interception routing.
+    return <div className="fixed inset-0 bg-[#060814]" />;
   }
 
   return (

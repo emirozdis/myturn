@@ -1,3 +1,4 @@
+// ./components/timeline-tracker.tsx
 "use client";
 
 import { Star } from "lucide-react";
@@ -5,10 +6,12 @@ import { ACCENT, TIMELINE_POINTS } from "@/lib/theme";
 
 export function TimelineTracker({
   currentHourIndex,
+  actualHourIndex,
   onHourChange,
   uploadedSlots = [],
 }: {
   currentHourIndex: number;
+  actualHourIndex: number;
   onHourChange: (index: number) => void;
   uploadedSlots?: number[];
 }) {
@@ -37,12 +40,16 @@ export function TimelineTracker({
             const isCurrent = pt.key === currentHourIndex;
             const isDone = pt.key < currentHourIndex;
             const hasUpload = uploadedSlots.includes(pt.key);
+            const isFuture = pt.key > actualHourIndex;
 
             return (
               <button
                 key={pt.key}
-                onClick={() => onHourChange(pt.key)}
-                className="flex flex-col items-center gap-1.5 cursor-pointer group focus:outline-none"
+                onClick={() => {
+                  if (!isFuture) onHourChange(pt.key);
+                }}
+                disabled={isFuture}
+                className={`flex flex-col items-center gap-1.5 group focus:outline-none ${isFuture ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}
               >
                 <div
                   className="w-3.5 h-3.5 rounded-full flex items-center justify-center transition-all duration-300 backdrop-blur-sm"

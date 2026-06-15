@@ -1,3 +1,4 @@
+// ./components/today/video-feed.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -45,6 +46,7 @@ type VideoFeedProps = {
   onReportComment: () => void;
   onPoke: (e: React.MouseEvent) => void;
   isSleepMode: boolean;
+  hasPostedInCurrentSlot: boolean;
 };
 
 export function VideoFeed({
@@ -80,6 +82,7 @@ export function VideoFeed({
   onReportComment,
   onPoke,
   isSleepMode,
+  hasPostedInCurrentSlot,
 }: VideoFeedProps) {
   const router = useRouter();
   const [isMuted, setIsMuted] = useState(true);
@@ -98,7 +101,6 @@ export function VideoFeed({
     setVideoProgress(0);
   }, [activeClipUrl, currentClipSubIndex]);
 
-  // Robustly extract the vlogger to prevent their own profile rendering on views lists
   const displayViews = activeClip?.views?.filter(
     (v: any) => v.user?.id !== assignment?.userId && v.user?.id !== activeClip?.userId
   ) || [];
@@ -275,16 +277,20 @@ export function VideoFeed({
                   Waiting for {assignment?.user?.name || "Vlogger"}
                 </h2>
                 <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
-                  No clips have been shared today yet. Send them a poke to let them know it&apos;s their turn!
+                  {assignment?.clips?.length > 0 
+                    ? "No clips have been shared in this time period yet. Send them a poke to let them know you're waiting!"
+                    : "No clips have been shared today yet. Send them a poke to let them know it's their turn!"}
                 </p>
                 <button
                   onClick={onPoke}
-                  disabled={poking || pokeCooldown > 0}
+                  disabled={poking || pokeCooldown > 0 || hasPostedInCurrentSlot}
                   style={glassStyle(0.08, 16, 0.12)}
                   className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50 pointer-events-auto"
                 >
                   {pokeCooldown > 0 ? (
                     <span>Poke Cooldown ({Math.floor(pokeCooldown / 60)}:{(pokeCooldown % 60).toString().padStart(2, "0")})</span>
+                  ) : hasPostedInCurrentSlot ? (
+                    <span>Vlogger already posted for this period</span>
                   ) : poking ? (
                     <span>Poking...</span>
                   ) : (

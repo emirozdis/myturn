@@ -1,3 +1,4 @@
+// ./app/(app)/today/page.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -46,6 +47,8 @@ export default function TodayPage() {
     handleNextSubClip,
     handlePrevSubClip,
     isSleepMode,
+    actualHourIndex,
+    hasPostedInCurrentSlot,
   } = useTodayPage();
 
   if (initialLoad && !assignment && !isSleepMode) {
@@ -100,6 +103,7 @@ export default function TodayPage() {
         onReportComment={() => showToast("Comment reported.")}
         onPoke={handlePoke}
         isSleepMode={isSleepMode}
+        hasPostedInCurrentSlot={hasPostedInCurrentSlot}
       />
 
       <TodayBottomPanel
@@ -108,6 +112,7 @@ export default function TodayPage() {
         isCurrentUserVlogger={isCurrentUserVlogger}
         activeClipUrl={activeClipUrl}
         currentHourIndex={currentHourIndex}
+        actualHourIndex={actualHourIndex}
         uploadedSlots={uploadedSlots}
         onHourChange={setCurrentHourIndex}
         isSleepMode={isSleepMode}

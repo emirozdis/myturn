@@ -1,19 +1,24 @@
+// ./app/(app)/record/page.tsx
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { Camera, ChevronRight } from "lucide-react";
 import { getOrCreateTodayAssignment, createClip } from "@/actions/vlog";
 import { getUserGroups } from "@/actions/group";
 import { CameraView } from "@/components/record/camera-view";
-import { PreviewView } from "@/components/record/preview-view";
+import { PreviewView, GroupSelectorSheet } from "@/components/record/preview-view";
 import { RecordLoadingState } from "@/components/record/record-loading-state";
 import { generateThumbnail, generateBlurThumbnail } from "@/components/record/utils";
 
 export default function RecordPage() {
+  const router = useRouter();
   const { data: session } = useSession();
   const [step, setStep] = useState<"CAMERA" | "PREVIEW">("CAMERA");
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [finalDuration, setFinalDuration] = useState(0);
   const [cameraZoom, setCameraZoom] = useState("1x");
@@ -22,6 +27,7 @@ export default function RecordPage() {
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [recordedFacingMode, setRecordedFacingMode] = useState<"user" | "environment">("user");
   const [videoTrack, setVideoTrack] = useState<MediaStreamTrack | null>(null);
+  const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [locationName, setLocationName] = useState("Earth");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -46,6 +52,12 @@ export default function RecordPage() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const isCheckingTurnRef = useRef(false);
+
+  // Exact timeline trackers for pause/resume
+  const startTimeRef = useRef(0);
+  const totalPausedTimeRef = useRef(0);
+  const lastPauseTimeRef = useRef(0);
+  const isPausedRef = useRef(false);
   const recordTimeRef = useRef(0);
 
   useEffect(() => {
@@ -102,6 +114,7 @@ export default function RecordPage() {
       } else {
         setUserGroups([]);
         setError("Please choose or join a group first to vlog.");
+        setIsTurnAuthorized(false);
       }
     } catch (e) {
       console.error(e);
@@ -116,11 +129,12 @@ export default function RecordPage() {
     let active = true;
 
     async function setupCamera() {
-      if (step === "CAMERA") {
+      if (step === "CAMERA" && isTurnAuthorized) {
         try {
           if (streamRef.current) {
             streamRef.current.getTracks().forEach((track) => track.stop());
             streamRef.current = null;
+            setActiveStream(null);
           }
 
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -134,6 +148,7 @@ export default function RecordPage() {
           }
 
           streamRef.current = stream;
+          setActiveStream(stream);
 
           if (videoRef.current && videoRef.current.srcObject !== stream) {
             videoRef.current.srcObject = stream;
@@ -167,6 +182,7 @@ export default function RecordPage() {
       } else if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+        setActiveStream(null);
       }
     }
 
@@ -176,9 +192,10 @@ export default function RecordPage() {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+        setActiveStream(null);
       }
     };
-  }, [step, facingMode]);
+  }, [step, facingMode, isTurnAuthorized]);
 
   const setVideoRef = useCallback((el: HTMLVideoElement | null) => {
     videoRef.current = el;
@@ -214,6 +231,7 @@ export default function RecordPage() {
         const isAuthorized = res.assignment.userId === session?.user?.id;
         setIsTurnAuthorized(isAuthorized);
         setError(isAuthorized ? "" : `Today's turn belongs to @${res.assignment.user?.name || "another friend"}.`);
+        if (isAuthorized && !userGroups.length) loadGroupsList();
       }
 
       isCheckingTurnRef.current = false;
@@ -228,17 +246,18 @@ export default function RecordPage() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isRecording) {
-      recordTimeRef.current = 0;
       interval = setInterval(() => {
-        setRecordTime((t) => {
-          const nextTime = t + 1;
-          recordTimeRef.current = nextTime;
-          return nextTime;
-        });
+        const now = Date.now();
+        const elapsed = isPausedRef.current
+          ? lastPauseTimeRef.current - startTimeRef.current - totalPausedTimeRef.current
+          : now - startTimeRef.current - totalPausedTimeRef.current;
+        const currentSeconds = Math.floor(elapsed / 1000);
+        setRecordTime(currentSeconds);
+        recordTimeRef.current = currentSeconds;
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [isRecording]);
+  }, [isRecording, isPaused]);
 
   useEffect(() => {
     if (recordTime >= 120 && isRecording) {
@@ -310,9 +329,16 @@ export default function RecordPage() {
     };
 
     mediaRecorder.onstop = () => {
-      const duration = recordTimeRef.current;
-      setFinalDuration(duration);
-      if (duration >= 5) {
+      let finalElapsed = Date.now() - startTimeRef.current - totalPausedTimeRef.current;
+      if (isPausedRef.current) {
+        finalElapsed = lastPauseTimeRef.current - startTimeRef.current - totalPausedTimeRef.current;
+      }
+      
+      const duration = finalElapsed / 1000;
+      setFinalDuration(Math.floor(duration));
+
+      // Relaxed minimum check boundary utilizing accurate precision mapping 
+      if (duration >= 4.5) {
         const blob = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || mimeType });
         setRecordedBlob(blob);
         handleStepChange("PREVIEW");
@@ -320,14 +346,42 @@ export default function RecordPage() {
         setError("Video clip must be at least 5 seconds long.");
       }
       setIsRecording(false);
+      setIsPaused(false);
+      isPausedRef.current = false;
       setRecordTime(0);
+      recordTimeRef.current = 0;
     };
 
     mediaRecorderRef.current = mediaRecorder;
     mediaRecorder.start(1000); 
+
+    startTimeRef.current = Date.now();
+    totalPausedTimeRef.current = 0;
+    lastPauseTimeRef.current = 0;
+    
     setIsRecording(true);
+    setIsPaused(false);
+    isPausedRef.current = false;
     setRecordTime(0);
     recordTimeRef.current = 0;
+  };
+
+  const pauseRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.pause();
+      lastPauseTimeRef.current = Date.now();
+      setIsPaused(true);
+      isPausedRef.current = true;
+    }
+  };
+
+  const resumeRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "paused") {
+      mediaRecorderRef.current.resume();
+      totalPausedTimeRef.current += Date.now() - lastPauseTimeRef.current;
+      setIsPaused(false);
+      isPausedRef.current = false;
+    }
   };
 
   const stopRecording = () => {
@@ -452,6 +506,8 @@ export default function RecordPage() {
         setRecordedBlob(null);
         setCaption("");
         setUploadProgress(0);
+        window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
+        router.push("/today");
         handleStepChange("CAMERA");
       }, 2500);
     } catch (err: any) {
@@ -463,12 +519,54 @@ export default function RecordPage() {
 
   if (loadingAssignment) return <RecordLoadingState />;
 
+  if (!isTurnAuthorized) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-6 bg-neutral-950 text-center select-none overflow-hidden h-full min-h-0">
+        <div className="w-24 h-24 bg-white/5 border border-white/10 rounded-full flex items-center justify-center mb-6">
+          <Camera size={32} className="text-white/20" />
+        </div>
+        <h2 className="text-white text-2xl font-bold tracking-tight mb-3">Not Your Turn</h2>
+        <p className="text-white/60 text-sm max-w-[260px] leading-relaxed mb-8">
+          {error || "It's not your turn to vlog today. Sit back and enjoy the show!"}
+        </p>
+
+        {userGroups.length > 1 && (
+          <button
+            onClick={() => setShowGroupSelectorSheet(true)}
+            className="w-full max-w-[280px] py-4 bg-white/10 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition hover:bg-white/20"
+          >
+            <span>Switch Group</span>
+            <ChevronRight size={16} />
+          </button>
+        )}
+        <button
+          onClick={() => router.push("/today")}
+          className="mt-4 w-full max-w-[280px] py-4 bg-[#e07c30] text-black font-extrabold rounded-2xl text-sm transition-all active:scale-[0.98]"
+        >
+          Watch Today's Vlog
+        </button>
+
+        <GroupSelectorSheet
+          isOpen={showGroupDrawer}
+          onClose={() => setShowGroupSelectorSheet(false)}
+          userGroups={userGroups}
+          selectedGroup={selectedGroup}
+          onSelectGroup={async (group) => {
+            setSelectedGroup(group);
+            setShowGroupSelectorSheet(false);
+            await checkGroupTurn(group.id);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.15, ease: "easeOut" }}
-      className={`flex-1 flex flex-col h-full min-h-0 relative overflow-hidden transition-all duration-300 ${
+      className={`flex-1 flex flex-col h-full min-h-0 mb-4 relative overflow-hidden transition-all duration-300 ${
         step === "CAMERA"
           ? "rounded-2xl bg-neutral-900/40 border border-white/5"
           : "rounded-none bg-neutral-950 border border-white/0"
@@ -479,8 +577,10 @@ export default function RecordPage() {
           {step === "CAMERA" ? (
             <CameraView
               setVideoRef={setVideoRef}
+              stream={activeStream}
               facingMode={facingMode}
               isRecording={isRecording}
+              isPaused={isPaused}
               recordTime={recordTime}
               isTurnAuthorized={isTurnAuthorized}
               error={error}
@@ -492,6 +592,8 @@ export default function RecordPage() {
               onToggleFlash={toggleFlash}
               onZoom={handleZoom}
               onStartRecording={startRecording}
+              onPauseRecording={pauseRecording}
+              onResumeRecording={resumeRecording}
               onStopRecording={stopRecording}
             />
           ) : (

@@ -1,3 +1,4 @@
+// ./components/today/use-today-page.ts
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -15,7 +16,6 @@ import { getSlotForClip, getCachedToday } from "./utils";
 
 const VIEWED_CLIPS_KEY = "myturn_viewed_clips";
 
-// Helper to retrieve viewed clips from localStorage, cleaning up entries older than 24 hours (1 day)
 function getViewedClips(): Record<string, number> {
   if (typeof window === "undefined") return {};
   try {
@@ -43,7 +43,6 @@ function getViewedClips(): Record<string, number> {
   }
 }
 
-// Helper to save a viewed clip with current timestamp in localStorage
 function markClipAsViewed(clipId: string) {
   if (typeof window === "undefined") return;
   try {
@@ -82,34 +81,47 @@ export function useTodayPage() {
   const [resolvedClipBlurThumbnails, setResolvedClipBlurThumbnails] = useState<Record<string, string>>(cachedData?.resolvedClipBlurThumbnails || {});
   const [isSleepMode, setIsSleepMode] = useState<boolean>(cachedData?.isSleepMode || false);
 
-  // Initialize selected slot index focusing on the oldest unseen clip of the day (falling back to the latest clip)
+  const timezone = assignment?.group?.timezone || cachedData?.assignment?.group?.timezone;
+
+  const [actualHourIndex, setActualHourIndex] = useState(() => getSlotForClip(new Date(), timezone));
+
+  useEffect(() => {
+    const tz = assignment?.group?.timezone || cachedData?.assignment?.group?.timezone;
+    const interval = setInterval(() => {
+      setActualHourIndex(getSlotForClip(new Date(), tz));
+    }, 60000);
+    setActualHourIndex(getSlotForClip(new Date(), tz));
+    return () => clearInterval(interval);
+  }, [assignment?.group?.timezone, cachedData?.assignment?.group?.timezone]);
+
   const [currentHourIndex, setCurrentHourIndex] = useState(() => {
+    const tz = cachedData?.assignment?.group?.timezone;
     if (cachedData?.clips && cachedData.clips.length > 0) {
       const viewed = getViewedClips();
       const oldestUnseen = cachedData.clips.find((c: any) => !viewed[c.id]);
       if (oldestUnseen) {
-        return getSlotForClip(oldestUnseen.recordedAt);
+        return getSlotForClip(oldestUnseen.recordedAt, tz);
       }
       const latestClip = cachedData.clips[cachedData.clips.length - 1];
-      return getSlotForClip(latestClip.recordedAt);
+      return getSlotForClip(latestClip.recordedAt, tz);
     }
-    return getSlotForClip(new Date());
+    return getSlotForClip(new Date(), tz);
   });
 
-  // Initialize selected sub-clip index focusing on the oldest unseen clip inside the initial active slot
   const [currentClipSubIndex, setCurrentClipSubIndex] = useState(() => {
+    const tz = cachedData?.assignment?.group?.timezone;
     if (cachedData?.clips && cachedData.clips.length > 0) {
       const viewed = getViewedClips();
       const oldestUnseen = cachedData.clips.find((c: any) => !viewed[c.id]);
       if (oldestUnseen) {
-        const slot = getSlotForClip(oldestUnseen.recordedAt);
-        const slotClips = cachedData.clips.filter((c: any) => getSlotForClip(c.recordedAt) === slot);
+        const slot = getSlotForClip(oldestUnseen.recordedAt, tz);
+        const slotClips = cachedData.clips.filter((c: any) => getSlotForClip(c.recordedAt, tz) === slot);
         const idx = slotClips.findIndex((c: any) => c.id === oldestUnseen.id);
         return Math.max(0, idx);
       }
       const latestClip = cachedData.clips[cachedData.clips.length - 1];
-      const latestSlot = getSlotForClip(latestClip.recordedAt);
-      const slotClips = cachedData.clips.filter((c: any) => getSlotForClip(c.recordedAt) === latestSlot);
+      const latestSlot = getSlotForClip(latestClip.recordedAt, tz);
+      const slotClips = cachedData.clips.filter((c: any) => getSlotForClip(c.recordedAt, tz) === latestSlot);
       return Math.max(0, slotClips.length - 1);
     }
     return 0;
@@ -153,23 +165,24 @@ export function useTodayPage() {
       const fetchedClips = res.assignment?.clips || [];
       setClips(fetchedClips);
 
+      const tz = res.assignment?.group?.timezone;
       const viewed = getViewedClips();
       const oldestUnseen = fetchedClips.find((c: any) => !viewed[c.id]);
 
       if (oldestUnseen) {
-        const slot = getSlotForClip(oldestUnseen.recordedAt);
+        const slot = getSlotForClip(oldestUnseen.recordedAt, tz);
         setCurrentHourIndex(slot);
-        const slotClips = fetchedClips.filter((c: any) => getSlotForClip(c.recordedAt) === slot);
+        const slotClips = fetchedClips.filter((c: any) => getSlotForClip(c.recordedAt, tz) === slot);
         const idx = slotClips.findIndex((c: any) => c.id === oldestUnseen.id);
         setCurrentClipSubIndex(Math.max(0, idx));
       } else if (fetchedClips.length > 0) {
         const latestClip = fetchedClips[fetchedClips.length - 1];
-        const latestSlot = getSlotForClip(latestClip.recordedAt);
+        const latestSlot = getSlotForClip(latestClip.recordedAt, tz);
         setCurrentHourIndex(latestSlot);
-        const slotClips = fetchedClips.filter((c: any) => getSlotForClip(c.recordedAt) === latestSlot);
+        const slotClips = fetchedClips.filter((c: any) => getSlotForClip(c.recordedAt, tz) === latestSlot);
         setCurrentClipSubIndex(Math.max(0, slotClips.length - 1));
       } else {
-        setCurrentHourIndex(getSlotForClip(new Date()));
+        setCurrentHourIndex(getSlotForClip(new Date(), tz));
         setCurrentClipSubIndex(0);
       }
 
@@ -234,16 +247,14 @@ export function useTodayPage() {
     };
   }, []);
 
-  // Filter clips belonging specifically to the chosen slot on the timeline
-  const activeSlotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+  const activeSlotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt, timezone) === currentHourIndex);
 
   const clipIdsStr = clips.map(c => c.id).join(",");
   const prevClipIdsStrRef = useRef(clipIdsStr);
   const prevHourIndexRef = useRef(currentHourIndex);
 
-  // Set the sub-index to the oldest unseen clip in this slot whenever the parent hour slot timeline index changes or clips load/switch
   useEffect(() => {
-    const slotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+    const slotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt, timezone) === currentHourIndex);
     
     const hourChanged = prevHourIndexRef.current !== currentHourIndex;
     const clipsListChanged = prevClipIdsStrRef.current !== clipIdsStr;
@@ -266,9 +277,8 @@ export function useTodayPage() {
         }
       }
     }
-  }, [currentHourIndex, clips, clipIdsStr]);
+  }, [currentHourIndex, clips, clipIdsStr, timezone]);
 
-  // Prevent out-of-bounds index errors if clips are deleted remotely
   useEffect(() => {
     if (currentClipSubIndex >= activeSlotClips.length && activeSlotClips.length > 0) {
       setCurrentClipSubIndex(Math.max(0, activeSlotClips.length - 1));
@@ -280,19 +290,19 @@ export function useTodayPage() {
   const activeClipThumbnailUrl = activeClip ? resolvedClipThumbnails[activeClip.id] : null;
   const activeClipThumbnailBlurUrl = activeClip ? resolvedClipBlurThumbnails[activeClip.id] : null;
   
-  const uploadedSlots = clips.map((clip) => getSlotForClip(clip.recordedAt));
+  const uploadedSlots = clips.map((clip) => getSlotForClip(clip.recordedAt, timezone));
   const isCurrentUserVlogger = assignment?.userId === session?.user?.id;
+  const hasPostedInCurrentSlot = clips.some(c => getSlotForClip(c.recordedAt, timezone) === actualHourIndex);
 
   const handleNextSubClip = useCallback(() => {
-    const slotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt) === currentHourIndex);
+    const slotClips = clips.filter((clip) => getSlotForClip(clip.recordedAt, timezone) === currentHourIndex);
     
     if (currentClipSubIndex < slotClips.length - 1) {
       setCurrentClipSubIndex(prev => prev + 1);
     } else {
-      // Find the next sequential timeline slot index that contains clips
       let nextSlot = -1;
       for (let s = currentHourIndex + 1; s <= 5; s++) {
-        const hasClips = clips.some(c => getSlotForClip(c.recordedAt) === s);
+        const hasClips = clips.some(c => getSlotForClip(c.recordedAt, timezone) === s);
         if (hasClips) {
           nextSlot = s;
           break;
@@ -300,21 +310,20 @@ export function useTodayPage() {
       }
 
       if (nextSlot !== -1) {
-        prevHourIndexRef.current = nextSlot; // Bypasses the auto-focus useEffect to preserve index 0
+        prevHourIndexRef.current = nextSlot;
         setCurrentHourIndex(nextSlot);
         setCurrentClipSubIndex(0);
       }
     }
-  }, [clips, currentHourIndex, currentClipSubIndex]);
+  }, [clips, currentHourIndex, currentClipSubIndex, timezone]);
 
   const handlePrevSubClip = useCallback(() => {
     if (currentClipSubIndex > 0) {
       setCurrentClipSubIndex(prev => prev - 1);
     } else {
-      // Find the previous timeline slot index that contains clips
       let prevSlot = -1;
       for (let s = currentHourIndex - 1; s >= 0; s--) {
-        const hasClips = clips.some(c => getSlotForClip(c.recordedAt) === s);
+        const hasClips = clips.some(c => getSlotForClip(c.recordedAt, timezone) === s);
         if (hasClips) {
           prevSlot = s;
           break;
@@ -322,13 +331,13 @@ export function useTodayPage() {
       }
 
       if (prevSlot !== -1) {
-        const prevSlotClips = clips.filter(c => getSlotForClip(c.recordedAt) === prevSlot);
-        prevHourIndexRef.current = prevSlot; // Bypasses the auto-focus useEffect to preserve index length - 1
+        const prevSlotClips = clips.filter(c => getSlotForClip(c.recordedAt, timezone) === prevSlot);
+        prevHourIndexRef.current = prevSlot;
         setCurrentHourIndex(prevSlot);
         setCurrentClipSubIndex(Math.max(0, prevSlotClips.length - 1));
       }
     }
-  }, [clips, currentHourIndex, currentClipSubIndex]);
+  }, [clips, currentHourIndex, currentClipSubIndex, timezone]);
 
   useEffect(() => {
     if (activeClip) {
@@ -336,8 +345,6 @@ export function useTodayPage() {
       setLiked(activeClip.reactions?.some((r: any) => r.userId === session?.user?.id) || false);
       setCommentList(activeClip.comments || []);
 
-      // Avoid marking temporary/transitional clips as viewed immediately (e.g., during index adjustments or fast skipping).
-      // Wait for 1.2 seconds of continuous viewing to mark as viewed.
       const timer = setTimeout(() => {
         const viewed = getViewedClips();
         if (!viewed[activeClip.id]) {
@@ -497,5 +504,7 @@ export function useTodayPage() {
     handlePrevSubClip,
     isSleepMode,
     setIsSleepMode,
+    actualHourIndex,
+    hasPostedInCurrentSlot,
   };
 }

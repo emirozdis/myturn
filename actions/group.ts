@@ -114,6 +114,17 @@ export async function getUserGroups() {
       include: {
         group: {
           include: {
+            members: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    image: true,
+                  },
+                },
+              },
+            },
             _count: {
               select: { members: true },
             },
@@ -132,6 +143,11 @@ export async function getUserGroups() {
       xp: m.group.xp,
       level: m.group.level,
       memberXp: m.xp,
+      members: m.group.members.map((gm) => ({
+        id: gm.user.id,
+        name: gm.user.name,
+        image: gm.user.image,
+      })),
     }));
 
     return { success: true, groups };

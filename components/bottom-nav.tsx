@@ -1,18 +1,17 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Clapperboard, Users, Camera, Trophy, User } from "lucide-react";
-import { ACCENT } from "@/lib/theme";
+import { Home, Layers, Search, Settings, Camera } from "lucide-react";
 
 export type UiTab = "today" | "social" | "record" | "streaks" | "profile";
 
-const TABS: { id: UiTab; icon: ReactNode; label: string; special?: boolean }[] = [
-  { id: "today", icon: <Clapperboard size={18} />, label: "Today" },
-  { id: "streaks", icon: <Trophy size={18} />, label: "Archive" },
-  { id: "record", icon: <Camera size={19} />, label: "Record", special: true },
-  { id: "social", icon: <Users size={18} />, label: "Social" },
-  { id: "profile", icon: <User size={18} />, label: "Profile" },
+// Mapped closely to the reference image labels & vibe
+const TABS = [
+  { id: "today", icon: Home },
+  { id: "streaks", icon: Layers },
+  { id: "record", icon: Camera },
+  { id: "social", icon: Search },
+  { id: "profile", icon: Settings },
 ];
 
 export function BottomNav({
@@ -23,62 +22,71 @@ export function BottomNav({
   onTabChange: (tab: UiTab) => void;
 }) {
   return (
-    <div
-      className="h-[calc(74px+env(safe-area-inset-bottom,0px))] bg-black/95 backdrop-blur-3xl flex items-center justify-around px-2 flex-shrink-0 z-20 overflow-visible relative"
-      style={{
-        borderTop: "1px solid rgba(255,255,255,0.15)",
-        boxShadow: "inset 0 1px 2px rgba(255,255,255,0.05)",
-      }}
-    >
-      {TABS.map((tab) =>
-        tab.special ? (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className="flex flex-col items-center gap-0.5 cursor-pointer relative -top-3.5 focus:outline-none"
-          >
-            <div
-              className="w-[46px] h-[46px] rounded-full flex items-center justify-center text-white border-2 border-white/15 shadow-xl transition-all duration-300"
-              style={{
-                background: activeTab === tab.id ? "#fff" : ACCENT,
-                color: activeTab === tab.id ? "#000" : "#fff",
-                transform: activeTab === tab.id ? "scale(1.08)" : "scale(1)",
-              }}
+    <div className="w-full px-4 pb-6 pt-4 flex justify-center relative z-50 pointer-events-none">
+      {/* Faded Blur Background masking the scrollable content below - Optimized with compositing layers */}
+      <div
+        className="absolute inset-0 pointer-events-none -z-10"
+        style={{
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          maskImage: "linear-gradient(to bottom, transparent 0%, black 40%, black 100%)",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 40%, black 100%)",
+          willChange: "backdrop-filter, transform",
+          transform: "translate3d(0, 0, 0)",
+        }}
+      />
+
+      <div
+        className="w-full max-w-[340px] h-[64px] bg-white/[0.06] backdrop-blur-2xl rounded-full flex items-center justify-between px-2 relative pointer-events-auto"
+        style={{
+          border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow: `
+            inset 0 1px 1px rgba(255,255,255,0.3), 
+            inset 0 -1px 1px rgba(255,255,255,0.1), 
+            0 10px 40px rgba(0,0,0,0.3)
+          `,
+          willChange: "backdrop-filter, transform",
+          transform: "translate3d(0, 0, 0)",
+        }}
+      >
+        {/* Subtle inner top glow for the liquid glass depth effect */}
+        <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
+
+        {TABS.map((tab) => {
+          const isActive = activeTab === tab.id;
+          const Icon = tab.icon;
+          
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onTabChange(tab.id as UiTab)}
+              className="relative flex-1 flex items-center justify-center w-[52px] h-[52px] rounded-full transition-all duration-300 cursor-pointer focus:outline-none active:scale-95"
             >
-              {tab.icon}
-            </div>
-            <span className="text-white/50 text-[9px] font-bold tracking-tight">Record</span>
-          </button>
-        ) : (
-          <button
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            className="flex flex-col items-center gap-0.5 cursor-pointer py-1.5 px-2.5 focus:outline-none transition-colors duration-200"
-            style={{
-              color: activeTab === tab.id ? ACCENT : "rgba(255,255,255,0.4)",
-            }}
-          >
-            <div className="relative">
-              {tab.icon}
-              {activeTab === tab.id && (
+              {isActive && (
                 <motion.div
-                  layoutId="activeDot"
-                  className="absolute -top-1 -right-1.5 w-1.5 h-1.5 rounded-full"
-                  style={{ background: ACCENT }}
+                  layoutId="activeTabLiquidHighlight"
+                  layout="position"
+                  style={{ willChange: "transform" }}
+                  className="absolute inset-0 bg-white/[0.12] border border-white/[0.08] rounded-full shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)]"
+                  transition={{
+                    type: "spring",
+                    stiffness: 380,
+                    damping: 19, // Fluid settling bounce resembling liquid
+                    mass: 0.6,   // Natural shifting drag/momentum
+                  }}
                 />
               )}
-            </div>
-            <span
-              className="text-[9px] transition-all font-semibold"
-              style={{
-                color: activeTab === tab.id ? ACCENT : "rgba(255,255,255,0.40)",
-              }}
-            >
-              {tab.label}
-            </span>
-          </button>
-        )
-      )}
+              
+              <Icon
+                size={22}
+                strokeWidth={isActive ? 2.5 : 2}
+                className={`relative z-10 transition-colors duration-300 ${isActive ? "text-white" : "text-white/50"}`}
+              />
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
