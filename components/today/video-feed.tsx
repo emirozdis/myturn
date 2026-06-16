@@ -1,3 +1,4 @@
+// Changelog: Passed `videoProgress` parameter to the overlay to trigger synchronized swapping during the daily feed.
 // ./components/today/video-feed.tsx
 "use client";
 
@@ -5,13 +6,14 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MapPin, Heart, MessageCircle, Volume2, VolumeX, Maximize, Minimize
+  MapPin, Heart, MessageCircle, Volume2, VolumeX, Maximize, Minimize, Camera, Loader2
 } from "lucide-react";
 import { Avatar } from "@/components/shared/avatar";
 import { CommentsSheet } from "./comments-sheet";
 import { ViewsSheet } from "./views-sheet";
 import { glassStyle } from "../shared/glass-style";
 import { useHls } from "@/components/shared/use-hls";
+import { PhotoResponsesOverlay } from "@/components/shared/photo-responses-overlay";
 
 type VideoFeedProps = {
   isVideoExpanded: boolean;
@@ -47,6 +49,11 @@ type VideoFeedProps = {
   onPoke: (e: React.MouseEvent) => void;
   isSleepMode: boolean;
   hasPostedInCurrentSlot: boolean;
+  uploadingPhoto: boolean;
+  hasResponded: boolean;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onPhotoResponseClick: (e: React.MouseEvent) => void;
+  onPhotoResponseUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
 };
 
 export function VideoFeed({
@@ -83,6 +90,11 @@ export function VideoFeed({
   onPoke,
   isSleepMode,
   hasPostedInCurrentSlot,
+  uploadingPhoto,
+  hasResponded,
+  fileInputRef,
+  onPhotoResponseClick,
+  onPhotoResponseUpload,
 }: VideoFeedProps) {
   const router = useRouter();
   const [isMuted, setIsMuted] = useState(true);
@@ -308,6 +320,13 @@ export function VideoFeed({
       {!(isSleepMode && !activeClipUrl) && (
         <>
           {activeClipUrl && (
+            <PhotoResponsesOverlay 
+              responses={activeClip.photoResponses} 
+              videoProgress={videoProgress}
+            />
+          )}
+
+          {activeClipUrl && (
             <button
               onClick={(e) => { e.stopPropagation(); setIsMuted((prev) => !prev); }}
               style={glassStyle(0.04, 16, 0.08)}
@@ -371,6 +390,20 @@ export function VideoFeed({
                     <MessageCircle size={16} className="text-white/95" />
                     <span className="text-[11px] font-bold text-white/95">{commentList.length}</span>
                   </button>
+                  <span className="w-[1px] h-3.5 bg-white/20" />
+                  <button onClick={onPhotoResponseClick} disabled={uploadingPhoto || hasResponded} className="flex items-center gap-1 cursor-pointer disabled:opacity-50">
+                    {uploadingPhoto ? <Loader2 size={16} className="text-white/95 animate-spin" /> : <Camera size={16} className="text-white/95" />}
+                    <span className="text-[11px] font-bold text-white/95">{activeClip?.photoResponses?.length || 0}</span>
+                  </button>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    capture="environment" 
+                    className="hidden" 
+                    ref={fileInputRef} 
+                    onChange={onPhotoResponseUpload} 
+                    onClick={(e) => e.stopPropagation()}
+                  />
                   <span className="w-[1px] h-3.5 bg-white/20" />
                   <button onClick={(e) => { e.stopPropagation(); onToggleExpand(); }} className="flex items-center gap-1 cursor-pointer hover:scale-110 transition-transform">
                     {isVideoExpanded ? (

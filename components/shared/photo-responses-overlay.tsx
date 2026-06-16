@@ -1,0 +1,358 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Avatar } from "@/components/shared/avatar";
+import { X, Images } from "lucide-react";
+
+const NUDGE_KEYFRAMES = `
+@keyframes hud-invite {
+  0% {
+    width: 32px;
+    transform: translateY(0) scale(1);
+    box-shadow: 4px 0 16px rgba(0,0,0,0.4);
+    border-color: rgba(255,255,255,0.2);
+  }
+
+  18% {
+    width: 48px;
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 0 24px rgba(224,124,48,0.22);
+    border-color: rgba(224,124,48,0.45);
+  }
+
+  35% {
+    width: 42px;
+    transform: translateY(-1px) scale(1.03);
+  }
+
+  55% {
+    width: 38px;
+    transform: translateY(-3px) scale(1.08);
+    box-shadow: 0 0 32px rgba(224,124,48,0.28);
+    border-color: rgba(224,124,48,0.55);
+  }
+
+  75% {
+    width: 38px;
+    transform: translateY(0) scale(1.01);
+  }
+
+  100% {
+    width: 32px;
+    transform: translateY(0) scale(1);
+    box-shadow: 4px 0 16px rgba(0,0,0,0.4);
+    border-color: rgba(255,255,255,0.2);
+  }
+}
+
+@keyframes icon-invite {
+  0%, 100% {
+    transform: scale(1) rotate(0deg);
+  }
+
+  20% {
+    transform: scale(1.15) rotate(8deg);
+  }
+
+  40% {
+    transform: scale(1.05) rotate(-5deg);
+  }
+
+  60% {
+    transform: scale(1.18) rotate(6deg);
+  }
+
+  80% {
+    transform: scale(1.04) rotate(-2deg);
+  }
+}
+
+.hud-knock-anim {
+  animation: hud-invite 1.8s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: left center;
+}
+
+.hud-knock-anim svg {
+  animation: icon-invite 1.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+`;
+
+export function PhotoResponsesOverlay({
+  responses = [],
+  videoProgress = 0,
+}: {
+  responses?: any[];
+  videoProgress?: number;
+}) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hasLoadedPrefs, setHasLoadedPrefs] = useState(false);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [lastFirstId, setLastFirstId] = useState<string | null>(null);
+  const [nudgeSeq, setNudgeSeq] = useState(0);
+  const hasInitialNudged = useRef(false);
+  const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!hasLoadedPrefs) return;
+    if (!isCollapsed) return;
+    if (hasInitialNudged.current) return;
+
+    hasInitialNudged.current = true;
+
+    const timer = setTimeout(() => {
+      setNudgeSeq((v) => v + 1);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [isCollapsed, hasLoadedPrefs]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsCollapsed(localStorage.getItem("photo_responses_collapsed") === "true");
+      setHasLoadedPrefs(true);
+    }
+  }, []);
+
+  const toggleCollapse = (collapsed: boolean) => {
+    setIsCollapsed(collapsed);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("photo_responses_collapsed", String(collapsed));
+    }
+  };
+
+  const responsesCount = responses?.length || 0;
+
+  useEffect(() => {
+    if (expandedIndex !== null && expandedIndex >= responsesCount) {
+      setExpandedIndex(null);
+    }
+  }, [responsesCount, expandedIndex]);
+
+  const currentFirstId = responses?.[0]?.id;
+
+  useEffect(() => {
+    if (!hasLoadedPrefs) return;
+
+    if (currentFirstId && currentFirstId !== lastFirstId) {
+      setLastFirstId(currentFirstId);
+
+      if (isCollapsed) {
+        if (nudgeTimer.current) {
+          clearTimeout(nudgeTimer.current);
+        }
+
+        nudgeTimer.current = setTimeout(() => {
+          setNudgeSeq((v) => v + 1);
+        }, 3000);
+      }
+    }
+
+    return () => {
+      if (nudgeTimer.current) {
+        clearTimeout(nudgeTimer.current);
+      }
+    };
+  }, [currentFirstId, lastFirstId, isCollapsed, hasLoadedPrefs]);
+
+  if (!responses || responses.length === 0) return null;
+
+  const safeProgress = Math.max(0, Math.min(100, videoProgress));
+  let activeIndex = Math.floor((safeProgress / 100) * responses.length);
+  if (activeIndex >= responses.length) activeIndex = responses.length - 1;
+
+  const activeResponse = responses[activeIndex];
+
+  return (
+    <>
+      <style>{NUDGE_KEYFRAMES}</style>
+
+      {/* Draggable HUD Container */}
+      <motion.div
+        className="absolute top-1/2 -translate-y-1/2 left-0 flex items-center z-40 pointer-events-auto touch-pan-y"
+        initial={{ x: -100, opacity: 0 }}
+        animate={{ x: isCollapsed ? -88 : 12, opacity: 1 }}
+        transition={{ type: "spring", damping: 26, stiffness: 260 }}
+        drag="x"
+        dragConstraints={{ left: isCollapsed ? -88 : 12, right: 12 }}
+        dragElastic={0.05}
+        onDragEnd={(_, info) => {
+          if (!isCollapsed && info.offset.x < -30) toggleCollapse(true);
+          if (isCollapsed && info.offset.x > 30) toggleCollapse(false);
+        }}
+      >
+        {/* CSS animation end handler on inner div so it doesn't clash with Framer */}
+        <div className="flex items-center gap-1 relative">
+          {/* Multi-response Indicator Dots */}
+          {responses.length > 1 && (
+            <div className="flex flex-col gap-1.5 justify-center">
+              {responses.map((_, idx) => (
+                <div
+                  key={idx}
+                  className={`w-1 rounded-full transition-all duration-700 shadow-md ${
+                    idx === activeIndex ? "h-4 bg-[#e07c30]" : "h-1.5 bg-white/40"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Stack Container */}
+          <div className="relative w-[64px] h-[88px]">
+            <AnimatePresence>
+              {activeResponse && (
+                <motion.div
+                  key={activeResponse.id}
+                  initial={{ opacity: 0, y: 40, scale: 0.85, filter: "blur(12px)", zIndex: 0 }}
+                  animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)", zIndex: 10 }}
+                  exit={{ opacity: 0, y: -40, scale: 0.85, filter: "blur(12px)", zIndex: 0 }}
+                  transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!isCollapsed) setExpandedIndex(activeIndex);
+                  }}
+                  className="absolute inset-0 rounded-[14px] border border-white/20 shadow-xl bg-black/40 cursor-pointer group"
+                >
+                  <img
+                    src={activeResponse.imageUrl}
+                    className="w-full h-full object-cover rounded-[14px] transition-transform duration-700 group-hover:scale-105 pointer-events-none"
+                    alt="Response"
+                  />
+                  <div className="absolute -bottom-2 -right-2 drop-shadow-md rounded-full shadow-lg">
+                    <Avatar src={activeResponse.user?.image} name={activeResponse.user?.name} size={24} ring />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Hidden State Pull Tab */}
+          <motion.div
+            animate={{ opacity: isCollapsed ? 1 : 0 }}
+            transition={{ duration: 0.2 }}
+            className="absolute left-[100%] top-1/2 -translate-y-1/2 ml-2 w-16 overflow-visible"
+            style={{ pointerEvents: isCollapsed ? "auto" : "none" }}
+          >
+            <div
+              key={nudgeSeq}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleCollapse(false);
+              }}
+              className={`w-8 h-14 bg-black/50 backdrop-blur-xl border border-white/20 border-l-0 rounded-r-xl flex items-center justify-center cursor-pointer shadow-[4px_0_16px_rgba(0,0,0,0.4)] ${
+                isCollapsed && nudgeSeq > 0 ? "hud-knock-anim" : ""
+              }`}
+            >
+              <Images size={14} className="text-white/80" />
+            </div>
+          </motion.div>
+        </div>
+      </motion.div>
+
+      {/* Fullscreen 3D Carousel Expansion Layer */}
+      <AnimatePresence>
+        {expandedIndex !== null && (
+          <motion.div
+            initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+            animate={{ opacity: 1, backdropFilter: "blur(16px)" }}
+            exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+            transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center overflow-hidden pointer-events-auto touch-none"
+          >
+            <div
+              className="absolute inset-0 z-0 cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpandedIndex(null);
+              }}
+            />
+
+            <div className="absolute top-0 inset-x-0 p-4 z-50 flex justify-between items-center bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+              <span className="text-white text-sm font-bold tracking-tight drop-shadow-md px-2">
+                Responses ({expandedIndex + 1}/{responses.length})
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedIndex(null);
+                }}
+                className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white/80 hover:bg-white/20 transition-colors pointer-events-auto border border-white/10"
+              >
+                <X size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+
+            <div className="relative w-full h-full flex items-center justify-center z-10 pointer-events-none perspective-[1000px]">
+              {responses.map((res, i) => {
+                const offset = i - expandedIndex;
+                const absOffset = Math.abs(offset);
+                const isCenter = offset === 0;
+                const xPos = offset * 84;
+                const scale = 1 - absOffset * 0.15;
+                const opacity = isCenter ? 1 : absOffset > 1 ? 0 : 0.55;
+                const blur = absOffset * 8;
+                const zIndex = 50 - absOffset;
+
+                return (
+                  <motion.div
+                    key={res.id}
+                    initial={false}
+                    animate={{ x: `${xPos}%`, scale, opacity, filter: `blur(${blur}px)`, zIndex }}
+                    transition={{ type: "spring", damping: 28, stiffness: 280, mass: 0.8 }}
+                    className="absolute w-[80%] max-w-[340px] aspect-[3/4] sm:aspect-[9/16] flex flex-col items-center justify-center pointer-events-auto"
+                    drag={isCenter ? true : false}
+                    dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                    dragElastic={0.8}
+                    onDragEnd={(_, info) => {
+                      if (!isCenter) return;
+                      const t = 50;
+                      if (info.offset.x < -t && expandedIndex < responses.length - 1)
+                        setExpandedIndex(expandedIndex + 1);
+                      else if (info.offset.x > t && expandedIndex > 0)
+                        setExpandedIndex(expandedIndex - 1);
+                      else if (Math.abs(info.offset.y) > t * 2) setExpandedIndex(null);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (offset < 0 && expandedIndex > 0) setExpandedIndex(expandedIndex - 1);
+                      if (offset > 0 && expandedIndex < responses.length - 1)
+                        setExpandedIndex(expandedIndex + 1);
+                    }}
+                  >
+                    <div className="relative w-full h-full rounded-[32px] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)] border border-white/10 bg-neutral-900 cursor-grab active:cursor-grabbing">
+                      <img
+                        src={res.imageUrl}
+                        className="w-full h-full object-cover pointer-events-none"
+                        alt="Response"
+                      />
+                      <AnimatePresence>
+                        {isCenter && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute bottom-5 left-5 right-5 flex items-center gap-3 bg-black/60 backdrop-blur-xl p-3.5 rounded-2xl border border-white/10 shadow-xl pointer-events-none"
+                          >
+                            <Avatar src={res.user?.image} name={res.user?.name} size={40} />
+                            <div className="flex flex-col text-left min-w-0">
+                              <span className="text-white text-[15px] font-bold truncate leading-tight">
+                                {res.user?.name}
+                              </span>
+                              <span className="text-white/60 text-[11px] font-medium mt-0.5">
+                                Photo Response
+                              </span>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}

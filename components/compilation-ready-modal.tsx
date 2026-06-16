@@ -1,3 +1,4 @@
+// Changelog: Extracted local playback progression to sync stacked photo overlays for the memory recap compilation feed.
 // ./components/compilation-ready-modal.tsx
 "use client";
 
@@ -7,6 +8,7 @@ import { X, Play, Sparkles, Clock, Calendar, Clapperboard, Film, ChevronLeft, Ch
 import { ParticleEffect } from "@/components/achievements/particle-effect";
 import { glassStyle } from "@/components/shared/glass-style";
 import { useHls } from "@/components/shared/use-hls";
+import { PhotoResponsesOverlay } from "@/components/shared/photo-responses-overlay";
 
 export function CompilationReadyModal({ 
   assignment, 
@@ -22,6 +24,7 @@ export function CompilationReadyModal({
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
   const [showConfetti, setShowConfetti] = useState(true);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
   const [disableAbr, setDisableAbr] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -42,6 +45,7 @@ export function CompilationReadyModal({
   // Reset local state on clip transitions
   useEffect(() => {
     setIsVideoLoaded(false);
+    setVideoProgress(0);
   }, [currentClipIndex]);
 
   // Disable the confetti particles exactly 3 seconds after the modal has mounted
@@ -287,6 +291,8 @@ export function CompilationReadyModal({
                   if (e.currentTarget.currentTime > 0) {
                     setIsVideoLoaded(true);
                   }
+                  const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
+                  if (!isNaN(progress)) setVideoProgress(progress);
                 }}
                 onEnded={() => {
                   if (currentClipIndex < compilationClips.length - 1) {
@@ -313,6 +319,11 @@ export function CompilationReadyModal({
             </div>
             
             <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-10" />
+
+            <PhotoResponsesOverlay 
+              responses={compilationClips[currentClipIndex]?.photoResponses || []} 
+              videoProgress={videoProgress}
+            />
 
             {/* Fullscreen HUD Header */}
             <div 

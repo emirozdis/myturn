@@ -1,3 +1,4 @@
+// ./actions/streaks.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -43,6 +44,11 @@ export async function getStreaksData(groupId: string) {
         user: { select: { id: true, name: true, handle: true, image: true } },
         clips: {
           orderBy: { recordedAt: "asc" },
+          include: {
+            photoResponses: {
+              include: { user: { select: { id: true, name: true, image: true, handle: true } } },
+            }
+          }
         }
       },
       orderBy: { date: "asc" },
@@ -100,6 +106,14 @@ export async function getStreaksData(groupId: string) {
               const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
                 ? thumbnailBlurTarget 
                 : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+
+              if (activeClip.photoResponses) {
+                for (const pr of activeClip.photoResponses) {
+                  pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
+                    ? pr.imageUrl
+                    : generateSignedMediaUrl("vlogs", pr.imageUrl);
+                }
+              }
 
               resolvedClips.push({
                 ...activeClip,

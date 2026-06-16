@@ -125,6 +125,11 @@ export async function getProfileData() {
       where: { userId: user.id },
       orderBy: { recordedAt: "desc" },
       take: 6,
+      include: {
+        photoResponses: {
+          include: { user: { select: { id: true, name: true, image: true, handle: true } } },
+        }
+      }
     });
 
     const clips: any[] = [];
@@ -161,6 +166,14 @@ export async function getProfileData() {
       const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
         ? thumbnailBlurTarget 
         : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+
+      if (activeClip.photoResponses) {
+        for (const pr of activeClip.photoResponses) {
+          pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
+            ? pr.imageUrl
+            : generateSignedMediaUrl("vlogs", pr.imageUrl);
+        }
+      }
 
       clips.push({
         ...activeClip,

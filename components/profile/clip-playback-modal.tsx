@@ -1,9 +1,12 @@
+// Changelog: Extracted local playback progress to trigger synchronized overlay transitions in historic archive playback.
+// ./components/profile/clip-playback-modal.tsx
 "use client";
 
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Trash2, X } from "lucide-react";
 import { useHls } from "@/components/shared/use-hls";
+import { PhotoResponsesOverlay } from "@/components/shared/photo-responses-overlay";
 
 type ClipPlaybackModalProps = {
   clip: any;
@@ -15,6 +18,7 @@ type ClipPlaybackModalProps = {
 export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPlaybackModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
   const [disableAbr, setDisableAbr] = useState(false);
 
   // Sync state to prevent hydration mismatches and guarantee responsive ABR toggling tracking
@@ -47,6 +51,8 @@ export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPla
             if (e.currentTarget.currentTime > 0) {
               setIsVideoLoaded(true);
             }
+            const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
+            if (!isNaN(progress)) setVideoProgress(progress);
           }}
           className="absolute inset-0 w-full h-full object-cover z-0"
         />
@@ -65,6 +71,11 @@ export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPla
       </div>
 
       <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-10" />
+      
+      <PhotoResponsesOverlay 
+        responses={clip?.photoResponses || []} 
+        videoProgress={videoProgress}
+      />
 
       <div className="relative z-20 p-4 pt-12 flex justify-between items-center">
         <div className="flex flex-col">

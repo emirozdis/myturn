@@ -1,3 +1,4 @@
+// Changelog: Fixed early return bug by using the `groupId` foreign key on the root assignment model instead of the unselected nested relation.
 // ./components/today/use-today-page.ts
 "use client";
 
@@ -11,6 +12,7 @@ import {
   deleteComment,
   pokeVlogger,
   trackView,
+  addPhotoResponse,
 } from "@/actions/vlog";
 import { getSlotForClip, getCachedToday } from "./utils";
 
@@ -163,8 +165,7 @@ export function useTodayPage() {
       setIsSleepMode(res.isSleepMode || false);
       setAssignment(res.assignment);
       const fetchedClips = res.assignment?.clips || [];
-      setClips(fetchedClips);
-
+      
       const tz = res.assignment?.group?.timezone;
       const viewed = getViewedClips();
       const oldestUnseen = fetchedClips.find((c: any) => !viewed[c.id]);
@@ -202,8 +203,18 @@ export function useTodayPage() {
         const blurTarget = clip.thumbnailBlurUrl || clip.thumbnailUrl;
         const blurThumbRes = await getSignedReadUrl("vlogs", blurTarget);
         if (blurThumbRes.success && blurThumbRes.url) blurThumbUrls[clip.id] = blurThumbRes.url;
+
+        if (clip.photoResponses) {
+          for (const pr of clip.photoResponses) {
+            if (!pr.imageUrl.startsWith("http") && !pr.imageUrl.startsWith("/")) {
+              const prUrlRes = await getSignedReadUrl("vlogs", pr.imageUrl);
+              if (prUrlRes.success && prUrlRes.url) pr.imageUrl = prUrlRes.url;
+            }
+          }
+        }
       }
       
+      setClips([...fetchedClips]);
       setResolvedClipUrls(urls);
       setResolvedClipThumbnails(thumbUrls);
       setResolvedClipBlurThumbnails(blurThumbUrls);
@@ -466,6 +477,62 @@ export function useTodayPage() {
     }
   };
 
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const hasResponded = activeClip?.photoResponses?.some((pr: any) => pr.userId === session?.user?.id);
+
+  const handlePhotoResponseClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!hasResponded && !uploadingPhoto) {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handlePhotoResponseUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!activeClip || !assignment?.groupId) {
+      showToast("Missing clip or group context", "error");
+      return;
+    }
+    
+    setUploadingPhoto(true);
+    try {
+      const ext = file.name.split('.').pop() || "jpg";
+      const path = `${assignment.groupId}/${assignment.id}/responses/${Date.now()}.${ext}`;
+      
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("bucket", "vlogs");
+      formData.append("path", path);
+      
+      const uploadRes = await fetch("/api/media", { method: "POST", body: formData });
+      if (!uploadRes.ok) throw new Error("Upload failed");
+      
+      const res = await addPhotoResponse(activeClip.id, path);
+      if (res.success && res.photoResponse) {
+        const urlRes = await getSignedReadUrl("vlogs", path);
+        const signedUrl = urlRes.success ? urlRes.url : path;
+        const newResponse = { ...res.photoResponse, imageUrl: signedUrl };
+        
+        setClips(prev => prev.map(c => c.id === activeClip.id ? { 
+          ...c, 
+          photoResponses: [...(c.photoResponses || []), newResponse] 
+        } : c));
+        showToast("Photo response added!", "success");
+      } else {
+        showToast(res.error || "Failed to add response", "error");
+      }
+    } catch (err) {
+      showToast("Failed to upload photo", "error");
+    } finally {
+      setUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   return {
     session,
     isVideoExpanded,
@@ -506,5 +573,10 @@ export function useTodayPage() {
     setIsSleepMode,
     actualHourIndex,
     hasPostedInCurrentSlot,
+    uploadingPhoto,
+    hasResponded,
+    fileInputRef,
+    handlePhotoResponseClick,
+    handlePhotoResponseUpload,
   };
 }

@@ -1,4 +1,4 @@
-// ./app/(app)/today/page.tsx
+// ./components/today/page.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -49,6 +49,11 @@ export default function TodayPage() {
     isSleepMode,
     actualHourIndex,
     hasPostedInCurrentSlot,
+    uploadingPhoto,
+    hasResponded,
+    fileInputRef,
+    handlePhotoResponseClick,
+    handlePhotoResponseUpload,
   } = useTodayPage();
 
   if (initialLoad && !assignment && !isSleepMode) {
@@ -104,6 +109,11 @@ export default function TodayPage() {
         onPoke={handlePoke}
         isSleepMode={isSleepMode}
         hasPostedInCurrentSlot={hasPostedInCurrentSlot}
+        uploadingPhoto={uploadingPhoto}
+        hasResponded={hasResponded}
+        fileInputRef={fileInputRef}
+        onPhotoResponseClick={handlePhotoResponseClick}
+        onPhotoResponseUpload={handlePhotoResponseUpload}
       />
 
       <TodayBottomPanel

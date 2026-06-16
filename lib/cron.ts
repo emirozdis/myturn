@@ -6,6 +6,58 @@ import { processClipHls } from "@/lib/transcoder";
 
 let isTranscoding = false;
 
+function getLocalHourAndMinute(timezone: string): { hour: number; minute: number } {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(now);
+  let hour = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+  if (hour === 24) hour = 0;
+  const minute = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+  return { hour, minute };
+}
+
+function getSlotForHour(hour: number): number | null {
+  if (hour === 10) return 0; // Middle of Morning Vlog (9AM - 12PM)
+  if (hour === 13) return 1; // Middle of Midday Vlog (12PM - 3PM)
+  if (hour === 16) return 2; // Middle of Afternoon Vlog (3PM - 6PM)
+  if (hour === 19) return 3; // Middle of Evening Vlog (6PM - 9PM)
+  if (hour === 22) return 4; // Middle of Late Night Vlog (9PM - 12AM)
+  return null;
+}
+
+function getSlotForClip(recordedAt: Date | string, timezone?: string): number {
+  const date = new Date(recordedAt);
+  let hours = date.getHours();
+  
+  if (timezone) {
+    try {
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: timezone,
+        hour: "2-digit",
+        hour12: false,
+      });
+      const parts = formatter.formatToParts(date);
+      let hourPart = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+      if (hourPart === 24) hourPart = 0;
+      hours = hourPart;
+    } catch (e) {
+      hours = date.getHours();
+    }
+  }
+
+  if (hours >= 9 && hours < 12) return 0;
+  if (hours >= 12 && hours < 15) return 1;
+  if (hours >= 15 && hours < 18) return 2;
+  if (hours >= 18 && hours < 21) return 3;
+  if (hours >= 21 && hours < 24) return 4;
+  return 5;
+}
+
 async function startTranscoderWorker() {
   console.log("[Transcoder Queue] Initializing background polling worker...");
   
@@ -116,28 +168,53 @@ export function startCronJobs() {
     }
   });
 
-  // 2. Remind Vloggers
-  cron.schedule("0 14,19 * * *", async () => {
-    console.log("[Cron] Running vlogger reminders...");
+  // 2. Remind Vloggers (Evaluates every 30 minutes to check if any group local time matches a slot middle)
+  cron.schedule("*/30 * * * *", async () => {
+    console.log("[Cron] Running vlogger reminders check...");
     try {
-      const activeAssignments = await db.dailyAssignment.findMany({
-        where: { status: "active" },
-        include: {
-          group: { select: { name: true } },
-          user: { select: { name: true } },
-        },
-      });
-
+      const groups = await db.group.findMany();
       let count = 0;
-      for (const assignment of activeAssignments) {
-        await sendPushToUser(assignment.userId, {
-          title: "Friendly Reminder! 🕒",
-          body: `It's your day to record for "${assignment.group.name}"! Your friends are waiting to see your updates.`,
-          url: "/record",
-        });
-        count++;
+
+      for (const group of groups) {
+        const { hour, minute } = getLocalHourAndMinute(group.timezone);
+        const slot = getSlotForHour(hour);
+
+        // Filter for exactly the target evaluation minute windows at slot middles (minute 15-45)
+        if (slot !== null && minute >= 15 && minute <= 45) {
+          const localDate = await getLocalDateInTimezone(group.timezone);
+
+          const assignment = await db.dailyAssignment.findFirst({
+            where: {
+              groupId: group.id,
+              date: localDate,
+            },
+            include: {
+              clips: true,
+            },
+          });
+
+          if (assignment) {
+            const hasClipsInSlot = assignment.clips.some(
+              (clip) => getSlotForClip(clip.recordedAt, group.timezone) === slot
+            );
+
+            if (!hasClipsInSlot) {
+              const slotLabels = ["Morning", "Midday", "Afternoon", "Evening", "Late Night"];
+              const slotLabel = slotLabels[slot];
+
+              await sendPushToUser(assignment.userId, {
+                title: `Time for your ${slotLabel} Vlog! 🎥`,
+                body: `Share a raw moment in "${group.name}" to keep the group streak alive!`,
+                url: "/record",
+              });
+              count++;
+            }
+          }
+        }
       }
-      console.log(`[Cron] Sent reminders to ${count} active vloggers.`);
+      if (count > 0) {
+        console.log(`[Cron] Sent ${count} vlogger slot-middle reminders.`);
+      }
     } catch (error) {
       console.error("[Cron] Error sending vlogger reminders:", error);
     }

@@ -65,6 +65,7 @@ model User {
   dailyAssignments     DailyAssignment[]
   clips                Clip[]
   reactions            Reaction[]
+  photoResponses       PhotoResponse[]
   pushSubscriptions    PushSubscription[]
   comments             Comment[]
   views                View[]
@@ -192,17 +193,34 @@ model Clip {
   location          String?
   recordedAt        DateTime @default(now())
 
-  assignment DailyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  group      Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  reactions  Reaction[]
-  comments   Comment[]
-  views      View[]
+  assignment     DailyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group          Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  reactions      Reaction[]
+  photoResponses PhotoResponse[]
+  comments       Comment[]
+  views          View[]
 
   @@index([assignmentId])
   @@index([userId])
   @@index([groupId])
   @@map("clips")
+}
+
+model PhotoResponse {
+  id        String   @id @default(cuid())
+  clipId    String
+  userId    String
+  imageUrl  String
+  createdAt DateTime @default(now())
+
+  clip Clip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([clipId, userId])
+  @@index([clipId])
+  @@index([userId])
+  @@map("photo_responses")
 }
 
 model Reaction {

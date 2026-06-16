@@ -1,3 +1,4 @@
+// Changelog: Updated `pokeVlogger` to evaluate if the assignment belongs to the current business day instead of strictly requiring an "active" status, allowing users to poke vloggers for missing afternoon/evening slots even after they uploaded their first morning clip.
 // ./actions/vlog.ts
 "use server";
 
@@ -147,9 +148,9 @@ export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
     day: "2-digit",
   });
   const parts = formatter.formatToParts(now);
-  const month = parts.find((p) => p.type === "month")?.value;
-  const day = parts.find((p) => p.type === "day")?.value;
-  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p: Intl.DateTimeFormatPart) => p.type === "month")?.value;
+  const day = parts.find((p: Intl.DateTimeFormatPart) => p.type === "day")?.value;
+  const year = parts.find((p: Intl.DateTimeFormatPart) => p.type === "year")?.value;
 
   return new Date(`${year}-${month}-${day}T00:00:00Z`);
 }
@@ -411,6 +412,10 @@ export async function getOrCreateTodayAssignment(groupId: string) {
           orderBy: { recordedAt: "asc" },
           include: {
             reactions: true,
+            photoResponses: {
+              orderBy: { createdAt: "asc" },
+              include: { user: { select: { id: true, name: true, image: true, handle: true } } },
+            },
             comments: {
               orderBy: { createdAt: "asc" },
               include: { user: { select: { id: true, name: true, image: true, handle: true } } },
@@ -458,7 +463,14 @@ export async function getLatestCompilation(groupId: string) {
       orderBy: { date: "desc" },
       include: {
         user: { select: { id: true, name: true, image: true, handle: true } },
-        clips: { orderBy: { recordedAt: "asc" } }
+        clips: { 
+          orderBy: { recordedAt: "asc" },
+          include: {
+            photoResponses: {
+              include: { user: { select: { id: true, name: true, image: true, handle: true } } },
+            }
+          }
+        }
       }
     });
 
@@ -498,6 +510,14 @@ export async function getLatestCompilation(groupId: string) {
       const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
         ? thumbnailBlurTarget 
         : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+
+      if (activeClip.photoResponses) {
+        for (const pr of activeClip.photoResponses) {
+          pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
+            ? pr.imageUrl
+            : generateSignedMediaUrl("vlogs", pr.imageUrl);
+        }
+      }
 
       resolvedClips.push({
         ...activeClip,
@@ -688,6 +708,55 @@ export async function createClip(data: {
   }
 }
 
+export async function addPhotoResponse(clipId: string, path: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+
+    const existing = await db.photoResponse.findFirst({
+      where: { clipId, userId: session.user.id },
+    });
+
+    if (existing) {
+      return { error: "You already added a photo response to this clip." };
+    }
+
+    const photoResponse = await db.photoResponse.create({
+      data: {
+        clipId,
+        userId: session.user.id,
+        imageUrl: path,
+      },
+      include: {
+        user: { select: { id: true, name: true, image: true, handle: true } },
+      },
+    });
+
+    // Send push notification to the vlogger
+    try {
+      const targetClip = await db.clip.findUnique({
+        where: { id: clipId },
+        include: { group: { select: { name: true } }, user: { select: { id: true } } },
+      });
+
+      if (targetClip && targetClip.userId !== session.user.id) {
+        const responder = await db.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
+        await sendPushToUser(targetClip.userId, {
+          title: "New Photo Response! 📸",
+          body: `${responder?.name || "A friend"} replied with a photo to your vlog in "${targetClip.group.name}".`,
+          url: "/today",
+        });
+      }
+    } catch (pushErr) {
+      console.error("Failed to send photo response push alerts:", pushErr);
+    }
+
+    return { success: true, photoResponse };
+  } catch (error: any) {
+    return { error: error?.message || "Failed to add photo response." };
+  }
+}
+
 export async function pokeVlogger(assignmentId: string) {
   try {
     const session = await getAuthSession();
@@ -713,7 +782,14 @@ export async function pokeVlogger(assignmentId: string) {
       include: { group: true }
     });
     
-    if (!assignment || assignment.status !== "active") return { error: "Not an active assignment" };
+    if (!assignment) return { error: "Assignment not found" };
+
+    const circadian = getVlogCircadianState(assignment.group.timezone);
+    const isToday = new Date(assignment.date).getTime() === circadian.businessDate.getTime();
+
+    if (!isToday && assignment.status !== "active") {
+        return { error: "You can only poke for today's active assignments." };
+    }
 
     await db.poke.create({
       data: {
