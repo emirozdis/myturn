@@ -37,6 +37,11 @@ import { SocialSkeleton } from "@/components/social/social-skeleton";
 import { ProfileSkeleton } from "@/components/profile/profile-skeleton";
 import { RecordLoadingState } from "@/components/record/record-loading-state";
 
+// Custom Changelog release overlay
+import { NewFeaturesModal } from "@/components/new-features-modal";
+
+const APP_VERSION = "2.1.0";
+
 export interface GroupConfig {
   id: string;
   name: string;
@@ -145,7 +150,7 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
             />
           </div>
           <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Enable Notifications</h1>
-          <p className="text-white/60 text-[13px] leading-relaxed max-w-sm mx-auto">
+          <p className="text-white/60 text-[13px] leading-relaxed max-w-[280px] mx-auto">
             MyTurn requires notifications to alert you when it's your turn, friends post, and when daily recaps are ready.
           </p>
         </div>
@@ -206,6 +211,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   // Handle immediate visual UI handoff for BottomNav router intercept
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
+
+  // Release feature spotlight state
+  const [showNewFeatures, setShowNewFeatures] = useState(false);
 
   const [groupsLoading, setGroupsLoading] = useState(() => {
     if (typeof window !== "undefined") {
@@ -408,6 +416,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Check local storage for version updates
+    if (typeof window !== "undefined") {
+      const seenVersion = localStorage.getItem("myturn_seen_version");
+      if (seenVersion !== APP_VERSION) {
+        setShowNewFeatures(true);
+      }
+    }
+
     const handleOpenSheet = (e: Event) => {
       const customEvent = e as CustomEvent;
       const { type, data } = customEvent.detail;
@@ -480,6 +496,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       window.removeEventListener("open-logout-confirm", handleOpenLogout);
     };
   }, [loadGroups, enqueueModal]);
+
+  const handleCloseNewFeatures = () => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("myturn_seen_version", APP_VERSION);
+    }
+    setShowNewFeatures(false);
+  };
 
   useEffect(() => {
     async function initializePush() {
@@ -1069,6 +1092,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             />
 
             <AnimatePresence mode="wait">
+              {showNewFeatures && (
+                <NewFeaturesModal 
+                  key="new-features-overlay"
+                  isOpen={showNewFeatures}
+                  onClose={handleCloseNewFeatures}
+                />
+              )}
               {activeModal?.type === "compilation" && (
                 <CompilationReadyModal 
                   key={`compilation-${activeModal.assignment.id}`}

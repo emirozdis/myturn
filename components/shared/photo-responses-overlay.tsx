@@ -7,74 +7,31 @@ import { X, Images } from "lucide-react";
 
 const NUDGE_KEYFRAMES = `
 @keyframes hud-invite {
-  0% {
-    width: 32px;
-    transform: translateY(0) scale(1);
-    box-shadow: 4px 0 16px rgba(0,0,0,0.4);
-    border-color: rgba(255,255,255,0.2);
-  }
-
-  18% {
-    width: 48px;
-    transform: translateY(-3px) scale(1.05);
-    box-shadow: 0 0 24px rgba(224,124,48,0.22);
-    border-color: rgba(224,124,48,0.45);
-  }
-
-  35% {
-    width: 42px;
-    transform: translateY(-1px) scale(1.03);
-  }
-
-  55% {
-    width: 38px;
-    transform: translateY(-3px) scale(1.08);
-    box-shadow: 0 0 32px rgba(224,124,48,0.28);
-    border-color: rgba(224,124,48,0.55);
-  }
-
-  75% {
-    width: 38px;
-    transform: translateY(0) scale(1.01);
-  }
-
+  0%,
+  60%,
   100% {
-    width: 32px;
-    transform: translateY(0) scale(1);
-    box-shadow: 4px 0 16px rgba(0,0,0,0.4);
-    border-color: rgba(255,255,255,0.2);
+    transform: translateX(0) scale(1);
   }
-}
 
-@keyframes icon-invite {
-  0%, 100% {
-    transform: scale(1) rotate(0deg);
+  10% {
+    transform: translateX(6px) scale(1.06);
   }
 
   20% {
-    transform: scale(1.15) rotate(8deg);
+    transform: translateX(3px) scale(1.03);
   }
 
-  40% {
-    transform: scale(1.05) rotate(-5deg);
+  35% {
+    transform: translateX(8px) scale(1.08);
   }
 
-  60% {
-    transform: scale(1.18) rotate(6deg);
-  }
-
-  80% {
-    transform: scale(1.04) rotate(-2deg);
+  50% {
+    transform: translateX(0) scale(1);
   }
 }
 
 .hud-knock-anim {
-  animation: hud-invite 1.8s cubic-bezier(0.22, 1, 0.36, 1);
-  transform-origin: left center;
-}
-
-.hud-knock-anim svg {
-  animation: icon-invite 1.8s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: hud-invite 5s infinite;
 }
 `;
 
