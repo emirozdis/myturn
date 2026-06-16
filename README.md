@@ -1,76 +1,69 @@
-# MyTurn (vlog)
+# MyTurn: Authentic Daily Vlogging for Close Friends
 
-MyTurn is a private, mobile-first Progressive Web App (PWA) designed for close-knit friend groups. Each day, a random member is chosen to vlog their day, keeping the group connected through authentic, daily video moments.
+MyTurn is a unique Progressive Web App (PWA) designed to bring close friends closer through authentic, daily video vlogging. In a world saturated with performance-driven social media, MyTurn offers a refreshing, private space where one person is randomly selected each day to share snippets of their life, fostering genuine connection without the pressure of likes or public validation.
 
-## Core Features
+## ✨ Features
 
-- **Group-Centric Vlogging**: Create or join small, private groups with friends using unique invite codes.
-- **Daily Random Vlogger**: A random member is selected each day to be the group's vlogger, taking the pressure off constant content creation.
-- **In-App Recording**: A full-featured camera interface for recording, pausing, and previewing video clips directly in the browser.
-- **Chronological Feed**: Watch the vlogger's day unfold through a timeline of short video clips.
-- **Rich Interactions**: React to vlogs with emojis, leave comments, and share live photo responses.
-- **Gamification**: Build personal and group streaks, earn XP, level up your rank, and unlock achievements.
-- **PWA Experience**: Install the app to your home screen for a native-like experience with push notifications for important events.
-- **Secure & Private**: Media is stored securely and served via signed URLs, accessible only to group members.
+*   **Daily Vlogger Assignment**: A fair, randomized system picks one group member each day to be the designated vlogger.
+*   **Short-Form Video Clips**: Capture and share multiple short video moments throughout your day, building a chronological story.
+*   **Private Group Sharing**: All content is exclusively shared within invite-only friend groups, ensuring privacy and intimacy.
+*   **Interactive Engagement**: Engage with friends' vlogs through likes, comments, and unique photo responses.
+*   **Streaks & Achievements**: Gamified elements encourage consistent participation and celebrate milestones.
+*   **Real-time Push Notifications**: Stay updated with alerts for your turn, new posts from friends, and daily recap compilations.
+*   **Progressive Web App (PWA)**: Enjoy a native-like mobile experience with installability, offline capabilities, and direct camera/microphone access.
+*   **Personalized Profiles**: Showcase your vlogging journey with XP, archetypes, and a history of your shared moments.
+*   **Seamless Group Management**: Easily create, join, and leave groups using unique invite codes.
+*   **Adaptive Streaming (HLS)**: Videos are transcoded server-side to HLS for optimal streaming quality across various network conditions.
+*   **Location Context**: Optionally tag locations to add context to your daily vlogs.
+*   **Circadian Event Management**: Intelligent system for daily event rollouts, countdowns, and "sleep mode" based on group timezones.
 
-## Tech Stack
+## 🚀 Technologies Used
 
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **Animations**: Framer Motion
-- **Database**: PostgreSQL with Prisma ORM
-- **Authentication**: NextAuth.js (Credentials, Google, Apple)
-- **Backend Services**: Supabase (Storage)
-- **Push Notifications**: `web-push` library
-- **Scheduled Jobs**: `node-cron`
+*   **Frontend**: Next.js, React, TypeScript, Tailwind CSS, Framer Motion (animations), Lucide React (icons).
+*   **Backend**: Next.js (API Routes & Server Actions), TypeScript, Node.js.
+*   **Database**: PostgreSQL (managed with Prisma ORM).
+*   **Authentication**: NextAuth.js (supporting Credentials, Google, and Apple logins).
+*   **Media Storage**: Supabase Storage for secure and scalable asset management.
+*   **Video Processing**: FFmpeg (server-side for HLS transcoding and thumbnail generation).
+*   **Deployment**: Optimized for Vercel (Next.js hosting) and Supabase (database & storage).
 
-## Architecture
+## 🏗️ Architecture Overview
 
-The application is a modern full-stack Next.js project. It leverages Server Actions for most of its backend logic, providing a seamless integration between frontend and backend code. API Routes are used for specialized tasks like proxying media from Supabase Storage.
+MyTurn is built as a modern full-stack Next.js application. The frontend delivers a highly interactive and animated user interface, prioritizing a mobile-first, PWA-centric experience. Backend logic is robustly handled by Next.js Server Actions and API Routes, ensuring secure and efficient data operations. Prisma ORM provides a type-safe interface to the PostgreSQL database. Critical media processing, such as video transcoding to HLS and dynamic thumbnail generation, is offloaded to server-side Node.js cron jobs utilizing FFmpeg, ensuring smooth playback and efficient storage. Authentication is powered by NextAuth.js, providing flexible login options.
 
-The database schema is defined and managed with Prisma, connecting to a PostgreSQL database. User authentication is robustly handled by NextAuth.js.
+## ⚙️ Setup and Installation
 
-The frontend is built with a mobile-first approach, designed to function as a Progressive Web App (PWA). It enforces installation on mobile devices to provide a reliable, app-like experience with access to native features like push notifications and camera.
+To get a local copy up and running, follow these steps:
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js
-- npm, yarn, or pnpm
-- PostgreSQL database
-- Supabase project for storage
-
-### Installation
-
-1.  **Clone the repository:**
+1.  **Clone the repository**:
     ```bash
     git clone https://github.com/emirozdis/vlog.git
     cd vlog
     ```
-
-2.  **Install dependencies:**
+2.  **Install dependencies**:
     ```bash
     npm install
+    # or
+    yarn install
     ```
-
-3.  **Set up environment variables:**
-    Create a `.env.local` file by copying `.env.example`. Fill in the required credentials for your database, NextAuth, Supabase, and VAPID keys for push notifications.
-
-4.  **Set up the database:**
+3.  **Set up environment variables**:
+    Create a `.env` file in the root directory and populate it with necessary keys (e.g., `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VAPID_PRIVATE_KEY`, etc.). Refer to `.env.example` if available.
+4.  **Database Migration**:
     ```bash
     npx prisma migrate dev
-    npx prisma db seed
     ```
-
-5.  **Run the development server:**
+5.  **Start the development server**:
     ```bash
     npm run dev
+    # or
+    yarn dev
     ```
+    Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🤝 Contributing
 
-## License
+MyTurn is currently a solo developer project. While direct contributions might be limited during the closed beta phase, feedback and suggestions are always welcome! Please open an issue on GitHub for any bugs or feature requests.
 
-This project is not licensed for redistribution or commercial use.
+## 📄 License
+
+This project is licensed under the MIT License.
