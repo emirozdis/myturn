@@ -1,4 +1,5 @@
 # MyTurn: Authentic Daily Vlogging for Close Friends
+![Screenshot](./screenshots/home.png)
 
 MyTurn is a unique Progressive Web App (PWA) designed to bring close friends closer through authentic, daily video vlogging. In a world saturated with performance-driven social media, MyTurn offers a refreshing, private space where one person is randomly selected each day to share snippets of their life, fostering genuine connection without the pressure of likes or public validation.
 
@@ -6,10 +7,16 @@ MyTurn is a unique Progressive Web App (PWA) designed to bring close friends clo
 
 *   **Daily Vlogger Assignment**: A fair, randomized system picks one group member each day to be the designated vlogger.
 *   **Short-Form Video Clips**: Capture and share multiple short video moments throughout your day, building a chronological story.
+![Screenshot](./screenshots/relive.png)
+
 *   **Private Group Sharing**: All content is exclusively shared within invite-only friend groups, ensuring privacy and intimacy.
 *   **Interactive Engagement**: Engage with friends' vlogs through likes, comments, and unique photo responses.
 *   **Streaks & Achievements**: Gamified elements encourage consistent participation and celebrate milestones.
+![Screenshot](./screenshots/streaks.png)
+
 *   **Real-time Push Notifications**: Stay updated with alerts for your turn, new posts from friends, and daily recap compilations.
+![Screenshot](./screenshots/notifications.png)
+
 *   **Progressive Web App (PWA)**: Enjoy a native-like mobile experience with installability, offline capabilities, and direct camera/microphone access.
 *   **Personalized Profiles**: Showcase your vlogging journey with XP, archetypes, and a history of your shared moments.
 *   **Seamless Group Management**: Easily create, join, and leave groups using unique invite codes.
