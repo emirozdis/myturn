@@ -6,15 +6,19 @@ import os from "os";
 import { r2 } from "./r2";
 import { db } from "./db";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shell helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Executes a shell command with strict timeouts to prevent server hangs.
+ * Executes a shell command with an explicit timeout.
+ * Rejects with the full FFmpeg stderr so callers can log the real error.
  */
-function runCommand(cmd: string): Promise<string> {
+function runCommand(cmd: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
-    // Rigid 2 minute (120,000ms) execution limit per file transcode
-    exec(cmd, { timeout: 120000 }, (err, stdout, stderr) => {
+    exec(cmd, { timeout: timeoutMs }, (err, stdout, stderr) => {
       if (err) {
-        reject(new Error(stderr || err.message));
+        reject(new Error(stderr?.trim() || err.message));
       } else {
         resolve(stdout);
       }
@@ -22,115 +26,261 @@ function runCommand(cmd: string): Promise<string> {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ffprobe helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Downloads a raw video clip, uses local FFmpeg to generate 480p, 720p, and 1080p 
- * adaptive bitrate HLS streams, and uploads the chunks back to Cloudflare R2.
+ * Returns whether the file has at least one audio stream.
  */
-export async function processClipHls(clipId: string, bucket: string, rawPath: string): Promise<string> {
+async function probeHasAudio(inputPath: string): Promise<boolean> {
+  try {
+    const out = await runCommand(
+      `ffprobe -v error -select_streams a:0 -show_entries stream=codec_type -of csv=p=0 "${inputPath}"`,
+      10_000
+    );
+    return out.trim() === "audio";
+  } catch {
+    return false;
+  }
+}
+
+interface VideoProbe {
+  /** True average FPS from the container (safe for VFR sources like iOS). */
+  fps: number;
+  /** Duration in seconds. Used to compute a safe encode timeout. */
+  durationSecs: number;
+}
+
+/**
+ * Reads avg_frame_rate (not r_frame_rate) and duration from the first video stream.
+ *
+ * r_frame_rate reflects the stream's time-base and returns absurd values like
+ * "1000/1" for VFR recordings from iOS. avg_frame_rate is the actual mean FPS
+ * and is always a sane number (e.g. "29.97" or "30").
+ */
+async function probeVideo(inputPath: string): Promise<VideoProbe> {
+  const defaults: VideoProbe = { fps: 30, durationSecs: 300 };
+  try {
+    // Read avg_frame_rate and duration in one ffprobe call
+    const out = await runCommand(
+      `ffprobe -v error -select_streams v:0 \
+        -show_entries stream=avg_frame_rate,duration \
+        -of csv=p=0 "${inputPath}"`,
+      10_000
+    );
+
+    // Output is two lines: "avg_frame_rate\nduration"
+    const lines = out.trim().split("\n");
+
+    let fps = defaults.fps;
+    let durationSecs = defaults.durationSecs;
+
+    if (lines[0]) {
+      const [num, den] = lines[0].trim().split("/").map(Number);
+      const parsed = den ? num / den : num;
+      if (Number.isFinite(parsed) && parsed > 0 && parsed < 300) {
+        fps = parsed;
+      }
+    }
+
+    if (lines[1]) {
+      const parsed = parseFloat(lines[1].trim());
+      if (Number.isFinite(parsed) && parsed > 0) {
+        durationSecs = parsed;
+      }
+    }
+
+    return { fps, durationSecs };
+  } catch {
+    return defaults;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HLS transcoding
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Downloads a raw video clip, uses local FFmpeg to generate 480p, 720p, and 1080p
+ * adaptive-bitrate HLS streams, and uploads the segments back to Cloudflare R2.
+ *
+ * Returns the R2 path to the generated master.m3u8.
+ */
+export async function processClipHls(
+  clipId: string,
+  bucket: string,
+  rawPath: string
+): Promise<string> {
+  // ── Download ──────────────────────────────────────────────────────────────
   let data: Buffer;
   try {
     data = await r2.download(bucket, rawPath);
-  } catch (downloadError: any) {
-    throw new Error(`Failed to download source video for clip ${clipId}: ${downloadError.message}`);
+  } catch (err: any) {
+    throw new Error(
+      `Failed to download source video for clip ${clipId}: ${err.message}`
+    );
   }
 
+  // ── Workspace setup ───────────────────────────────────────────────────────
   const workDir = path.join(os.tmpdir(), `myturn_hls_${clipId}`);
-  
-  // Ensure a clean working directory
   await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   await fs.mkdir(workDir, { recursive: true });
 
   const inputPath = path.join(workDir, "input.mp4");
   await fs.writeFile(inputPath, data);
 
-  // Dynamic Resource Boundary: Constrain CPU allocation to half of available cores
-  const totalCores = os.cpus().length;
-  const targetCpuCores = Math.max(1, Math.floor(totalCores / 2));
+  // ── Probe ─────────────────────────────────────────────────────────────────
+  const [hasAudio, { fps, durationSecs }] = await Promise.all([
+    probeHasAudio(inputPath),
+    probeVideo(inputPath),
+  ]);
 
-  // Platform Check: Linux VPS supports standard low-priority scheduling wrappers.
-  const isLinux = process.platform === "linux";
-  const priorityPrefix = isLinux ? "nice -n 19 ionice -c 3 " : "";
+  console.log(
+    `[Transcoder] clip=${clipId} hasAudio=${hasAudio} fps=${fps.toFixed(2)} duration=${durationSecs.toFixed(1)}s`
+  );
 
-  // Explicitly template the HLS segment output names so the Service Worker can parse quality levels easily
-  const outputSegmentFormat = path.join(workDir, "output_%v_%03d.ts");
+  // Keyframe every 2 seconds, aligned to HLS segment boundary (hls_time=4 → 2× GOP).
+  const gopSize = Math.round(fps * 2);
 
-  // Standardize video encoding arguments to fix Safari/Chrome MSE compatibility:
-  const commonVideoOpts = "-preset veryfast -pix_fmt yuv420p -profile:v main -g 60 -keyint_min 60 -sc_threshold 0";
+  // ── Encode timeout ────────────────────────────────────────────────────────
+  // This VPS encodes at roughly 0.1× realtime. We budget at 0.05× (20× realtime)
+  // to give a generous ceiling, with a minimum of 5 minutes for very short clips.
+  const ENCODE_SPEED_FLOOR = 0.05; // assume worst-case 5% realtime
+  const encodeTimeoutMs = Math.max(
+    5 * 60 * 1000,
+    Math.ceil((durationSecs / ENCODE_SPEED_FLOOR) * 1000)
+  );
 
-  // PRIMARY COMMAND (With Audio Multiplexing)
-  const cmdWithAudio = `${priorityPrefix}ffmpeg -y -i "${inputPath}" \
-    -filter_complex "[0:v]split=3[v1][v2][v3];[v1]scale=w=-2:h=480[v480];[v2]scale=w=-2:h=720[v720];[v3]scale=w=-2:h=1080[v1080]" \
-    -map "[v480]" -c:v:0 libx264 ${commonVideoOpts} -b:v:0 800k -maxrate:v:0 850k -bufsize:v:0 1200k \
-    -map "[v720]" -c:v:1 libx264 ${commonVideoOpts} -b:v:1 2800k -maxrate:v:1 2900k -bufsize:v:1 3500k \
-    -map "[v1080]" -c:v:2 libx264 ${commonVideoOpts} -b:v:2 5000k -maxrate:v:2 5500k -bufsize:v:2 6000k \
-    -map 0:a -c:a:0 aac -b:a:0 128k \
-    -map 0:a -c:a:1 aac -b:a:1 128k \
-    -map 0:a -c:a:2 aac -b:a:2 128k \
-    -f hls -hls_time 4 -hls_playlist_type vod \
-    -master_pl_name master.m3u8 \
-    -var_stream_map "v:0,a:0 v:1,a:1 v:2,a:2" \
-    -hls_segment_filename "${outputSegmentFormat}" \
-    -threads ${targetCpuCores} \
-    "${path.join(workDir, 'output_%v.m3u8')}"`;
+  console.log(
+    `[Transcoder] clip=${clipId} encode timeout=${Math.round(encodeTimeoutMs / 60000)}m`
+  );
 
-  // FALLBACK COMMAND (Video Only)
-  const cmdNoAudio = `${priorityPrefix}ffmpeg -y -i "${inputPath}" \
-    -filter_complex "[0:v]split=3[v1][v2][v3];[v1]scale=w=-2:h=480[v480];[v2]scale=w=-2:h=720[v720];[v3]scale=w=-2:h=1080[v1080]" \
-    -map "[v480]" -c:v:0 libx264 ${commonVideoOpts} -b:v:0 800k -maxrate:v:0 850k -bufsize:v:0 1200k \
-    -map "[v720]" -c:v:1 libx264 ${commonVideoOpts} -b:v:1 2800k -maxrate:v:1 2900k -bufsize:v:1 3500k \
-    -map "[v1080]" -c:v:2 libx264 ${commonVideoOpts} -b:v:2 5000k -maxrate:v:2 5500k -bufsize:v:2 6000k \
-    -f hls -hls_time 4 -hls_playlist_type vod \
-    -master_pl_name master.m3u8 \
-    -var_stream_map "v:0 v:1 v:2" \
-    -hls_segment_filename "${outputSegmentFormat}" \
-    -threads ${targetCpuCores} \
-    "${path.join(workDir, 'output_%v.m3u8')}"`;
+  // ── FFmpeg config ─────────────────────────────────────────────────────────
+  // Constrain CPU to half of available cores to avoid starving other processes.
+  const targetCpuCores = Math.max(1, Math.floor(os.cpus().length / 2));
 
+  // Linux VPS: run at lowest I/O and CPU scheduling priority.
+  const priorityPrefix =
+    process.platform === "linux" ? "nice -n 19 ionice -c 3 " : "";
+
+  const segmentPattern = path.join(workDir, "output_%v_%03d.ts");
+  const playlistPattern = path.join(workDir, "output_%v.m3u8");
+
+  // Video encoding flags:
+  // -pix_fmt yuv420p        → output TV-range YUV (Safari / MSE compat)
+  // -color_range tv         → explicitly declare TV range so swscaler
+  //                           correctly maps yuvj420p (full-range) input
+  // -vf scale flags         → force output color range in the filtergraph
+  //                           (belt-and-suspenders for the swscaler warning)
+  // -profile:v main         → broad device support
+  // -preset veryfast        → low CPU cost on ARM VPS
+  // -sc_threshold 0         → no scene-cut keyframes; rely solely on -g
+  const commonVideoOpts = [
+    `-preset veryfast`,
+    `-pix_fmt yuv420p`,
+    `-color_range tv`,
+    `-profile:v main`,
+    `-g ${gopSize}`,
+    `-keyint_min ${gopSize}`,
+    `-sc_threshold 0`,
+  ].join(" ");
+
+  // Force stereo 44.1 kHz on output to handle mono / 48 kHz / ambiguous
+  // channel-layout inputs from iOS Core Media Audio.
+  const commonAudioOpts = `-ar 44100 -ac 2`;
+
+  // Add :out_range=tv to each scale filter to suppress the swscaler
+  // "deprecated pixel format" warning from yuvj420p full-range sources.
+  const scaleFilter = [
+    `[0:v]split=3[v1][v2][v3]`,
+    `[v1]scale=w=-2:h=480:out_range=tv[v480]`,
+    `[v2]scale=w=-2:h=720:out_range=tv[v720]`,
+    `[v3]scale=w=-2:h=1080:out_range=tv[v1080]`,
+  ].join(";");
+
+  const audioMaps = hasAudio
+    ? [
+        `-map 0:a -c:a:0 aac ${commonAudioOpts} -b:a:0 128k`,
+        `-map 0:a -c:a:1 aac ${commonAudioOpts} -b:a:1 128k`,
+        `-map 0:a -c:a:2 aac ${commonAudioOpts} -b:a:2 128k`,
+      ].join(" \\\n    ")
+    : "";
+
+  const varStreamMap = hasAudio
+    ? `"v:0,a:0 v:1,a:1 v:2,a:2"`
+    : `"v:0 v:1 v:2"`;
+
+  const ffmpegCmd = [
+    `${priorityPrefix}ffmpeg`,
+    `-y`,
+    `-threads ${targetCpuCores}`,
+    `-i "${inputPath}"`,
+    `-filter_complex "${scaleFilter}"`,
+    `-map "[v480]"  -c:v:0 libx264 ${commonVideoOpts} -b:v:0 800k  -maxrate:v:0 850k  -bufsize:v:0 1200k`,
+    `-map "[v720]"  -c:v:1 libx264 ${commonVideoOpts} -b:v:1 2800k -maxrate:v:1 2900k -bufsize:v:1 3500k`,
+    `-map "[v1080]" -c:v:2 libx264 ${commonVideoOpts} -b:v:2 5000k -maxrate:v:2 5500k -bufsize:v:2 6000k`,
+    audioMaps,
+    `-f hls`,
+    `-hls_time 4`,
+    `-hls_playlist_type vod`,
+    `-master_pl_name master.m3u8`,
+    `-var_stream_map ${varStreamMap}`,
+    `-hls_segment_filename "${segmentPattern}"`,
+    `"${playlistPattern}"`,
+  ]
+    .filter(Boolean)
+    .join(" \\\n    ");
+
+  // ── Encode ────────────────────────────────────────────────────────────────
   try {
-    // Attempt standard audio-grouped conversion
-    await runCommand(cmdWithAudio);
+    await runCommand(ffmpegCmd, encodeTimeoutMs);
   } catch (err: any) {
-    console.warn(`[Transcoder] Audio-map failed for ${clipId}. Assuming no audio track. Falling back to video-only conversion...`);
-    // Fallback if missing audio streams
-    await runCommand(cmdNoAudio);
+    console.error(
+      `[Transcoder] FFmpeg failed for clip ${clipId}:\n${err.message}`
+    );
+    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
+    throw new Error(`FFmpeg encode failed for clip ${clipId}: ${err.message}`);
   }
 
+  // ── Upload ────────────────────────────────────────────────────────────────
   const files = await fs.readdir(workDir);
-  
-  // Extract the parent directory of the original mp4 so we can put the HLS folder right next to it
+
   const dirName = rawPath.substring(0, rawPath.lastIndexOf("/"));
   const hlsDir = dirName ? `${dirName}/${clipId}_hls` : `${clipId}_hls`;
-  
+
   let masterUrl = "";
 
-  for (const file of files) {
-    if (file === "input.mp4") continue;
+  await Promise.all(
+    files
+      .filter((f) => f !== "input.mp4")
+      .map(async (file) => {
+        const fileBuf = await fs.readFile(path.join(workDir, file));
+        const dest = `${hlsDir}/${file}`;
 
-    const filePath = path.join(workDir, file);
-    const fileBuf = await fs.readFile(filePath);
-    const dest = `${hlsDir}/${file}`;
-    
-    // Explicit content-type mapping required for HLS on web
-    const contentType = file.endsWith(".m3u8") 
-      ? "application/vnd.apple.mpegurl" 
-      : file.endsWith(".ts") 
-        ? "video/MP2T" 
-        : "application/octet-stream";
-    
-    try {
-      await r2.upload(bucket, dest, fileBuf, contentType);
-    } catch (uploadError: any) {
-      console.error(`[Transcoder] Failed to upload chunk ${file} for ${clipId}:`, uploadError.message || uploadError);
-    }
+        const contentType = file.endsWith(".m3u8")
+          ? "application/vnd.apple.mpegurl"
+          : file.endsWith(".ts")
+          ? "video/MP2T"
+          : "application/octet-stream";
 
-    if (file === "master.m3u8") {
-      masterUrl = dest;
-    }
-  }
+        try {
+          await r2.upload(bucket, dest, fileBuf, contentType);
+        } catch (err: any) {
+          console.error(
+            `[Transcoder] Failed to upload ${file} for clip ${clipId}: ${err.message}`
+          );
+        }
 
-  // Cleanup local disk footprint to prevent memory leaks on the single server
+        if (file === "master.m3u8") {
+          masterUrl = dest;
+        }
+      })
+  );
+
+  // ── Cleanup ───────────────────────────────────────────────────────────────
   await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
-  
+
   if (!masterUrl) {
     throw new Error(`Master playlist was not generated for clip ${clipId}`);
   }
@@ -138,32 +288,45 @@ export async function processClipHls(clipId: string, bucket: string, rawPath: st
   return masterUrl;
 }
 
-export async function generateMissingThumbnails(clipId: string): Promise<{ thumbnailUrl: string; thumbnailBlurUrl: string } | null> {
+// ─────────────────────────────────────────────────────────────────────────────
+// Thumbnail generation
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function generateMissingThumbnails(
+  clipId: string
+): Promise<{ thumbnailUrl: string; thumbnailBlurUrl: string } | null> {
   try {
     const clip = await db.clip.findUnique({ where: { id: clipId } });
     if (!clip) return null;
 
-    let updated = false;
-    let currentThumb = clip.thumbnailUrl;
-    let currentBlur = clip.thumbnailBlurUrl;
-
-    const needsThumb = !currentThumb || currentThumb === "" || currentThumb.includes("fallback");
-    const needsBlur = !currentBlur || currentBlur === "";
+    const needsThumb =
+      !clip.thumbnailUrl ||
+      clip.thumbnailUrl === "" ||
+      clip.thumbnailUrl.includes("fallback");
+    const needsBlur = !clip.thumbnailBlurUrl || clip.thumbnailBlurUrl === "";
 
     if (!needsThumb && !needsBlur) {
-      return { thumbnailUrl: currentThumb, thumbnailBlurUrl: currentBlur || "" };
+      return {
+        thumbnailUrl: clip.thumbnailUrl,
+        thumbnailBlurUrl: clip.thumbnailBlurUrl || "",
+      };
     }
 
-    console.log(`[Transcoder] Generating missing thumbnails for clip: ${clipId}`);
+    console.log(
+      `[Transcoder] Generating missing thumbnails for clip: ${clipId}`
+    );
 
-    // Download raw video directly from Cloudflare R2
+    // ── Download ────────────────────────────────────────────────────────────
     let buffer: Buffer;
     try {
       buffer = await r2.download("vlogs", clip.videoUrl);
-    } catch (downloadError: any) {
-      throw new Error(`Failed to download source video for clip ${clipId}: ${downloadError.message}`);
+    } catch (err: any) {
+      throw new Error(
+        `Failed to download source video for clip ${clipId}: ${err.message}`
+      );
     }
 
+    // ── Workspace setup ─────────────────────────────────────────────────────
     const workDir = path.join(os.tmpdir(), `myturn_thumb_${clipId}`);
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
     await fs.mkdir(workDir, { recursive: true });
@@ -174,40 +337,50 @@ export async function generateMissingThumbnails(clipId: string): Promise<{ thumb
     const dirName = clip.videoUrl.substring(0, clip.videoUrl.lastIndexOf("/"));
     const timestamp = Date.now();
 
-    if (needsThumb) {
-      const thumbFile = "thumb.jpg";
-      const thumbLocalPath = path.join(workDir, thumbFile);
-      
-      // Extract frame at 0.5s with standard high-quality compression scale
-      await runCommand(`ffmpeg -y -ss 0.5 -i "${inputPath}" -vframes 1 -q:v 2 "${thumbLocalPath}"`);
-      
-      const thumbBuf = await fs.readFile(thumbLocalPath);
-      const thumbDest = dirName ? `${dirName}/${timestamp}-thumb.jpg` : `${timestamp}-thumb.jpg`;
-      
-      await r2.upload("vlogs", thumbDest, thumbBuf, "image/jpeg");
+    let currentThumb = clip.thumbnailUrl;
+    let currentBlur = clip.thumbnailBlurUrl;
+    let updated = false;
 
-      currentThumb = thumbDest;
-      updated = true;
+    try {
+      if (needsThumb) {
+        const thumbLocalPath = path.join(workDir, "thumb.jpg");
+
+        await runCommand(
+          `ffmpeg -y -ss 0.5 -i "${inputPath}" -vframes 1 -q:v 2 "${thumbLocalPath}"`,
+          30_000
+        );
+
+        const thumbBuf = await fs.readFile(thumbLocalPath);
+        const thumbDest = dirName
+          ? `${dirName}/${timestamp}-thumb.jpg`
+          : `${timestamp}-thumb.jpg`;
+
+        await r2.upload("vlogs", thumbDest, thumbBuf, "image/jpeg");
+        currentThumb = thumbDest;
+        updated = true;
+      }
+
+      if (needsBlur) {
+        const blurLocalPath = path.join(workDir, "thumb-blur.jpg");
+
+        // 80×142 at q:v 15 → lightweight LQIP placeholder
+        await runCommand(
+          `ffmpeg -y -ss 0.5 -i "${inputPath}" -vf "scale=80:142" -vframes 1 -q:v 15 "${blurLocalPath}"`,
+          30_000
+        );
+
+        const blurBuf = await fs.readFile(blurLocalPath);
+        const blurDest = dirName
+          ? `${dirName}/${timestamp}-thumb-blur.jpg`
+          : `${timestamp}-thumb-blur.jpg`;
+
+        await r2.upload("vlogs", blurDest, blurBuf, "image/jpeg");
+        currentBlur = blurDest;
+        updated = true;
+      }
+    } finally {
+      await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
     }
-
-    if (needsBlur) {
-      const blurFile = "thumb-blur.jpg";
-      const blurLocalPath = path.join(workDir, blurFile);
-      
-      // Extract a low-resolution LQIP frame (80x142) mapped to a lightweight 35% quality ratio
-      await runCommand(`ffmpeg -y -ss 0.5 -i "${inputPath}" -vf "scale=80:142" -vframes 1 -q:v 15 "${blurLocalPath}"`);
-      
-      const blurBuf = await fs.readFile(blurLocalPath);
-      const blurDest = dirName ? `${dirName}/${timestamp}-thumb-blur.jpg` : `${timestamp}-thumb-blur.jpg`;
-      
-      await r2.upload("vlogs", blurDest, blurBuf, "image/jpeg");
-
-      currentBlur = blurDest;
-      updated = true;
-    }
-
-    // Cleanup local temp directories
-    await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
 
     if (updated) {
       await db.clip.update({
@@ -217,12 +390,20 @@ export async function generateMissingThumbnails(clipId: string): Promise<{ thumb
           thumbnailBlurUrl: currentBlur,
         },
       });
-      console.log(`[Transcoder] Successfully updated thumbnails in DB for clip: ${clipId}`);
+      console.log(
+        `[Transcoder] Successfully updated thumbnails in DB for clip: ${clipId}`
+      );
     }
 
-    return { thumbnailUrl: currentThumb, thumbnailBlurUrl: currentBlur || "" };
+    return {
+      thumbnailUrl: currentThumb,
+      thumbnailBlurUrl: currentBlur || "",
+    };
   } catch (err) {
-    console.error(`[Transcoder] Failed to generate missing thumbnails for ${clipId}:`, err);
+    console.error(
+      `[Transcoder] Failed to generate missing thumbnails for ${clipId}:`,
+      err
+    );
     return null;
   }
 }
