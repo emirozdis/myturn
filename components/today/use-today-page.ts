@@ -1,4 +1,3 @@
-// ./components/today/use-today-page.ts
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
@@ -11,6 +10,7 @@ import {
   pokeVlogger,
   trackView,
   addPhotoResponse,
+  toggleVolunteer,
 } from "@/actions/vlog";
 import { getSlotForClip, getCachedToday } from "./utils";
 
@@ -80,6 +80,12 @@ export function useTodayPage() {
   const [resolvedClipThumbnails, setResolvedClipThumbnails] = useState<Record<string, string>>(cachedData?.resolvedClipThumbnails || {});
   const [resolvedClipBlurThumbnails, setResolvedClipBlurThumbnails] = useState<Record<string, string>>(cachedData?.resolvedClipBlurThumbnails || {});
   const [isSleepMode, setIsSleepMode] = useState<boolean>(cachedData?.isSleepMode || false);
+
+  const [hasVolunteeredForTomorrow, setHasVolunteeredForTomorrow] = useState<boolean>(cachedData?.hasVolunteeredForTomorrow || false);
+  const [canVolunteer, setCanVolunteer] = useState<boolean>(cachedData?.canVolunteer ?? false);
+  const [volunteerEligibilityReason, setVolunteerEligibilityReason] = useState<string>(cachedData?.volunteerEligibilityReason || "");
+  const [isVolunteering, setIsVolunteering] = useState(false);
+  const [volunteerError, setVolunteerError] = useState("");
 
   const timezone = assignment?.group?.timezone || cachedData?.assignment?.group?.timezone;
 
@@ -166,6 +172,9 @@ export function useTodayPage() {
     if (res.success) {
       setIsSleepMode(res.isSleepMode || false);
       setAssignment(res.assignment);
+      setHasVolunteeredForTomorrow(res.hasVolunteered || false);
+      setCanVolunteer(res.canVolunteer ?? false);
+      setVolunteerEligibilityReason(res.volunteerEligibilityReason || "");
       const fetchedClips = res.assignment?.clips || [];
       
       const tz = res.assignment?.group?.timezone;
@@ -194,7 +203,6 @@ export function useTodayPage() {
       const blurThumbUrls: Record<string, string> = {};
       const disableAbr = typeof window !== "undefined" && localStorage.getItem("disable_abr") === "true";
 
-      // Utilize server-pre-signed URLs directly rather than dispatching redundant client calls to the database
       for (const clip of fetchedClips) {
         urls[clip.id] = disableAbr
           ? clip.videoUrl 
@@ -217,7 +225,10 @@ export function useTodayPage() {
           resolvedClipThumbnails: thumbUrls,
           resolvedClipBlurThumbnails: blurThumbUrls,
           isSleepMode: res.isSleepMode || false,
-          savedAt: Date.now(), // Store timestamp to prevent expired cache loading
+          hasVolunteeredForTomorrow: res.hasVolunteered || false,
+          canVolunteer: res.canVolunteer ?? false,
+          volunteerEligibilityReason: res.volunteerEligibilityReason || "",
+          savedAt: Date.now(), 
         }));
       }
     } else {
@@ -227,6 +238,9 @@ export function useTodayPage() {
       setResolvedClipThumbnails({});
       setResolvedClipBlurThumbnails({});
       setIsSleepMode(false);
+      setHasVolunteeredForTomorrow(false);
+      setCanVolunteer(false);
+      setVolunteerEligibilityReason("");
     }
     isFetchingRef.current = false;
   };
@@ -292,7 +306,6 @@ export function useTodayPage() {
   const activeClipThumbnailUrl = activeClip ? resolvedClipThumbnails[activeClip.id] : null;
   const activeClipThumbnailBlurUrl = activeClip ? resolvedClipBlurThumbnails[activeClip.id] : null;
   
-  // Calculate the next chronologically consecutive clip to enable background prefetching
   const nextClipOverall = useMemo(() => {
     if (clips.length === 0 || !activeClip) return null;
     const currentIndex = clips.findIndex((c) => c.id === activeClip.id);
@@ -359,7 +372,6 @@ export function useTodayPage() {
     return activeClip.id === sorted[sorted.length - 1].id;
   }, [clips, activeClip]);
 
-  // targeted primitives to enforce strict renders without trigger loops
   const activeClipId = activeClip?.id;
   const reactionsLength = activeClip?.reactions?.length;
   const isLikedByMe = activeClip?.reactions?.some((r: any) => r.userId === session?.user?.id);
@@ -375,7 +387,6 @@ export function useTodayPage() {
         const currentViewed = getViewedClips();
         const clipId = activeClip.id;
 
-        // Combine localStorage checks with in-flight request set to completely eliminate redundant concurrent trackView calls
         if (!currentViewed[clipId] && !trackingClipIdsRef.current.has(clipId)) {
           trackingClipIdsRef.current.add(clipId);
           markClipAsViewed(clipId);
@@ -387,7 +398,6 @@ export function useTodayPage() {
               });
             }
           }).catch(() => {
-            // Clean up tracking state if request fails to allow subsequent retry attempts
             trackingClipIdsRef.current.delete(clipId);
           });
         }
@@ -501,7 +511,9 @@ export function useTodayPage() {
   const handlePhotoResponseUpload = async (fileOrBlob: File | Blob) => {
     if (!fileOrBlob) return;
 
-    if (!activeClip || !assignment?.groupId) {
+    const activeGroupId = assignment?.groupId || (typeof window !== "undefined" ? localStorage.getItem("active_group_id") : null);
+
+    if (!activeClip || !activeGroupId) {
       showToast("Missing clip or group context", "error");
       return;
     }
@@ -509,7 +521,7 @@ export function useTodayPage() {
     setUploadingPhoto(true);
     try {
       const ext = "jpg";
-      const path = `${assignment.groupId}/${assignment.id}/responses/${Date.now()}.${ext}`;
+      const path = `${activeGroupId}/${assignment.id}/responses/${Date.now()}.${ext}`;
       
       const formData = new FormData();
       formData.append("file", fileOrBlob, `response.${ext}`);
@@ -552,6 +564,41 @@ export function useTodayPage() {
     } finally {
       setUploadingPhoto(false);
       setIsPhotoCaptureOpen(false);
+    }
+  };
+
+  const handleToggleVolunteer = async () => {
+    const activeGroupId = assignment?.groupId || (typeof window !== "undefined" ? localStorage.getItem("active_group_id") : null);
+    if (!activeGroupId) {
+      showToast("Missing group context.", "error");
+      return;
+    }
+    
+    setIsVolunteering(true);
+    setVolunteerError("");
+    try {
+      const res = await toggleVolunteer(activeGroupId);
+      if (res.error) {
+        setVolunteerError(res.error);
+        showToast(res.error, "error");
+      } else {
+        setHasVolunteeredForTomorrow(res.hasVolunteered || false);
+        showToast(res.hasVolunteered ? "Volunteered for tomorrow!" : "Volunteer status reverted.", "success");
+        
+        // Local state mutation for offline reactivity guarantees matching cycle
+        if (typeof window !== "undefined") {
+          const cached = localStorage.getItem(`cached_today_${activeGroupId}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            parsed.hasVolunteeredForTomorrow = res.hasVolunteered;
+            localStorage.setItem(`cached_today_${activeGroupId}`, JSON.stringify(parsed));
+          }
+        }
+      }
+    } catch (err: any) {
+      setVolunteerError("Network error.");
+    } finally {
+      setIsVolunteering(false);
     }
   };
 
@@ -606,5 +653,11 @@ export function useTodayPage() {
     handlePhotoResponseUpload,
     allVideosViewed,
     isLastClipOverall,
+    hasVolunteeredForTomorrow,
+    canVolunteer,
+    volunteerEligibilityReason,
+    isVolunteering,
+    volunteerError,
+    handleToggleVolunteer,
   };
 }

@@ -40,7 +40,7 @@ import { RecordLoadingState } from "@/components/record/record-loading-state";
 // Custom Changelog release overlay
 import { NewFeaturesModal } from "@/components/new-features-modal";
 
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.2.1";
 
 export interface GroupConfig {
   id: string;

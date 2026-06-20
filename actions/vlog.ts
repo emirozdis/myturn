@@ -1,4 +1,3 @@
-// ./actions/vlog.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -313,7 +312,25 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     pool = [...group.members];
   }
 
-  const chosenMember = pool[Math.floor(Math.random() * pool.length)];
+  // Evaluate explicit user volunteer records mapped strictly to this target assignment date
+  const volunteers = await db.volunteer.findMany({
+    where: { groupId, targetDate: localDate }
+  });
+
+  const volunteerIds = new Set(volunteers.map((v) => v.userId));
+  let finalPool = pool;
+  let isVolunteer = false;
+
+  // Narrow the pool cleanly resolving eligible volunteers if any valid hits occur.
+  if (volunteerIds.size > 0) {
+    const eligibleVolunteers = pool.filter((m) => volunteerIds.has(m.userId));
+    if (eligibleVolunteers.length > 0) {
+      finalPool = eligibleVolunteers;
+      isVolunteer = true;
+    }
+  }
+
+  const chosenMember = finalPool[Math.floor(Math.random() * finalPool.length)];
 
   const assignment = await db.dailyAssignment.create({
     data: {
@@ -321,6 +338,7 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
       userId: chosenMember.userId,
       date: localDate,
       status: "active",
+      isVolunteer,
     },
   });
 
@@ -357,12 +375,95 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
   return assignment;
 }
 
+export async function toggleVolunteer(groupId: string) {
+  try {
+    const session = await getAuthSession();
+    if (!session?.user?.id) return { error: "Unauthorized" };
+
+    const group = await db.group.findUnique({
+      where: { id: groupId },
+      include: { members: true }
+    });
+    if (!group) return { error: "Group not found." };
+
+    const circadian = getVlogCircadianState(group.timezone);
+
+    if (circadian.currentHour >= 7 && circadian.currentHour < 9) {
+      return { error: "It's past 7 AM! The volunteer window for today's vlog is closed." };
+    }
+    if (!circadian.isSleepMode) {
+      return { error: "Volunteering is only available during quiet hours before the next vlog." };
+    }
+
+    const existing = await db.volunteer.findUnique({
+      where: {
+        groupId_userId_targetDate: {
+          groupId,
+          userId: session.user.id,
+          targetDate: circadian.localDate
+        }
+      }
+    });
+
+    if (existing) {
+      await db.volunteer.delete({ where: { id: existing.id } });
+      return { success: true, hasVolunteered: false };
+    }
+
+    const yesterdayDate = new Date(circadian.localDate);
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+
+    const yesterdayAssignment = await db.dailyAssignment.findFirst({
+      where: { groupId, date: yesterdayDate }
+    });
+
+    if (yesterdayAssignment?.userId === session.user.id) {
+      return { error: "You vlogged yesterday, let others have a turn!" };
+    }
+
+    const recentAssignments = await db.dailyAssignment.findMany({
+      where: { groupId, date: { lt: circadian.localDate } },
+      orderBy: { date: "desc" },
+      take: group.members.length * 2,
+    });
+
+    const currentMemberIds = new Set(group.members.map((m) => m.userId));
+    const seenInCycle = new Set<string>();
+
+    for (const asg of recentAssignments) {
+      if (!currentMemberIds.has(asg.userId)) continue;
+      if (seenInCycle.has(asg.userId)) break;
+      seenInCycle.add(asg.userId);
+      if (seenInCycle.size === currentMemberIds.size) break;
+    }
+
+    if (seenInCycle.has(session.user.id) && seenInCycle.size < currentMemberIds.size) {
+      return { error: "You already vlogged in this cycle! Wait for the next one." };
+    }
+
+    await db.volunteer.create({
+      data: {
+        groupId,
+        userId: session.user.id,
+        targetDate: circadian.localDate
+      }
+    });
+
+    return { success: true, hasVolunteered: true };
+  } catch (err: any) {
+    return { error: err.message || "Failed to toggle volunteer status." };
+  }
+}
+
 export async function getOrCreateTodayAssignment(groupId: string) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    const group = await db.group.findUnique({ where: { id: groupId } });
+    const group = await db.group.findUnique({ 
+      where: { id: groupId },
+      include: { members: true } 
+    });
     if (!group) return { error: "Group not found" };
 
     const circadian = getVlogCircadianState(group.timezone);
@@ -376,6 +477,66 @@ export async function getOrCreateTodayAssignment(groupId: string) {
       assignment = await rollGroupAssignmentForDate(groupId, circadian.businessDate);
     }
 
+    let hasVolunteered = false;
+    let canVolunteer = false;
+    let volunteerEligibilityReason = "";
+
+    if (circadian.isSleepMode && session?.user?.id) {
+      const volunteerRecord = await db.volunteer.findUnique({
+        where: {
+          groupId_userId_targetDate: {
+            groupId,
+            userId: session.user.id,
+            targetDate: circadian.localDate
+          }
+        }
+      });
+      hasVolunteered = !!volunteerRecord;
+
+      if (circadian.currentHour >= 7 && circadian.currentHour < 9) {
+        canVolunteer = false;
+        volunteerEligibilityReason = "Volunteer window closed at 7 AM.";
+      } else if (hasVolunteered) {
+        // Can cancel a previously registered volunteer status
+        canVolunteer = true;
+      } else {
+        const yesterdayDate = new Date(circadian.localDate);
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+
+        const yesterdayAssignment = await db.dailyAssignment.findFirst({
+          where: { groupId, date: yesterdayDate }
+        });
+
+        if (yesterdayAssignment?.userId === session.user.id) {
+          canVolunteer = false;
+          volunteerEligibilityReason = "You already vlogged yesterday.";
+        } else {
+          const recentAssignments = await db.dailyAssignment.findMany({
+            where: { groupId, date: { lt: circadian.localDate } },
+            orderBy: { date: "desc" },
+            take: group.members.length * 2,
+          });
+
+          const currentMemberIds = new Set(group.members.map((m) => m.userId));
+          const seenInCycle = new Set<string>();
+
+          for (const asg of recentAssignments) {
+            if (!currentMemberIds.has(asg.userId)) continue;
+            if (seenInCycle.has(asg.userId)) break;
+            seenInCycle.add(asg.userId);
+            if (seenInCycle.size === currentMemberIds.size) break;
+          }
+
+          if (seenInCycle.has(session.user.id) && seenInCycle.size < currentMemberIds.size) {
+            canVolunteer = false;
+            volunteerEligibilityReason = "You vlogged recently in this cycle.";
+          } else {
+            canVolunteer = true;
+          }
+        }
+      }
+    }
+
     if (!assignment) {
       return { 
         success: true, 
@@ -383,6 +544,9 @@ export async function getOrCreateTodayAssignment(groupId: string) {
         isSleepMode: circadian.isSleepMode,
         sleepTimeLeftSeconds: circadian.sleepTimeLeftSeconds,
         wakingTimeLeftSeconds: circadian.wakingTimeLeftSeconds,
+        hasVolunteered,
+        canVolunteer,
+        volunteerEligibilityReason,
       };
     }
 
@@ -471,6 +635,9 @@ export async function getOrCreateTodayAssignment(groupId: string) {
       isSleepMode: circadian.isSleepMode,
       sleepTimeLeftSeconds: circadian.sleepTimeLeftSeconds,
       wakingTimeLeftSeconds: circadian.wakingTimeLeftSeconds,
+      hasVolunteered,
+      canVolunteer,
+      volunteerEligibilityReason,
     };
   } catch (error: any) {
     return { error: error?.message || "Failed to retrieve or roll daily assignment." };
@@ -676,6 +843,12 @@ export async function createClip(data: {
       if (isNew) newlyUnlocked.push("zero-hour");
     }
 
+    // Voluntarily selected daily vloggers yield an explicit multiplier against base & bound XP combinations
+    if (assignment.isVolunteer) {
+      individualXpGain = Math.floor(individualXpGain * 1.5);
+      groupXpGain = Math.floor(groupXpGain * 1.5);
+    }
+
     if (memberRecord) {
       const nextStreakValue = isFirstClip ? streakCount + 1 : streakCount;
       const prevArchetype = getVibeArchetype(memberRecord.xp);
@@ -718,6 +891,20 @@ export async function createClip(data: {
         where: { id: data.assignmentId },
         data: { status: "completed" },
       });
+
+      if (assignment.isVolunteer) {
+        const isNewTribute = await checkAndUnlockAchievement(session.user.id, "the-tribute");
+        if (isNewTribute) newlyUnlocked.push("the-tribute");
+
+        const volCount = await db.dailyAssignment.count({
+          where: { userId: session.user.id, isVolunteer: true, status: "completed" }
+        });
+
+        if (volCount >= 5) {
+          const isNewAltruist = await checkAndUnlockAchievement(session.user.id, "the-altruist");
+          if (isNewAltruist) newlyUnlocked.push("the-altruist");
+        }
+      }
     }
 
     const clipsCount = await db.clip.count({ where: { userId: session.user.id } });
@@ -1020,24 +1207,36 @@ export async function addComment(clipId: string, text: string, parentId?: string
     });
 
     if (commentsWrittenToday * 10 <= 30) {
+      const targetGroup = await db.group.findUnique({ where: { id: clip.groupId } });
+      let multiplier = 1;
+      
+      if (targetGroup) {
+        const circadian = getVlogCircadianState(targetGroup.timezone);
+        const assignment = await db.dailyAssignment.findUnique({
+           where: { groupId_date: { groupId: clip.groupId, date: circadian.businessDate } }
+        });
+        if (assignment?.userId === session.user.id && assignment?.isVolunteer) {
+          multiplier = 1.5;
+        }
+      }
+
       const groupMember = await db.groupMember.findUnique({
         where: { groupId_userId: { groupId: clip.groupId, userId: session.user.id } },
       });
 
-      if (groupMember) {
+      if (groupMember && targetGroup) {
+        const indivXp = Math.floor(10 * multiplier);
         await db.groupMember.update({
           where: { id: groupMember.id },
-          data: { xp: groupMember.xp + 10, lastActiveAt: new Date() },
+          data: { xp: groupMember.xp + indivXp, lastActiveAt: new Date() },
         });
 
-        const targetGroup = await db.group.findUnique({ where: { id: clip.groupId } });
-        if (targetGroup) {
-          const nextGroupXp = targetGroup.xp + 5;
-          await db.group.update({
-            where: { id: targetGroup.id },
-            data: { xp: nextGroupXp, level: calculateGroupLevel(nextGroupXp) },
-          });
-        }
+        const groupXp = Math.floor(5 * multiplier);
+        const nextGroupXp = targetGroup.xp + groupXp;
+        await db.group.update({
+          where: { id: targetGroup.id },
+          data: { xp: nextGroupXp, level: calculateGroupLevel(nextGroupXp) },
+        });
       }
     }
 
@@ -1140,24 +1339,36 @@ export async function trackView(clipId: string) {
     });
 
     if (viewsRegisteredToday * 5 <= 15) {
+      const targetGroup = await db.group.findUnique({ where: { id: clip.groupId } });
+      let multiplier = 1;
+      
+      if (targetGroup) {
+        const circadian = getVlogCircadianState(targetGroup.timezone);
+        const assignment = await db.dailyAssignment.findUnique({
+           where: { groupId_date: { groupId: clip.groupId, date: circadian.businessDate } }
+        });
+        if (assignment?.userId === session.user.id && assignment?.isVolunteer) {
+          multiplier = 1.5;
+        }
+      }
+
       const groupMember = await db.groupMember.findUnique({
         where: { groupId_userId: { groupId: clip.groupId, userId: session.user.id } },
       });
 
-      if (groupMember) {
+      if (groupMember && targetGroup) {
+        const indivXp = Math.floor(5 * multiplier);
         await db.groupMember.update({
           where: { id: groupMember.id },
-          data: { xp: groupMember.xp + 5, lastActiveAt: new Date() },
+          data: { xp: groupMember.xp + indivXp, lastActiveAt: new Date() },
         });
 
-        const targetGroup = await db.group.findUnique({ where: { id: clip.groupId } });
-        if (targetGroup) {
-          const nextGroupXp = targetGroup.xp + 2;
-          await db.group.update({
-            where: { id: targetGroup.id },
-            data: { xp: nextGroupXp, level: calculateGroupLevel(nextGroupXp) },
-          });
-        }
+        const groupXp = Math.floor(2 * multiplier);
+        const nextGroupXp = targetGroup.xp + groupXp;
+        await db.group.update({
+          where: { id: targetGroup.id },
+          data: { xp: nextGroupXp, level: calculateGroupLevel(nextGroupXp) },
+        });
       }
     }
 

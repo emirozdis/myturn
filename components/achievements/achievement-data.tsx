@@ -4,6 +4,38 @@ import { Share } from "lucide-react";
 export const ACHIEVEMENT_MOCKS: AchievementConfig[] = [
   // --- ACCOUNTABILITY CATEGORY ---
   {
+    id: "the-tribute",
+    particles: "sparks",
+    image: {
+      src: "/assets/icons/heart.png",
+      value: "1st",
+    },
+    mainContent: {
+      title: "The Tribute",
+      highlight: "Tribute",
+      subtitle: "First Time Volunteer",
+      description: "You stepped up and volunteered to be the vlogger for the day! Enjoy your 1.5x XP boost.",
+    },
+    primaryAction: { label: "Awesome!" },
+    secondaryAction: { label: "Share", icon: <Share size={16} /> },
+  },
+  {
+    id: "the-altruist",
+    particles: "confetti",
+    image: {
+      src: "/assets/icons/heart.png",
+      value: "5x",
+    },
+    mainContent: {
+      title: "The Altruist",
+      highlight: "Altruist",
+      subtitle: "5x Volunteered",
+      description: "Always ready to take one for the team! You have completed 5 volunteered assignments.",
+    },
+    primaryAction: { label: "Legendary!" },
+    secondaryAction: { label: "Share", icon: <Share size={16} /> },
+  },
+  {
     id: "the-savior",
     particles: "confetti",
     image: {

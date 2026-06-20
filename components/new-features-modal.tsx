@@ -4,8 +4,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, Variants, useDragControls, PanInfo } from "framer-motion";
 import { 
-  X, Sparkles, ChevronRight, AtSign, CornerDownRight, 
-  Gauge, Rewind, Zap, Pause
+  X, Sparkles, ChevronRight, HeartHandshake, Trophy, Heart
 } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
@@ -42,17 +41,8 @@ const itemVariants: Variants = {
 export function NewFeaturesModal({ isOpen, onClose }: NewFeaturesModalProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const dragControls = useDragControls();
-  const [activeNudge, setActiveNudge] = useState(0);
   const [showTopFade, setShowTopFade] = useState(false);
   const [showBottomFade, setShowBottomFade] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const interval = setInterval(() => {
-      setActiveNudge((prev) => (prev + 1) % 3);
-    }, 4500);
-    return () => clearInterval(interval);
-  }, [isOpen]);
 
   const checkScroll = (target: HTMLDivElement) => {
     const hasScroll = target.scrollHeight > target.clientHeight;
@@ -159,7 +149,6 @@ export function NewFeaturesModal({ isOpen, onClose }: NewFeaturesModalProps) {
           {/* Scroll container with overflow clipping fades */}
           <div className="relative flex-1 min-h-0 w-full mb-5">
 
-            {/* Top fade — sits inside clip boundary, bleeds into first card */}
             <AnimatePresence>
               {showTopFade && (
                 <motion.div
@@ -175,7 +164,6 @@ export function NewFeaturesModal({ isOpen, onClose }: NewFeaturesModalProps) {
               )}
             </AnimatePresence>
 
-            {/* Bottom fade — tight, feathers into scroll list */}
             <AnimatePresence>
               {showBottomFade && (
                 <motion.div
@@ -206,201 +194,93 @@ export function NewFeaturesModal({ isOpen, onClose }: NewFeaturesModalProps) {
             >
               <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; }` }} />
 
-              {/* 1. MENTIONS FEATURE */}
+              {/* 1. VOLUNTEER FEATURE */}
               <motion.div
                 variants={itemVariants}
                 style={glassStyle(0.03, 12, 0.06)}
                 className="rounded-[22px] p-3.5 flex gap-3.5 border border-white/5 items-center relative overflow-hidden pointer-events-none select-none"
               >
-                <div className="w-[110px] h-[110px] rounded-xl bg-[#08080c] border border-white/10 relative overflow-hidden flex-shrink-0 shadow-lg flex flex-col justify-between p-2">
-                  <AnimatePresence>
-                    {activeNudge === 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -15, scale: 0.9 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                        style={glassStyle(0.12, 6, 0.2)}
-                        className="absolute top-1.5 inset-x-1.5 p-1 rounded-lg border border-white/10 flex items-center gap-1.5 bg-black/60 shadow-md z-20"
-                      >
-                        <div className="w-4 h-4 bg-[#e07c30] rounded-full flex items-center justify-center text-[7px] text-black font-extrabold flex-shrink-0">
-                          @
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-[6.5px] font-black text-white leading-none">Mention!</span>
-                          <span className="text-white/50 text-[5.5px] truncate mt-0.5 leading-none">Sarah tagged you</span>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="mt-auto flex gap-1.5 items-start">
-                    <Avatar src="/profile.jpg" name="Sarah" size={16} />
-                    <div className="flex-1 bg-white/[0.04] border border-white/5 rounded-lg p-1.5 text-left">
-                      <span className="text-white/40 text-[6px] font-extrabold block">@sarah</span>
-                      <p className="text-white/80 text-[7px] leading-tight mt-0.5 font-medium">
-                        Awesome view <span className="text-[#e07c30] font-black bg-[#e07c30]/10 rounded-[3px] px-0.5">@you</span>!
-                      </p>
+                <div className="w-[110px] h-[110px] rounded-xl bg-[#08080c] border border-white/10 relative overflow-hidden flex-shrink-0 shadow-lg flex flex-col justify-center items-center p-2 gap-2">
+                  <motion.div
+                    animate={{ scale: [1, 0.95, 1], y: [0, 0, 0] }}
+                    transition={{ repeat: Infinity, duration: 3, times: [0, 0.1, 1] }}
+                    className="w-[90%] bg-gradient-to-b from-[#f05a7e] to-[#e84365] border-b-[3px] border-[#a01a35] rounded-xl py-2 flex flex-col items-center gap-1 shadow-[0_4px_12px_rgba(232,67,101,0.35)]"
+                  >
+                    <HeartHandshake size={16} className="text-white" />
+                    <span className="text-[7.5px] font-black uppercase tracking-wider text-white">Volunteered</span>
+                  </motion.div>
+                  <div className="flex flex-col items-center">
+                    <div className="flex -space-x-2">
+                      <div className="z-20 relative"><Avatar src="/profile.jpg" name="U1" size={22} ring /></div>
+                      <div className="z-10 relative"><Avatar src="/image1.png" name="U2" size={22} ring /></div>
                     </div>
+                    <span className="text-[6px] text-white/50 font-bold mt-1.5 uppercase tracking-widest bg-white/5 px-1.5 py-0.5 rounded">Tiebreaker</span>
                   </div>
                 </div>
 
                 <div className="flex-1 flex flex-col justify-center min-w-0">
                   <span className="text-[#e07c30] text-[9px] font-black uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                    <AtSign size={10} /> User Mentions
+                    <HeartHandshake size={10} /> Take the Stage
                   </span>
                   <h3 className="text-white text-[13px] font-extrabold tracking-tight leading-tight mb-1">
-                    Tag Your Friends
+                    Volunteer System
                   </h3>
                   <p className="text-white/50 text-[10px] leading-relaxed font-medium">
-                    Mention friends in comments using <span className="text-white font-semibold">@handle</span>. They will receive instant push notifications to jump right into the thread!
+                    Step up before 7 AM to claim tomorrow's vlog! If multiple eligible friends volunteer, the system randomly tie-breaks. <span className="text-white font-semibold">(You can't go twice in one cycle!)</span>
                   </p>
                 </div>
               </motion.div>
 
-              {/* 2. COMMENT REPLIES FEATURE */}
+              {/* 2. VOLUNTEER ACHIEVEMENTS FEATURE */}
               <motion.div
                 variants={itemVariants}
                 style={glassStyle(0.03, 12, 0.06)}
                 className="rounded-[22px] p-3.5 flex gap-3.5 border border-white/5 items-center relative overflow-hidden pointer-events-none select-none"
               >
-                <div className="w-[110px] h-[110px] rounded-xl bg-[#08080c] border border-white/10 relative overflow-hidden flex-shrink-0 shadow-lg flex flex-col p-2.5 text-left justify-center gap-2">
-                  <div className="flex gap-1.5 items-start">
-                    <Avatar src="/profile.jpg" name="Alex" size={16} />
-                    <div className="flex-1 bg-white/[0.04] p-1.5 rounded-xl border border-white/5">
-                      <span className="text-white/30 text-[7px] font-bold block leading-none">@alex</span>
-                      <span className="text-white/70 text-[8px] leading-tight mt-0.5 block">Vibe check?</span>
+                <div className="w-[110px] h-[110px] rounded-xl bg-[#08080c] border border-white/10 relative overflow-hidden flex-shrink-0 shadow-lg flex flex-col p-2 justify-center gap-2.5">
+                  <motion.div
+                    animate={{ y: [-2, 2, -2] }}
+                    transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
+                    className="flex items-center gap-2 bg-white/[0.05] p-1.5 rounded-lg border border-white/10 shadow-sm"
+                  >
+                    <div className="w-6 h-6 rounded-md bg-[#e07c30]/20 flex items-center justify-center flex-shrink-0">
+                      <Heart size={11} className="text-[#e07c30]" />
                     </div>
-                  </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[7px] font-bold text-white uppercase tracking-wider truncate">The Tribute</span>
+                      <span className="text-[6px] text-[#e07c30] font-bold">1st Time</span>
+                    </div>
+                  </motion.div>
 
-                  <div className="flex gap-1.5 items-start ml-4 relative">
-                    <div className="absolute -left-2.5 top-0 bottom-1/2 w-2 border-l border-b border-white/20 rounded-bl-sm" />
-                    <Avatar src="/image1.png" name="Zeynep" size={12} />
-                    <div className="flex-1 bg-white/[0.06] p-1 rounded-lg border border-white/5">
-                      <span className="text-white/30 text-[6px] font-bold block leading-none">@zeynep</span>
-                      <span className="text-white/80 text-[7.5px] leading-tight mt-0.5 block">10/10 today!</span>
+                  <motion.div
+                    animate={{ y: [2, -2, 2] }}
+                    transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                    className="flex items-center gap-2 bg-white/[0.05] p-1.5 rounded-lg border border-white/10 shadow-sm"
+                  >
+                    <div className="w-6 h-6 rounded-md bg-purple-500/20 flex items-center justify-center flex-shrink-0">
+                      <Heart size={11} className="text-purple-400 fill-purple-400" />
                     </div>
-                  </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[7px] font-bold text-white uppercase tracking-wider truncate">The Altruist</span>
+                      <span className="text-[6px] text-purple-400 font-bold">5x Volunteer</span>
+                    </div>
+                  </motion.div>
                 </div>
 
                 <div className="flex-1 flex flex-col justify-center min-w-0">
                   <span className="text-[#e07c30] text-[9px] font-black uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                    <CornerDownRight size={10} /> Comment Threads
+                    <Trophy size={10} /> New Rewards
                   </span>
                   <h3 className="text-white text-[13px] font-extrabold tracking-tight leading-tight mb-1">
-                    Direct Replies
+                    Exclusive Badges & XP
                   </h3>
                   <p className="text-white/50 text-[10px] leading-relaxed font-medium">
-                    Tap <span className="text-white font-semibold">Reply</span> on any comment to start a nested thread, keeping discussions clean and beautifully organized.
+                    Volunteering grants a massive <span className="text-white font-semibold text-[#e07c30]">1.5x XP boost!</span> Unlock "The Tribute" on your first run, and "The Altruist" badge for stepping up 5 times.
                   </p>
                 </div>
               </motion.div>
 
-              {/* 3. FAST RECORDING FEATURE */}
-              <motion.div
-                variants={itemVariants}
-                style={glassStyle(0.04, 16, 0.08)}
-                className="rounded-[24px] p-3.5 flex gap-3.5 border border-white/5 items-center relative overflow-hidden pointer-events-none select-none"
-              >
-                <div className="w-[110px] h-[110px] rounded-xl bg-[#08080c] border border-white/10 relative overflow-hidden flex-shrink-0 shadow-lg flex flex-col justify-between p-2">
-                  <div className="flex justify-between items-center w-full z-10">
-                    <span className="text-[6px] font-black text-red-500 uppercase tracking-widest flex items-center gap-0.5 animate-pulse bg-red-500/10 px-1 py-0.5 rounded">
-                      ● REC
-                    </span>
-                    <div className="px-1.5 py-0.5 bg-[#e07c30]/20 border border-[#e07c30]/40 rounded-full flex items-center gap-0.5">
-                      <Zap size={6} className="text-[#e07c30] fill-[#e07c30]/20" />
-                      <span className="text-[#e07c30] text-[6px] font-black">2x Speed</span>
-                    </div>
-                  </div>
-
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="relative flex items-center justify-center">
-                      <motion.div
-                        animate={{ scale: [1, 1.35, 1], opacity: [0.35, 0, 0.35] }}
-                        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                        className="absolute inset-0 rounded-full bg-[#e07c30]/30 w-10 h-10"
-                      />
-                      <div className="w-8 h-8 rounded-full border border-white/30 flex items-center justify-center text-[8px] text-white font-extrabold">
-                        2x
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-auto flex justify-center gap-1.5 z-10 w-full">
-                    <span className="text-white/40 text-[5px] font-bold">0.5x</span>
-                    <span className="text-white/40 text-[5px] font-bold">1x</span>
-                    <span className="text-[#e07c30] text-[5px] font-extrabold underline underline-offset-1">2x active</span>
-                  </div>
-                </div>
-
-                <div className="flex-1 flex flex-col justify-center min-w-0">
-                  <span className="text-[#e07c30] text-[9px] font-black uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                    <Gauge size={10} /> Dynamic Speed
-                  </span>
-                  <h3 className="text-white text-[13px] font-extrabold tracking-tight leading-tight mb-1">
-                    Fast Recording
-                  </h3>
-                  <p className="text-white/50 text-[10px] leading-relaxed font-medium">
-                    Want a dynamic timelapse style? Toggle the <span className="text-white font-semibold">2x speed button</span> in camera tools to record fast-paced, high-energy clips!
-                  </p>
-                </div>
-              </motion.div>
-
-              {/* 4. HAND GESTURE PLAYBACK CONTROLS FEATURE */}
-              <motion.div
-                variants={itemVariants}
-                style={glassStyle(0.04, 16, 0.08)}
-                className="rounded-[24px] p-3.5 flex gap-3.5 border border-white/5 items-center relative overflow-hidden pointer-events-none select-none"
-              >
-                <div className="w-[110px] h-[110px] rounded-xl bg-[#08080c] border border-white/10 relative overflow-hidden flex-shrink-0 shadow-lg flex flex-col justify-between p-2 text-center">
-                  <div className="flex justify-center w-full z-10 mt-1">
-                    <div className="px-2 py-0.5 bg-black/60 border border-white/10 rounded-full flex items-center gap-1">
-                      <Pause size={6} className="text-white fill-white" />
-                      <span className="text-white text-[6px] font-black uppercase tracking-wider">PAUSED</span>
-                    </div>
-                  </div>
-
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="relative flex items-center justify-center">
-                      <motion.div
-                        animate={{ x: [-20, 20, -20] }}
-                        transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-                        className="w-5 h-5 rounded-full bg-white/20 border border-white/40 flex items-center justify-center shadow-lg relative"
-                      >
-                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                      </motion.div>
-                      
-                      <div className="absolute -left-7 text-white/30 text-[8px] font-bold tracking-tighter">&lt;&lt;</div>
-                      <div className="absolute -right-7 text-white/30 text-[8px] font-bold tracking-tighter">&gt;&gt;</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-auto w-full z-10 px-1">
-                    <div className="h-1 bg-white/20 rounded-full overflow-hidden w-full relative">
-                      <motion.div 
-                        animate={{ width: ["15%", "85%", "15%"] }}
-                        transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-                        className="absolute top-0 bottom-0 left-0 bg-[#e07c30] rounded-full"
-                      />
-                    </div>
-                    <span className="text-[5px] text-white/40 font-bold block mt-1 uppercase tracking-widest">Hold & Drag</span>
-                  </div>
-                </div>
-
-                <div className="flex-1 flex flex-col justify-center min-w-0">
-                  <span className="text-[#e07c30] text-[9px] font-black uppercase tracking-wider mb-0.5 flex items-center gap-1">
-                    <Rewind size={10} /> Scrubbing Gestures
-                  </span>
-                  <h3 className="text-white text-[13px] font-extrabold tracking-tight leading-tight mb-1">
-                    Gesture Playback
-                  </h3>
-                  <p className="text-white/50 text-[10px] leading-relaxed font-medium">
-                    Navigate seamlessly. <span className="text-white font-semibold">Press & hold</span> to pause, or <span className="text-white font-semibold">drag horizontally</span> to scrub backwards or forwards through any vlog!
-                  </p>
-                </div>
-              </motion.div>
             </motion.div>
-
           </div>
 
           {/* Action Button */}
@@ -410,7 +290,7 @@ export function NewFeaturesModal({ isOpen, onClose }: NewFeaturesModalProps) {
               style={{
                 background: ACCENT
               }}
-              className="w-full py-4 rounded-2xl text-black font-extrabold text-sm active:scale-[0.98] transition-all hover:opacity-95 flex items-center justify-center gap-1.5 cursor-pointer"
+              className="w-full py-4 rounded-2xl text-black font-extrabold text-sm active:scale-[0.98] transition-all hover:opacity-95 flex items-center justify-center gap-1.5 cursor-pointer shadow-lg"
             >
               <span>Explore New Features</span>
               <ChevronRight size={16} strokeWidth={2.5} />

@@ -71,6 +71,7 @@ model User {
   views                View[]
   unlockedAchievements UnlockedAchievement[]
   pokes                Poke[]
+  volunteers           Volunteer[]
   
   friendRequestsSent     Friendship[] @relation("FriendRequestsSent")
   friendRequestsReceived Friendship[] @relation("FriendRequestsReceived")
@@ -104,6 +105,7 @@ model Group {
   members          GroupMember[]
   dailyAssignments DailyAssignment[]
   clips            Clip[]
+  volunteers       Volunteer[]
 
   @@map("groups")
 }
@@ -134,6 +136,7 @@ model DailyAssignment {
   userId        String
   date          DateTime @db.Date
   status        String   @default("active") 
+  isVolunteer   Boolean  @default(false)
   recapNotified Boolean  @default(false)
   createdAt     DateTime @default(now())
 
@@ -147,6 +150,23 @@ model DailyAssignment {
   @@index([userId])
   @@index([date])
   @@map("daily_assignments")
+}
+
+model Volunteer {
+  id         String   @id @default(cuid())
+  groupId    String
+  userId     String
+  targetDate DateTime @db.Date
+  createdAt  DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId, targetDate])
+  @@index([groupId])
+  @@index([userId])
+  @@index([targetDate])
+  @@map("volunteers")
 }
 
 model Poke {

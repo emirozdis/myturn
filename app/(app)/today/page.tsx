@@ -1,4 +1,3 @@
-// ./app/(app)/today/page.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -60,6 +59,12 @@ export default function TodayPage() {
     handlePhotoResponseUpload,
     allVideosViewed,
     isLastClipOverall,
+    hasVolunteeredForTomorrow,
+    canVolunteer,
+    volunteerEligibilityReason,
+    isVolunteering,
+    volunteerError,
+    handleToggleVolunteer,
   } = useTodayPage();
 
   if (initialLoad && !assignment && !isSleepMode) {
@@ -126,6 +131,12 @@ export default function TodayPage() {
         onPhotoResponseUpload={handlePhotoResponseUpload}
         allVideosViewed={allVideosViewed}
         isLastClipOverall={isLastClipOverall}
+        hasVolunteeredForTomorrow={hasVolunteeredForTomorrow}
+        canVolunteer={canVolunteer}
+        volunteerEligibilityReason={volunteerEligibilityReason}
+        isVolunteering={isVolunteering}
+        volunteerError={volunteerError}
+        onToggleVolunteer={handleToggleVolunteer}
       />
 
       <TodayBottomPanel

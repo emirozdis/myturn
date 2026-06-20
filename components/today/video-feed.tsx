@@ -1,4 +1,3 @@
-// ./components/today/video-feed.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -6,7 +5,7 @@ import { ACCENT } from "@/lib/theme";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MapPin, Heart, MessageCircle, Volume2, VolumeX, Maximize, Minimize, Camera, Loader2, Rewind, FastForward, Pause
+  MapPin, Heart, MessageCircle, Volume2, VolumeX, Maximize, Minimize, Camera, Loader2, Rewind, FastForward, Pause, HeartHandshake
 } from "lucide-react";
 import { Avatar } from "@/components/shared/avatar";
 import { CommentsSheet } from "./comments-sheet";
@@ -82,6 +81,12 @@ type VideoFeedProps = {
   onPhotoResponseUpload: (blob: Blob | File) => void;
   allVideosViewed?: boolean;
   isLastClipOverall?: boolean;
+  hasVolunteeredForTomorrow: boolean;
+  canVolunteer: boolean;
+  volunteerEligibilityReason: string;
+  isVolunteering: boolean;
+  volunteerError: string;
+  onToggleVolunteer: () => void;
 };
 
 export function VideoFeed({
@@ -118,7 +123,6 @@ export function VideoFeed({
   onNewCommentChange,
   onSendComment,
   onDeleteComment,
-  onReportComment,
   onPoke,
   isSleepMode,
   hasPostedInCurrentSlot,
@@ -129,6 +133,12 @@ export function VideoFeed({
   onPhotoResponseUpload,
   allVideosViewed = false,
   isLastClipOverall = false,
+  hasVolunteeredForTomorrow = false,
+  canVolunteer = false,
+  volunteerEligibilityReason = "",
+  isVolunteering = false,
+  volunteerError = "",
+  onToggleVolunteer,
 }: VideoFeedProps) {
   const router = useRouter();
   const [isMuted, setIsMuted] = useState(true);
@@ -376,14 +386,91 @@ export function VideoFeed({
             <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
               Quiet hours are active. Pokes and rolls are paused. Next vlogger selection rolls at 9:00 AM local time.
             </p>
-            <div className="flex flex-col gap-2.5 w-full">
+            <div className="flex flex-col gap-3.5 w-full mt-2">
               <button
                 onClick={(e) => { e.stopPropagation(); router.push("/streaks"); }}
                 style={glassStyle(0.08, 16, 0.12)}
-                className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center pointer-events-auto"
+                className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center pointer-events-auto border border-white/10"
               >
                 Watch Last Completed Vlog
               </button>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleVolunteer(); }}
+                disabled={isVolunteering || !canVolunteer}
+                className={`w-full py-3.5 font-extrabold rounded-2xl text-xs flex items-center justify-center pointer-events-auto transition-all duration-300 ease-out active:translate-y-[2px] ${
+                  hasVolunteeredForTomorrow
+                    ? "bg-gradient-to-b from-[#f05a7e] to-[#e84365] text-white border-b-[4px] border-[#a01a35] active:border-b-[2px] hover:brightness-110 shadow-[0_4px_12px_rgba(232,67,101,0.25)]"
+                    : !canVolunteer
+                    ? "bg-[#111112] text-white/40 border border-white/5 cursor-not-allowed"
+                    : "bg-[#222225] hover:bg-[#2b2b2f] text-white border-b-[4px] border-[#111112] active:border-b-[2px]"
+                }`}
+              >
+                <AnimatePresence mode="popLayout" initial={false}>
+                  {isVolunteering ? (
+                    <motion.div
+                      key="loading"
+                      initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
+                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                      className="flex items-center gap-2"
+                    >
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Updating...</span>
+                    </motion.div>
+                  ) : hasVolunteeredForTomorrow ? (
+                    <motion.div
+                      key="volunteered"
+                      initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
+                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                      className="flex items-center gap-2"
+                    >
+                      <HeartHandshake size={16} />
+                      <span>Volunteered for Tomorrow</span>
+                    </motion.div>
+                  ) : !canVolunteer ? (
+                    <motion.div
+                      key="ineligible"
+                      initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
+                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                      className="flex items-center gap-2"
+                    >
+                      <HeartHandshake size={16} className="opacity-50" />
+                      <span>{volunteerEligibilityReason || "Not Eligible to Volunteer"}</span>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="unvolunteered"
+                      initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
+                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                      className="flex items-center gap-2"
+                    >
+                      <HeartHandshake size={16} />
+                      <span>Volunteer for Tomorrow's Vlog</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </button>
+
+              <AnimatePresence>
+                {volunteerError && (
+                  <motion.span
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="text-red-400 text-[10px] font-semibold mt-0.5"
+                  >
+                    {volunteerError}
+                  </motion.span>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </div>
@@ -459,7 +546,7 @@ export function VideoFeed({
                 }
               } catch (err) { }
             }}
-            onEnded={(e) => {
+            onEnded={(e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
               if (shouldLoop) {
                 e.currentTarget.currentTime = 0;
                 e.currentTarget.play().catch(() => { });

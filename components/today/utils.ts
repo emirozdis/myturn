@@ -1,4 +1,3 @@
-// ./components/today/utils.ts
 export function getSlotForClip(recordedAt: Date | string, timezone?: string): number {
   const date = new Date(recordedAt);
   let hours = date.getHours();
@@ -43,6 +42,9 @@ export function getCachedToday() {
             assignment: parsed.assignment,
             clips: parsed.clips,
             isSleepMode: parsed.isSleepMode,
+            canVolunteer: parsed.canVolunteer,
+            volunteerEligibilityReason: parsed.volunteerEligibilityReason,
+            hasVolunteeredForTomorrow: parsed.hasVolunteeredForTomorrow,
             resolvedClipUrls: {}, // Forces silent background re-fetch of fresh tokens
             resolvedClipThumbnails: {},
             resolvedClipBlurThumbnails: {},

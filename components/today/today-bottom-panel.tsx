@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Clock, User } from "lucide-react";
+import { Sparkles, Clock, User, HeartHandshake } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
 import { CountdownTimer } from "@/components/shared/countdown-timer";
 import { Avatar } from "@/components/shared/avatar";
@@ -54,9 +54,16 @@ export function TodayBottomPanel({
           <div className="flex items-center gap-2.5">
             <Avatar src={assignment?.user?.image} name={assignment?.user?.name} size={44} />
             <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-white font-bold text-[14px] leading-tight truncate">
-                {assignment?.user?.name || "Unassigned"}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-white font-bold text-[14px] leading-tight truncate">
+                  {assignment?.user?.name || "Unassigned"}
+                </span>
+                {assignment?.isVolunteer && (
+                  <span className="bg-gradient-to-b from-[#f05a7e] to-[#e84365] border-b-[2px] border-[#a01a35] text-white rounded-full px-1.5 py-0.5 flex items-center flex-shrink-0" title="Volunteered">
+                    <HeartHandshake size={10} fill="white" />
+                  </span>
+                )}
+              </div>
               <span className="text-white/40 text-[10px] truncate">
                 {assignment?.user?.handle ? `@${assignment.user.handle}` : ""}
               </span>

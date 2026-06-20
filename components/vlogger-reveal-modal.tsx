@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Flame, ChevronLeft, Share } from "lucide-react";
+import { X, Flame, ChevronLeft, Share, HeartHandshake } from "lucide-react";
 import { getGroupDetails } from "@/actions/group";
 import { Avatar } from "@/components/shared/avatar";
 import { glassStyle } from "@/components/shared/glass-style";
@@ -165,32 +165,19 @@ export function VloggerRevealModal({
         if (accelFrames >= ACCEL_FRAMES) {
           accelerating = false;
 
-          // ── One-time angular correction ──────────────────────────────────
-          // At peak speed the geometric series  Σ speed·DECEL^k = speed/(1−DECEL)
-          // tells us exactly where the wheel will stop.  We compute the diff
-          // against the winner's slot and nudge the kick-off decel speed so it
-          // lands there.
-          //
-          // Key identity:  norm = (−angle % 360 + 360) % 360
-          //   → to get norm == targetNorm we need  finalAngle ≡ −targetNorm (mod 360)
-          //   → required adjustment = projNorm − targetNorm  (NOT the other way around)
           if (!correctionApplied) {
             correctionApplied = true;
 
-            const remaining     = speedRef.current / (1 - DECEL); // total degrees left, incl. this frame
+            const remaining     = speedRef.current / (1 - DECEL);
             const projectedFinal = orbitAngleRef.current + remaining;
             const projNorm      = ((-projectedFinal % 360) + 360) % 360;
             const targetNorm    = ((safeWinnerIdx * angleStep) % 360 + 360) % 360;
 
-            // How many extra degrees must we spin to land on the winner?
-            // Sign: projNorm − targetNorm  (derived from the norm identity above).
             let diff = projNorm - targetNorm;
             if (diff >  180) diff -= 360;
             if (diff < -180) diff += 360;
-            // Always spin forward; if diff is negative we add a full revolution.
             const adjustment  = diff >= 0 ? diff : diff + 360;
             const newRemaining = remaining + adjustment;
-            // Back-solve the geometric series for the new kick-off speed.
             speedRef.current = newRemaining * (1 - DECEL);
           }
         }
@@ -208,8 +195,6 @@ export function VloggerRevealModal({
         rafRef.current = requestAnimationFrame(tick);
       } else {
         rafRef.current = null;
-        // Use the guaranteed winner index, not the physics-derived one,
-        // to guard against any residual floating-point drift.
         const hl = safeWinnerIdx;
         setPositions(
           Array.from({ length: count }).map((_, i) => {
@@ -513,13 +498,23 @@ export function VloggerRevealModal({
                   transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
                   className="absolute inset-0 flex flex-col items-center justify-start text-center z-20 pt-[84px]"
                 >
-                  <div className="mb-4">
+                  <div className="mb-4 flex flex-col items-center gap-2">
                     <span
                       style={glassStyle(0.04, 16, 0.08)}
                       className="px-4 py-1.5 rounded-full text-white text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 backdrop-blur-md"
                     >
                       🔥 TODAY'S VLOGGER
                     </span>
+                    {assignment.isVolunteer && (
+                      <motion.span
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.3 }}
+                        className="px-3 py-1 bg-gradient-to-b from-[#f05a7e] to-[#e84365] border-b-[2px] border-[#a01a35] rounded-full text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-[0_2px_8px_rgba(232,67,101,0.25)]"
+                      >
+                        <HeartHandshake size={12} fill="white" /> Volunteered
+                      </motion.span>
+                    )}
                   </div>
                   <h1 className="text-[38px] font-black text-white mb-1 leading-none tracking-tight drop-shadow-md">
                     {assignment.user?.name}
