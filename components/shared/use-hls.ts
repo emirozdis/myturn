@@ -8,7 +8,11 @@ import Hls from "hls.js";
  * A robust wrapper hook that attaches `hls.js` to a provided video element.
  * Configured with cross-origin credentials to pass Edge-authorized Signed Cookies.
  */
-export function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, src: string | null) {
+export function useHls(
+  videoRef: React.RefObject<HTMLVideoElement | null>, 
+  src: string | null, 
+  autoplay: boolean = true
+) {
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !src) return;
@@ -29,16 +33,16 @@ export function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, src: 
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          video.play().catch(() => {});
+          if (autoplay) video.play().catch(() => {});
         });
       } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
         // Native fallback (iOS Safari handles cross-origin cookies natively if SameSite=None is set)
         video.src = src;
-        video.play().catch(() => {});
+        if (autoplay) video.play().catch(() => {});
       }
     } else {
       video.src = src;
-      video.play().catch(() => {});
+      if (autoplay) video.play().catch(() => {});
     }
 
     return () => {
@@ -46,5 +50,5 @@ export function useHls(videoRef: React.RefObject<HTMLVideoElement | null>, src: 
         hls.destroy();
       }
     };
-  }, [src, videoRef]);
+  }, [src, videoRef, autoplay]);
 }

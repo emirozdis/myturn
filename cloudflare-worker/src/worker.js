@@ -161,32 +161,12 @@ export default {
       headers.set("Content-Type", contentTypeMap[ext]);
     }
 
-    // 8. Dynamic Playlist Rewriting
-    // If requesting HLS (.m3u8) files, we rewrite them on the fly to append the verified 
-    // query token to all relative chunk and playlist paths.
+    // 8. Dynamic Playlist Caching Constraints
     if (cleanPath.endsWith(".m3u8")) {
+      // Small index files are re-fetched safely
       headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
-      
-      if (tokenToVerify) {
-        const text = await object.text();
-        const lines = text.split("\n");
-        const rewrittenLines = lines.map((line) => {
-          const trimmed = line.trim();
-          // Rewrite URIs (lines not starting with '#' and not empty)
-          if (trimmed && !trimmed.startsWith("#")) {
-            const separator = trimmed.includes("?") ? "&" : "?";
-            return `${trimmed}${separator}token=${encodeURIComponent(tokenToVerify)}`;
-          }
-          return line;
-        });
-        
-        const rewrittenText = rewrittenLines.join("\n");
-        const encodedText = new TextEncoder().encode(rewrittenText);
-        
-        headers.set("Content-Length", encodedText.length.toString());
-        return new Response(encodedText, { status, headers });
-      }
     } else {
+      // Clean static segment .ts assets are cached aggressively by the browser
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
     }
 

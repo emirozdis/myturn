@@ -292,6 +292,18 @@ export function useTodayPage() {
   const activeClipThumbnailUrl = activeClip ? resolvedClipThumbnails[activeClip.id] : null;
   const activeClipThumbnailBlurUrl = activeClip ? resolvedClipBlurThumbnails[activeClip.id] : null;
   
+  // Calculate the next chronologically consecutive clip to enable background prefetching
+  const nextClipOverall = useMemo(() => {
+    if (clips.length === 0 || !activeClip) return null;
+    const currentIndex = clips.findIndex((c) => c.id === activeClip.id);
+    if (currentIndex !== -1 && currentIndex < clips.length - 1) {
+      return clips[currentIndex + 1];
+    }
+    return null;
+  }, [clips, activeClip]);
+
+  const nextClipUrl = nextClipOverall ? resolvedClipUrls[nextClipOverall.id] : null;
+
   const groupMembers = assignment?.group?.members?.map((m: any) => m.user) || [];
   const uploadedSlots = clips.map((clip) => getSlotForClip(clip.recordedAt, timezone));
   const isCurrentUserVlogger = assignment?.userId === session?.user?.id;
@@ -554,6 +566,7 @@ export function useTodayPage() {
     currentClipSubIndex,
     activeClip,
     activeClipUrl,
+    nextClipUrl,
     activeClipThumbnailUrl,
     activeClipThumbnailBlurUrl,
     groupMembers,

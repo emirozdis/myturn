@@ -16,6 +16,27 @@ import { useHls } from "@/components/shared/use-hls";
 import { PhotoResponsesOverlay } from "@/components/shared/photo-responses-overlay";
 import { PhotoCaptureModal } from "./photo-capture-modal";
 
+// Isolated component used to cleanly mount `useHls` while hiding it securely from normal rendering boundaries.
+// `useHls` natively kicks off preload network requests simply by binding the src. 
+function PrefetchVideo({ src }: { src: string | null }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  
+  // Set autoplay to false to ensure it strictly buffers the stream into the cache, rather than aggressively running CPU cycles to decode/playback.
+  useHls(ref, src, false);
+  
+  if (!src) return null;
+  
+  return (
+    <video
+      ref={ref}
+      muted
+      playsInline
+      preload="auto"
+      className="absolute opacity-0 pointer-events-none w-1 h-1 -z-10"
+    />
+  );
+}
+
 type VideoFeedProps = {
   isVideoExpanded: boolean;
   onToggleExpand: () => void;
@@ -26,6 +47,7 @@ type VideoFeedProps = {
   onPrevSubClip: () => void;
   activeClip: any;
   activeClipUrl: string | null;
+  nextClipUrl: string | null;
   activeClipThumbnailUrl: string | null;
   activeClipThumbnailBlurUrl: string | null;
   groupMembers: any[];
@@ -72,6 +94,7 @@ export function VideoFeed({
   onPrevSubClip,
   activeClip,
   activeClipUrl,
+  nextClipUrl,
   activeClipThumbnailUrl,
   activeClipThumbnailBlurUrl,
   groupMembers,
@@ -325,6 +348,9 @@ export function VideoFeed({
         }}
         className="absolute inset-0 rounded-3xl pointer-events-none z-10"
       />
+
+      {/* Automatically prefetch the initial blocks of the next active consecutive clip */}
+      <PrefetchVideo src={nextClipUrl} />
 
       {isSleepMode && !activeClipUrl ? (
         <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">

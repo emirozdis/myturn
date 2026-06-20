@@ -21,6 +21,7 @@ export default function TodayPage() {
     currentClipSubIndex,
     activeClip,
     activeClipUrl,
+    nextClipUrl,
     activeClipThumbnailUrl,
     activeClipThumbnailBlurUrl,
     groupMembers,
@@ -90,6 +91,7 @@ export default function TodayPage() {
         onPrevSubClip={handlePrevSubClip}
         activeClip={activeClip}
         activeClipUrl={activeClipUrl}
+        nextClipUrl={nextClipUrl}
         activeClipThumbnailUrl={activeClipThumbnailUrl}
         activeClipThumbnailBlurUrl={activeClipThumbnailBlurUrl}
         groupMembers={groupMembers}
