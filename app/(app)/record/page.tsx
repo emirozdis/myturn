@@ -488,7 +488,7 @@ export default function RecordPage() {
         location: locationName,
         caption,
         duration: finalDuration,
-        metadata: JSON.stringify({ speedSegments })
+        metadata: JSON.stringify({ speedSegments, facingMode: recordedFacingMode })
       });
       
       if (clipRes.error) throw new Error(clipRes.error);

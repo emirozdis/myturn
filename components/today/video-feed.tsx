@@ -14,6 +14,7 @@ import { ViewsSheet } from "./views-sheet";
 import { glassStyle } from "../shared/glass-style";
 import { useHls } from "@/components/shared/use-hls";
 import { PhotoResponsesOverlay } from "@/components/shared/photo-responses-overlay";
+import { PhotoCaptureModal } from "./photo-capture-modal";
 
 type VideoFeedProps = {
   isVideoExpanded: boolean;
@@ -34,6 +35,8 @@ type VideoFeedProps = {
   commentList: any[];
   isCommentsOpen: boolean;
   isViewsOpen: boolean;
+  isPhotoCaptureOpen: boolean;
+  setIsPhotoCaptureOpen: (val: boolean) => void;
   newComment: string;
   poking: boolean;
   pokeCooldown: number;
@@ -54,7 +57,7 @@ type VideoFeedProps = {
   hasResponded: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onPhotoResponseClick: (e: React.MouseEvent) => void;
-  onPhotoResponseUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onPhotoResponseUpload: (blob: Blob | File) => void;
   allVideosViewed?: boolean;
   isLastClipOverall?: boolean;
 };
@@ -78,6 +81,8 @@ export function VideoFeed({
   commentList,
   isCommentsOpen,
   isViewsOpen,
+  isPhotoCaptureOpen,
+  setIsPhotoCaptureOpen,
   newComment,
   poking,
   pokeCooldown,
@@ -121,6 +126,15 @@ export function VideoFeed({
   const hasMovedRef = useRef(false);
   const lastSeekTimeRef = useRef(0);
 
+  const isFrontFacing = activeClip?.metadata ? (() => {
+    try {
+      const meta = JSON.parse(activeClip.metadata);
+      return meta.facingMode !== "environment";
+    } catch {
+      return true;
+    }
+  })() : true;
+
   useHls(videoRef, activeClipUrl);
 
   useEffect(() => {
@@ -138,7 +152,8 @@ export function VideoFeed({
     (v: any) => v.user?.id !== assignment?.userId && v.user?.id !== activeClip?.userId
   ) || [];
 
-  const shouldLoop = activeSlotClips.length <= 1 || (allVideosViewed && isLastClipOverall);
+  // Loop only if it's the absolute last clip in the entire feed for the day
+  const shouldLoop = isLastClipOverall;
 
   // Unified Pointer Event Controller
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -147,9 +162,9 @@ export function VideoFeed({
 
     // Safety gate filters input nodes, buttons, or overlay selectors to prevent gesture collisions
     if (
-      target.closest('button') || 
-      target.closest('input') || 
-      target.closest('textarea') || 
+      target.closest('button') ||
+      target.closest('input') ||
+      target.closest('textarea') ||
       (target.closest('.pointer-events-auto') && !target.classList.contains('touch-pan-y'))
     ) {
       return;
@@ -198,11 +213,11 @@ export function VideoFeed({
     if (isHoldingRef.current && videoRef.current) {
       e.preventDefault();
       const dragThreshold = 15;
-      
+
       if (Math.abs(diffX) > dragThreshold) {
         const direction = diffX > 0 ? 1 : -1;
         const speedMultiplier = Math.min(4, 1 + Math.abs(diffX) / 80);
-        
+
         if (direction === 1) {
           setGesture("fastforward");
           setSeekIndicatorText(`FF >> ${speedMultiplier.toFixed(1)}x`);
@@ -217,8 +232,8 @@ export function VideoFeed({
           const duration = videoRef.current.duration || 15;
           const rect = e.currentTarget.getBoundingClientRect();
           const ratio = diffX / (rect.width || 340);
-          
-          const seekDelta = ratio * duration * 0.45; 
+
+          const seekDelta = ratio * duration * 0.45;
           let newTime = videoRef.current.currentTime + seekDelta;
           newTime = Math.max(0, Math.min(duration, newTime));
           videoRef.current.currentTime = newTime;
@@ -241,7 +256,7 @@ export function VideoFeed({
 
     try {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch (err) {}
+    } catch (err) { }
 
     pointerIdRef.current = null;
 
@@ -255,7 +270,7 @@ export function VideoFeed({
     if (isHoldingRef.current) {
       // Release holding -> Resume playback
       if (videoRef.current) {
-        videoRef.current.play().catch(() => {});
+        videoRef.current.play().catch(() => { });
       }
       setGesture("none");
       setSeekProgress(null);
@@ -308,15 +323,15 @@ export function VideoFeed({
 
       {isSleepMode && !activeClipUrl ? (
         <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
-          <div 
+          <div
             className="absolute inset-0 bg-cover bg-center z-0"
             style={{ backgroundImage: "url('/assets/images/resting.jpeg')" }}
           />
 
           <div className="absolute top-0 left-0 right-0 h-[60%] overflow-hidden z-10 pointer-events-none">
-            <div 
+            <div
               className="absolute inset-0 bg-cover bg-center filter blur-[28px] scale-[1.08] origin-top"
-              style={{ 
+              style={{
                 backgroundImage: "url('/assets/images/resting.jpeg')",
                 maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
                 WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
@@ -352,9 +367,9 @@ export function VideoFeed({
                 return (
                   <div key={c.id || idx} className="h-[3px] flex-1 rounded-full overflow-hidden bg-white/20 shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
                     {isActive ? (
-                      <div 
+                      <div
                         className="h-full bg-white rounded-full"
-                        style={{ 
+                        style={{
                           width: `${videoProgress}%`,
                           transition: gesture !== "none" ? "none" : "width 0.1s linear"
                         }}
@@ -382,15 +397,24 @@ export function VideoFeed({
             key={activeClip.id}
             ref={videoRef}
             autoPlay
-            loop={shouldLoop}
+            loop={shouldLoop}          // ← add this
             muted={isMuted}
             playsInline
             onTimeUpdate={(e) => {
               if (e.currentTarget.currentTime > 0) setIsVideoLoaded(true);
               const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
               if (!isNaN(progress)) setVideoProgress(progress);
-              
-              // Handle active localized 2x speed rendering segments safely evaluating the stream
+
+              // HLS-safe looping: seek back before the stream ends
+              if (shouldLoop && !isNaN(e.currentTarget.duration)) {
+                const remaining = e.currentTarget.duration - e.currentTarget.currentTime;
+                if (remaining < 0.3) {
+                  e.currentTarget.currentTime = 0;
+                  e.currentTarget.play().catch(() => { });
+                }
+              }
+
+              // Speed segments
               try {
                 const metadata = activeClip.metadata ? JSON.parse(activeClip.metadata) : null;
                 const segs = metadata?.speedSegments;
@@ -402,12 +426,17 @@ export function VideoFeed({
                     videoRef.current.playbackRate = targetSpeed;
                   }
                 }
-              } catch (err) {}
+              } catch (err) { }
             }}
-            onEnded={() => {
-              onNextSubClip();
+            onEnded={(e) => {
+              if (shouldLoop) {
+                e.currentTarget.currentTime = 0;
+                e.currentTarget.play().catch(() => { });
+              } else {
+                onNextSubClip();
+              }
             }}
-            className="absolute inset-0 w-full h-full object-cover z-0"
+            className={`absolute inset-0 w-full h-full object-cover z-0 ${isFrontFacing ? "-scale-x-100" : ""}`}
           />
           <AnimatePresence>
             {!isVideoLoaded && activeClipThumbnailBlurUrl && (
@@ -417,22 +446,22 @@ export function VideoFeed({
                 transition={{ duration: 0.3 }}
                 src={activeClipThumbnailBlurUrl}
                 alt="Loading vlog..."
-                className="absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none"
+                className={`absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none ${isFrontFacing ? "-scale-x-100" : ""}`}
               />
             )}
           </AnimatePresence>
         </div>
       ) : (
         <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
-          <div 
+          <div
             className="absolute inset-0 bg-cover bg-center z-0"
             style={{ backgroundImage: "url('/assets/images/no-clip-yet.jpeg')" }}
           />
 
           <div className="absolute top-0 left-0 right-0 h-[60%] overflow-hidden z-10 pointer-events-none">
-            <div 
+            <div
               className="absolute inset-0 bg-cover bg-center filter blur-[28px] scale-[1.08] origin-top"
-              style={{ 
+              style={{
                 backgroundImage: "url('/assets/images/no-clip-yet.jpeg')",
                 maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
                 WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
@@ -462,7 +491,7 @@ export function VideoFeed({
                   Waiting for {assignment?.user?.name || "Vlogger"}
                 </h2>
                 <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
-                  {assignment?.clips?.length > 0 
+                  {assignment?.clips?.length > 0
                     ? "No clips have been shared in this time period yet. Send them a poke to let them know you're waiting!"
                     : "No clips have been shared today yet. Send them a poke to let them know it's their turn!"}
                 </p>
@@ -500,21 +529,21 @@ export function VideoFeed({
             transition={{ duration: 0.15 }}
             className="absolute bottom-16 left-1/2 z-40 pointer-events-none"
           >
-            <div 
+            <div
               style={glassStyle(0.3, 8, 0.25)}
               className="h-7 px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5 bg-black/75 border border-white/10"
             >
               {gesture === "paused" && <Pause className="text-white fill-white" size={10} />}
               {gesture === "rewind" && <Rewind className="text-[#e07c30] fill-[#e07c30]" size={10} />}
               {gesture === "fastforward" && <FastForward className="text-[#e07c30] fill-[#e07c30]" size={10} />}
-              
+
               <span className="text-white font-extrabold text-[9px] tracking-wider uppercase leading-none">
                 {gesture === "paused" ? "Paused" : seekIndicatorText.replace("FF >> ", ">> ").replace("RW << ", "<< ")}
               </span>
 
               {seekProgress !== null && (
                 <div className="w-8 h-[2px] bg-white/20 rounded-full overflow-hidden ml-1 relative">
-                  <div 
+                  <div
                     className="h-full bg-[#e07c30] rounded-full"
                     style={{ width: `${seekProgress}%` }}
                   />
@@ -528,8 +557,8 @@ export function VideoFeed({
       {!(isSleepMode && !activeClipUrl) && (
         <>
           {activeClipUrl && (
-            <PhotoResponsesOverlay 
-              responses={activeClip.photoResponses} 
+            <PhotoResponsesOverlay
+              responses={activeClip.photoResponses}
               videoProgress={videoProgress}
             />
           )}
@@ -603,14 +632,6 @@ export function VideoFeed({
                     {uploadingPhoto ? <Loader2 size={16} className="text-white/95 animate-spin" /> : <Camera size={16} className="text-white/95" />}
                     <span className="text-[11px] font-bold text-white/95">{activeClip?.photoResponses?.length || 0}</span>
                   </button>
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    className="hidden" 
-                    ref={fileInputRef} 
-                    onChange={onPhotoResponseUpload} 
-                    onClick={(e) => e.stopPropagation()}
-                  />
                   <span className="w-[1px] h-3.5 bg-white/20" />
                   <button onClick={(e) => { e.stopPropagation(); onToggleExpand(); }} className="flex items-center gap-1 cursor-pointer hover:scale-110 transition-transform">
                     {isVideoExpanded ? (
@@ -643,6 +664,18 @@ export function VideoFeed({
         onClose={onCloseViews}
         views={displayViews}
       />
+
+      <AnimatePresence>
+        {isPhotoCaptureOpen && (
+          <PhotoCaptureModal
+            isOpen={isPhotoCaptureOpen}
+            onClose={() => setIsPhotoCaptureOpen(false)}
+            onUpload={onPhotoResponseUpload}
+            uploading={uploadingPhoto}
+          />
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

@@ -39,6 +39,24 @@ export function CompilationReadyModal({
   const currentClip = compilationClips[currentClipIndex];
   const activeUrl = (!disableAbr && currentClip?.hlsUrl) ? currentClip.hlsUrl : currentClip?.videoUrl;
 
+  const isFrontFacing = currentClip?.metadata ? (() => {
+    try {
+      const meta = JSON.parse(currentClip.metadata);
+      return meta.facingMode !== "environment";
+    } catch {
+      return true;
+    }
+  })() : true;
+
+  const firstClipFrontFacing = compilationClips[0]?.metadata ? (() => {
+    try {
+      const meta = JSON.parse(compilationClips[0].metadata);
+      return meta.facingMode !== "environment";
+    } catch {
+      return true;
+    }
+  })() : true;
+
   useHls(videoRef, isPlayingCompilation ? activeUrl : null);
 
   // Reset local state on clip transitions
@@ -159,12 +177,14 @@ export function CompilationReadyModal({
               style={glassStyle(0.04, 20, 0.12)}
               className="relative w-full max-w-[200px] aspect-[3/4] mx-auto rounded-[28px] overflow-hidden mb-6 shadow-2xl group cursor-pointer border border-white/10 flex flex-col justify-between p-3.5"
             >
-              {/* Vertical cover image */}
-              <img
-                src={compilationClips[0]?.thumbnailUrl || "/image1.png"}
-                alt="Vlog Cover"
-                className="absolute inset-0 w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
-              />
+              {/* Vertical cover image with custom scaleX flip wrapper */}
+              <div className="absolute inset-0 overflow-hidden rounded-[28px]" style={{ transform: firstClipFrontFacing ? "scaleX(-1)" : "none" }}>
+                <img
+                  src={compilationClips[0]?.thumbnailUrl || "/image1.png"}
+                  alt="Vlog Cover"
+                  className="w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
+                />
+              </div>
               <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-black/85 pointer-events-none z-0" />
               
               {/* Card Header (Z-Indexed over gradient) */}
@@ -297,7 +317,7 @@ export function CompilationReadyModal({
                   onClose();
                 }
               }}
-              className="absolute inset-0 w-full h-full object-cover z-0"
+              className={`absolute inset-0 w-full h-full object-cover z-0 ${isFrontFacing ? "-scale-x-100" : ""}`}
             />
             <AnimatePresence>
               {!isVideoLoaded && compilationClips[currentClipIndex]?.thumbnailBlurUrl && (
@@ -307,7 +327,7 @@ export function CompilationReadyModal({
                   transition={{ duration: 0.3 }}
                   src={compilationClips[currentClipIndex].thumbnailBlurUrl}
                   alt="Loading clip..."
-                  className="absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none"
+                  className={`absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none ${isFrontFacing ? "-scale-x-100" : ""}`}
                 />
               )}
             </AnimatePresence>

@@ -132,6 +132,7 @@ export function useTodayPage() {
   const [initialLoad, setInitialLoad] = useState(true);
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [isViewsOpen, setIsViewsOpen] = useState(false);
+  const [isPhotoCaptureOpen, setIsPhotoCaptureOpen] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [commentList, setCommentList] = useState<any[]>([]);
   const [poking, setPoking] = useState(false);
@@ -344,7 +345,6 @@ export function useTodayPage() {
     }
   }, [clips, currentHourIndex, currentClipSubIndex, timezone]);
 
-  // Real-time viewed clip matrices
   const viewed = getViewedClips();
   const allVideosViewed = clips.length > 0 && clips.every((c) => !!viewed[c.id]);
   const isLastClipOverall = clips.length > 0 && activeClip?.id === clips[clips.length - 1].id;
@@ -471,20 +471,18 @@ export function useTodayPage() {
   };
 
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const hasResponded = activeClip?.photoResponses?.some((pr: any) => pr.userId === session?.user?.id);
 
   const handlePhotoResponseClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!hasResponded && !uploadingPhoto) {
-      fileInputRef.current?.click();
+      setIsPhotoCaptureOpen(true);
     }
   };
 
-  const handlePhotoResponseUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handlePhotoResponseUpload = async (fileOrBlob: File | Blob) => {
+    if (!fileOrBlob) return;
 
     if (!activeClip || !assignment?.groupId) {
       showToast("Missing clip or group context", "error");
@@ -493,11 +491,11 @@ export function useTodayPage() {
     
     setUploadingPhoto(true);
     try {
-      const ext = file.name.split('.').pop() || "jpg";
+      const ext = "jpg";
       const path = `${assignment.groupId}/${assignment.id}/responses/${Date.now()}.${ext}`;
       
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileOrBlob, `response.${ext}`);
       formData.append("bucket", "vlogs");
       formData.append("path", path);
 
@@ -515,13 +513,30 @@ export function useTodayPage() {
         showToast(res.error, "error");
       } else {
         showToast("Photo response added!", "success");
+        
+        // Optimistic UI Append - Inject local Blob immediately into the active feed
+        if (res.photoResponse) {
+          const optimisticResponse = {
+            ...res.photoResponse,
+            imageUrl: URL.createObjectURL(fileOrBlob),
+          };
+          setClips((prev) => 
+            prev.map((c) => 
+              c.id === activeClip.id 
+                ? { ...c, photoResponses: [...(c.photoResponses || []), optimisticResponse] }
+                : c
+            )
+          );
+        }
+
+        // Silent background sync
         window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
       }
     } catch (err) {
       showToast("Failed to upload photo", "error");
     } finally {
       setUploadingPhoto(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setIsPhotoCaptureOpen(false);
     }
   };
 
@@ -547,6 +562,8 @@ export function useTodayPage() {
     setIsCommentsOpen,
     isViewsOpen,
     setIsViewsOpen,
+    isPhotoCaptureOpen,
+    setIsPhotoCaptureOpen,
     newComment,
     setNewComment,
     commentList,
@@ -568,7 +585,7 @@ export function useTodayPage() {
     hasPostedInCurrentSlot,
     uploadingPhoto,
     hasResponded,
-    fileInputRef,
+    fileInputRef: { current: null }, // Nullified as we use custom WebRTC
     handlePhotoResponseClick,
     handlePhotoResponseUpload,
     allVideosViewed,

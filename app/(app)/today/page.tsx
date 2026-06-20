@@ -32,6 +32,8 @@ export default function TodayPage() {
     setIsCommentsOpen,
     isViewsOpen,
     setIsViewsOpen,
+    isPhotoCaptureOpen,
+    setIsPhotoCaptureOpen,
     newComment,
     setNewComment,
     commentList,
@@ -55,6 +57,8 @@ export default function TodayPage() {
     fileInputRef,
     handlePhotoResponseClick,
     handlePhotoResponseUpload,
+    allVideosViewed,
+    isLastClipOverall,
   } = useTodayPage();
 
   if (initialLoad && !assignment && !isSleepMode) {
@@ -95,6 +99,8 @@ export default function TodayPage() {
         commentList={commentList}
         isCommentsOpen={isCommentsOpen}
         isViewsOpen={isViewsOpen}
+        isPhotoCaptureOpen={isPhotoCaptureOpen}
+        setIsPhotoCaptureOpen={setIsPhotoCaptureOpen}
         newComment={newComment}
         poking={poking}
         pokeCooldown={pokeCooldown}
@@ -116,6 +122,8 @@ export default function TodayPage() {
         fileInputRef={fileInputRef}
         onPhotoResponseClick={handlePhotoResponseClick}
         onPhotoResponseUpload={handlePhotoResponseUpload}
+        allVideosViewed={allVideosViewed}
+        isLastClipOverall={isLastClipOverall}
       />
 
       <TodayBottomPanel

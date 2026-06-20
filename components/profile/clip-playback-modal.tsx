@@ -1,4 +1,3 @@
-// Changelog: Extracted local playback progress to trigger synchronized overlay transitions in historic archive playback.
 // ./components/profile/clip-playback-modal.tsx
 "use client";
 
@@ -30,6 +29,15 @@ export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPla
   
   const activeUrl = (!disableAbr && clip?.hlsUrl) ? clip.hlsUrl : clip?.videoUrl;
 
+  const isFrontFacing = clip?.metadata ? (() => {
+    try {
+      const meta = JSON.parse(clip.metadata);
+      return meta.facingMode !== "environment";
+    } catch {
+      return true;
+    }
+  })() : true;
+
   useHls(videoRef, activeUrl);
 
   return (
@@ -44,7 +52,6 @@ export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPla
         <video
           ref={videoRef}
           autoPlay
-          loop
           playsInline
           onTimeUpdate={(e) => {
             // Guarantee transition happens only AFTER first real frame is painted by the GPU
@@ -54,7 +61,11 @@ export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPla
             const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
             if (!isNaN(progress)) setVideoProgress(progress);
           }}
-          className="absolute inset-0 w-full h-full object-cover z-0"
+          onEnded={(e) => {
+            e.currentTarget.currentTime = 0;
+            e.currentTarget.play().catch(() => {});
+          }}
+          className={`absolute inset-0 w-full h-full object-cover z-0 ${isFrontFacing ? "-scale-x-100" : ""}`}
         />
         <AnimatePresence>
           {!isVideoLoaded && (clip?.thumbnailBlurUrl || clip?.thumbnailUrl) && (
@@ -64,7 +75,7 @@ export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPla
               transition={{ duration: 0.3 }}
               src={clip.thumbnailBlurUrl || clip.thumbnailUrl}
               alt="Loading vlog..."
-              className="absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none"
+              className={`absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none ${isFrontFacing ? "-scale-x-100" : ""}`}
             />
           )}
         </AnimatePresence>
