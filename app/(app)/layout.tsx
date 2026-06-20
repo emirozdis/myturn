@@ -40,7 +40,7 @@ import { RecordLoadingState } from "@/components/record/record-loading-state";
 // Custom Changelog release overlay
 import { NewFeaturesModal } from "@/components/new-features-modal";
 
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.2.0";
 
 export interface GroupConfig {
   id: string;
@@ -266,28 +266,26 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [modalQueue, setModalQueue] = useState<ModalTask[]>([]);
   
   const enqueueModal = useCallback((task: ModalTask) => {
-    setModalQueue((prev) => {
-      const isDuplicate = prev.some((existing) => {
-        if (existing.type !== task.type) return false;
-        
-        if (("groupId" in existing) && ("groupId" in task)) {
-          if (existing.groupId !== task.groupId) return false;
-          if (getAssignmentDateStr(existing.assignment) !== getAssignmentDateStr(task.assignment)) return false;
-          return true;
-        }
-        
-        if (("config" in existing) && ("config" in task)) {
-          if (existing.config.id !== task.config.id) return false;
-          return true;
-        }
+    const isDuplicate = modalQueue.some((existing) => {
+      if (existing.type !== task.type) return false;
+      
+      if (("groupId" in existing) && ("groupId" in task)) {
+        if (existing.groupId !== task.groupId) return false;
+        if (getAssignmentDateStr(existing.assignment) !== getAssignmentDateStr(task.assignment)) return false;
+        return true;
+      }
+      
+      if (("config" in existing) && ("config" in task)) {
+        if (existing.config.id !== task.config.id) return false;
+        return true;
+      }
 
-        return false;
-      });
-
-      if (isDuplicate) return prev;
-      return [...prev, task];
+      return false;
     });
-  }, []);
+
+    if (isDuplicate) return;
+    setModalQueue((prev) => [...prev, task]);
+  }, [modalQueue]);
   
   const dequeueModal = useCallback(() => {
     setModalQueue((prev) => prev.slice(1));
@@ -662,7 +660,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       }}
     >
       <div 
-        className="flex-1 w-full h-full flex flex-col min-h-0 relative overflow-y-auto overflow-x-hidden scrollbar-hide"
+        className="flex-1 w-full h-full flex flex-col min-h-0 relative overflow-hidden overflow-x-hidden scrollbar-hide"
         style={{
           paddingBottom: showBottomNav ? "80px" : "24px",
         }}

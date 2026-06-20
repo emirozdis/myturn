@@ -21,6 +21,11 @@ export default function RecordPage() {
   const [isPaused, setIsPaused] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
   const [finalDuration, setFinalDuration] = useState(0);
+  
+  // Speed Segments Local Tracker
+  const [currentSpeed, setCurrentSpeed] = useState<number>(1);
+  const [speedSegments, setSpeedSegments] = useState<{start: number, speed: number}[]>([{ start: 0, speed: 1 }]);
+  
   const [cameraZoom, setCameraZoom] = useState("1x");
   const [zoomSupported, setZoomSupported] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
@@ -158,11 +163,6 @@ export default function RecordPage() {
           const track = stream.getVideoTracks()[0];
           setVideoTrack(track);
 
-          try {
-            const capabilities = track.getCapabilities();
-            setZoomSupported("zoom" in capabilities);
-          } catch { setZoomSupported(false); }
-
           if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition(async (position) => {
               try {
@@ -293,11 +293,17 @@ export default function RecordPage() {
     }
   };
 
+  const handleToggleSpeed = () => {
+    if (isRecording && !isPaused) return; // Prevent speed swaps while actively rolling
+    setCurrentSpeed(s => s === 1 ? 2 : 1);
+  };
+
   const startRecording = () => {
     setError("");
     if (!streamRef.current) return;
     chunksRef.current = [];
     setRecordedFacingMode(facingMode);
+    setSpeedSegments([{ start: 0, speed: currentSpeed }]);
 
     let mimeType = "video/webm;codecs=vp8,opus";
     if (typeof MediaRecorder !== "undefined") {
@@ -379,6 +385,16 @@ export default function RecordPage() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "paused") {
       mediaRecorderRef.current.resume();
       totalPausedTimeRef.current += Date.now() - lastPauseTimeRef.current;
+      
+      // Stamp boundary into segments array allowing downstream players to scale playback dynamic multipliers safely
+      setSpeedSegments(prev => {
+        const last = prev[prev.length - 1];
+        if (last && last.speed !== currentSpeed) {
+          return [...prev, { start: recordTimeRef.current, speed: currentSpeed }];
+        }
+        return prev;
+      });
+
       setIsPaused(false);
       isPausedRef.current = false;
     }
@@ -389,11 +405,12 @@ export default function RecordPage() {
   };
 
   const handlePublish = async () => {
+    let progressInterval: any;
     try {
       setIsUploading(true);
       setUploadProgress(15);
 
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         setUploadProgress((p) => {
           if (p >= 85) {
             clearInterval(progressInterval);
@@ -471,6 +488,7 @@ export default function RecordPage() {
         location: locationName,
         caption,
         duration: finalDuration,
+        metadata: JSON.stringify({ speedSegments })
       });
       
       if (clipRes.error) throw new Error(clipRes.error);
@@ -511,6 +529,7 @@ export default function RecordPage() {
         handleStepChange("CAMERA");
       }, 2500);
     } catch (err: any) {
+      if (progressInterval) clearInterval(progressInterval);
       setIsUploading(false);
       setUploadProgress(0);
       setError(err?.message || "Failed to publish vlog format clip.");
@@ -579,6 +598,7 @@ export default function RecordPage() {
               setVideoRef={setVideoRef}
               stream={activeStream}
               facingMode={facingMode}
+              videoTrack={videoTrack}
               isRecording={isRecording}
               isPaused={isPaused}
               recordTime={recordTime}
@@ -587,7 +607,10 @@ export default function RecordPage() {
               isUploading={isUploading}
               zoomSupported={zoomSupported}
               cameraZoom={cameraZoom}
+              setZoomSupported={setZoomSupported}
               flashActive={flashActive}
+              currentSpeed={currentSpeed}
+              onToggleSpeed={handleToggleSpeed}
               onToggleCamera={toggleCamera}
               onToggleFlash={toggleFlash}
               onZoom={handleZoom}
@@ -602,6 +625,7 @@ export default function RecordPage() {
               recordedFacingMode={recordedFacingMode}
               miniVideoRef={miniVideoRef}
               miniProgress={miniProgress}
+              speedSegments={speedSegments}
               onMiniTimeUpdate={handleMiniTimeUpdate}
               caption={caption}
               onCaptionChange={setCaption}

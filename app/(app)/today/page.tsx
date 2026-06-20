@@ -1,4 +1,4 @@
-// ./components/today/page.tsx
+// ./app/(app)/today/page.tsx
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,6 +23,7 @@ export default function TodayPage() {
     activeClipUrl,
     activeClipThumbnailUrl,
     activeClipThumbnailBlurUrl,
+    groupMembers,
     uploadedSlots,
     isCurrentUserVlogger,
     refreshing,
@@ -87,6 +88,7 @@ export default function TodayPage() {
         activeClipUrl={activeClipUrl}
         activeClipThumbnailUrl={activeClipThumbnailUrl}
         activeClipThumbnailBlurUrl={activeClipThumbnailBlurUrl}
+        groupMembers={groupMembers}
         isCurrentUserVlogger={isCurrentUserVlogger}
         liked={liked}
         likeCount={likeCount}

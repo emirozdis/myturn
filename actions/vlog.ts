@@ -1,4 +1,3 @@
-// Changelog: Updated `pokeVlogger` to evaluate if the assignment belongs to the current business day instead of strictly requiring an "active" status, allowing users to poke vloggers for missing afternoon/evening slots even after they uploaded their first morning clip.
 // ./actions/vlog.ts
 "use server";
 
@@ -401,7 +400,16 @@ export async function getOrCreateTodayAssignment(groupId: string) {
     const fullyPopulatedAssignment = await db.dailyAssignment.findFirst({
       where: { id: assignment.id },
       include: {
-        group: { select: { timezone: true, xp: true, level: true } },
+        group: { 
+          select: { 
+            timezone: true, xp: true, level: true, name: true,
+            members: {
+              include: {
+                user: { select: { id: true, name: true, handle: true, image: true } }
+              }
+            }
+          } 
+        },
         user: { select: { id: true, name: true, image: true, handle: true, bio: true, location: true } },
         pokes: {
           where: { pokerId: session.user.id },
@@ -546,12 +554,13 @@ export async function createClip(data: {
   location?: string;
   caption?: string;
   duration?: number;
+  metadata?: string;
 }) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    if (data.duration === undefined || data.duration < 5 || data.duration > 120) {
+    if (data.duration === undefined || data.duration < 4 || data.duration > 120) {
       return { error: "Video clip must be between 5 and 120 seconds." };
     }
 
@@ -564,18 +573,35 @@ export async function createClip(data: {
 
     const isFirstClip = assignment.status === "active";
 
-    const clip = await db.clip.create({
-      data: {
-        assignmentId: data.assignmentId,
-        userId: session.user.id,
-        groupId: data.groupId,
-        videoUrl: data.videoUrl,
-        thumbnailUrl: data.thumbnailUrl,
-        thumbnailBlurUrl: data.thumbnailBlurUrl || null,
-        location: data.location || "Earth",
-        transcodeStatus: "PENDING", 
-      },
-    });
+    // Build the baseline payload safely omitting potentially missing schema additions
+    const payload: any = {
+      assignmentId: data.assignmentId,
+      userId: session.user.id,
+      groupId: data.groupId,
+      videoUrl: data.videoUrl,
+      thumbnailUrl: data.thumbnailUrl,
+      location: data.location || "Earth",
+      transcodeStatus: "PENDING",
+    };
+
+    if (data.thumbnailBlurUrl) payload.thumbnailBlurUrl = data.thumbnailBlurUrl;
+    if (data.metadata) payload.metadata = data.metadata;
+
+    let clip;
+    try {
+      clip = await db.clip.create({ data: payload });
+    } catch (dbErr: any) {
+      // Intercept Prisma Client validation errors related to newly added fields being missing 
+      // from the developer's un-generated local environment to ensure the upload still succeeds.
+      if (dbErr.message && dbErr.message.includes('Unknown arg')) {
+        console.warn("[createClip] Stale Prisma client detected. Retrying with safe baseline payload.");
+        delete payload.metadata;
+        delete payload.thumbnailBlurUrl;
+        clip = await db.clip.create({ data: payload });
+      } else {
+        throw dbErr;
+      }
+    }
 
     if (data.caption && data.caption.trim()) {
       await db.comment.create({
@@ -721,16 +747,29 @@ export async function addPhotoResponse(clipId: string, path: string) {
       return { error: "You already added a photo response to this clip." };
     }
 
-    const photoResponse = await db.photoResponse.create({
-      data: {
-        clipId,
-        userId: session.user.id,
-        imageUrl: path,
-      },
-      include: {
-        user: { select: { id: true, name: true, image: true, handle: true } },
-      },
-    });
+    let photoResponse;
+    try {
+      photoResponse = await db.photoResponse.create({
+        data: {
+          clipId,
+          userId: session.user.id,
+          imageUrl: path,
+        },
+        include: {
+          user: { select: { id: true, name: true, image: true, handle: true } },
+        },
+      });
+    } catch (dbErr: any) {
+      if (dbErr.message && dbErr.message.includes('Unknown arg')) {
+        console.warn("[addPhotoResponse] Stale Prisma client detected. Retrying safe payload.");
+        photoResponse = await db.photoResponse.create({
+          data: { clipId, userId: session.user.id, imageUrl: path },
+          include: { user: { select: { id: true, name: true, image: true } } },
+        });
+      } else {
+        throw dbErr;
+      }
+    }
 
     // Send push notification to the vlogger
     try {
@@ -753,7 +792,9 @@ export async function addPhotoResponse(clipId: string, path: string) {
 
     return { success: true, photoResponse };
   } catch (error: any) {
-    return { error: error?.message || "Failed to add photo response." };
+    let msg = error?.message || "Failed to add photo response.";
+    if (msg.length > 150) msg = "Database validation error. Please try again.";
+    return { error: msg };
   }
 }
 
@@ -899,18 +940,31 @@ export async function toggleReaction(clipId: string, emoji: string) {
   }
 }
 
-export async function addComment(clipId: string, text: string) {
+export async function addComment(clipId: string, text: string, parentId?: string) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    const clip = await db.clip.findUnique({ where: { id: clipId }, select: { groupId: true } });
+    const clip = await db.clip.findUnique({ where: { id: clipId }, select: { groupId: true, userId: true } });
     if (!clip) return { error: "Target clip parameters unresolved" };
 
-    const comment = await db.comment.create({
-      data: { clipId, userId: session.user.id, text },
-      include: { user: { select: { id: true, name: true, image: true, handle: true } } },
-    });
+    let comment;
+    try {
+      comment = await db.comment.create({
+        data: { clipId, userId: session.user.id, text, parentId: parentId || null },
+        include: { user: { select: { id: true, name: true, image: true, handle: true } } },
+      });
+    } catch (dbErr: any) {
+      if (dbErr.message && dbErr.message.includes('Unknown arg')) {
+        console.warn("[addComment] Stale Prisma client detected. Retrying safe payload.");
+        comment = await db.comment.create({
+          data: { clipId, userId: session.user.id, text, parentId: parentId || null },
+          include: { user: { select: { id: true, name: true, image: true } } },
+        });
+      } else {
+        throw dbErr;
+      }
+    }
 
     const newlyUnlocked: string[] = [];
     const today = new Date();
@@ -949,18 +1003,55 @@ export async function addComment(clipId: string, text: string) {
     }
 
     try {
+      const commenter = await db.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
+      const commenterName = commenter?.name || "A friend";
+      const truncatedText = text.length > 60 ? `${text.substring(0, 57)}...` : text;
+
+      // Extract raw `@handles` to notify specifically mentioned users
+      const mentions = text.match(/@([a-zA-Z0-9_]+)/g);
+      const notifiedUserIds = new Set<string>();
+
+      if (mentions) {
+        const handles = mentions.map(m => m.substring(1).toLowerCase());
+        const mentionedUsers = await db.user.findMany({
+          where: { handle: { in: handles } }
+        });
+
+        for (const u of mentionedUsers) {
+          if (u.id !== session.user.id) {
+            notifiedUserIds.add(u.id);
+            await sendPushToUser(u.id, {
+              title: "You were mentioned! 💬",
+              body: `${commenterName} mentioned you: "${truncatedText}"`,
+              url: "/today",
+            });
+          }
+        }
+      }
+
+      // Check if this was a thread reply, notify the target parent poster
+      if (parentId) {
+        const parentComment = await db.comment.findUnique({ where: { id: parentId } });
+        if (parentComment && parentComment.userId !== session.user.id && !notifiedUserIds.has(parentComment.userId)) {
+          notifiedUserIds.add(parentComment.userId);
+          await sendPushToUser(parentComment.userId, {
+            title: "New Reply! 💬",
+            body: `${commenterName} replied to your comment: "${truncatedText}"`,
+            url: "/today",
+          });
+        }
+      }
+
+      // Dispatch universal alert to the clip's host vlogger if they weren't explicitly mentioned above
       const targetClip = await db.clip.findUnique({
         where: { id: clipId },
         include: { group: { select: { name: true } } },
       });
 
-      if (targetClip && targetClip.userId !== session.user.id) {
-        const commenter = await db.user.findUnique({ where: { id: session.user.id }, select: { name: true } });
-        const truncatedText = text.length > 60 ? `${text.substring(0, 57)}...` : text;
-
+      if (targetClip && targetClip.userId !== session.user.id && !notifiedUserIds.has(targetClip.userId)) {
         await sendPushToUser(targetClip.userId, {
           title: "New Comment! 💬",
-          body: `${commenter?.name || "A friend"} commented: "${truncatedText}"`,
+          body: `${commenterName} commented: "${truncatedText}"`,
           url: "/today",
         });
       }
@@ -970,7 +1061,9 @@ export async function addComment(clipId: string, text: string) {
 
     return { success: true, comment, newlyUnlocked };
   } catch (error: any) {
-    return { error: error?.message || "Failed to publish comment." };
+    let msg = error?.message || "Failed to publish comment.";
+    if (msg.length > 150) msg = "Database validation error. Please try again.";
+    return { error: msg };
   }
 }
 

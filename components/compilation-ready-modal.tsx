@@ -1,4 +1,3 @@
-// Changelog: Extracted local playback progression to sync stacked photo overlays for the memory recap compilation feed.
 // ./components/compilation-ready-modal.tsx
 "use client";
 
@@ -70,7 +69,6 @@ export function CompilationReadyModal({
         if (currentClipIndex < compilationClips.length - 1) {
           setCurrentClipIndex((prev) => prev + 1);
         } else {
-          setIsPlayingCompilation(false);
           onClose(); // Automatically dismiss after playing
         }
       }, 2500);
@@ -257,126 +255,122 @@ export function CompilationReadyModal({
       )}
 
       {/* Fullscreen Video Player */}
-      <AnimatePresence>
-        {isPlayingCompilation && compilationClips.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            transition={{ ease: [0.16, 1, 0.3, 1], duration: 0.3 }}
-            className="absolute inset-0 z-50 bg-black flex flex-col justify-between pointer-events-auto"
-          >
-            {/* Nav Touch Zones */}
-            <div className="absolute inset-y-0 left-0 w-1/3 z-10" onClick={(e) => {
-               e.stopPropagation();
-               if (currentClipIndex > 0) setCurrentClipIndex(prev => prev - 1);
-            }} />
-            <div className="absolute inset-y-0 right-0 w-1/3 z-10" onClick={(e) => {
-               e.stopPropagation();
-               if (currentClipIndex < compilationClips.length - 1) setCurrentClipIndex(prev => prev + 1);
-               else {
-                 setIsPlayingCompilation(false);
-                 onClose();
-               }
-            }} />
+      {isPlayingCompilation && compilationClips.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ ease: [0.16, 1, 0.3, 1], duration: 0.3 }}
+          className="absolute inset-0 z-50 bg-black flex flex-col justify-between pointer-events-auto"
+        >
+          {/* Nav Touch Zones */}
+          <div className="absolute inset-y-0 left-0 w-1/3 z-10" onClick={(e) => {
+             e.stopPropagation();
+             if (currentClipIndex > 0) setCurrentClipIndex(prev => prev - 1);
+          }} />
+          <div className="absolute inset-y-0 right-0 w-1/3 z-10" onClick={(e) => {
+             e.stopPropagation();
+             if (currentClipIndex < compilationClips.length - 1) setCurrentClipIndex(prev => prev + 1);
+             else {
+               onClose();
+             }
+          }} />
 
-            {/* Absolute Video Frame */}
-            <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-black">
-              <video
-                key={compilationClips[currentClipIndex].id}
-                ref={videoRef}
-                autoPlay
-                playsInline
-                onTimeUpdate={(e) => {
-                  if (e.currentTarget.currentTime > 0) {
-                    setIsVideoLoaded(true);
-                  }
-                  const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
-                  if (!isNaN(progress)) setVideoProgress(progress);
-                }}
-                onEnded={() => {
-                  if (currentClipIndex < compilationClips.length - 1) {
-                    setCurrentClipIndex(prev => prev + 1);
-                  } else {
-                    setIsPlayingCompilation(false);
-                    onClose();
-                  }
-                }}
-                className="absolute inset-0 w-full h-full object-cover z-0"
-              />
-              <AnimatePresence>
-                {!isVideoLoaded && compilationClips[currentClipIndex]?.thumbnailBlurUrl && (
-                  <motion.img
-                    initial={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.3 }}
-                    src={compilationClips[currentClipIndex].thumbnailBlurUrl}
-                    alt="Loading clip..."
-                    className="absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none"
-                  />
-                )}
-              </AnimatePresence>
+          {/* Absolute Video Frame */}
+          <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-black">
+            <video
+              key={compilationClips[currentClipIndex].id}
+              ref={videoRef}
+              autoPlay
+              playsInline
+              onTimeUpdate={(e) => {
+                if (e.currentTarget.currentTime > 0) {
+                  setIsVideoLoaded(true);
+                }
+                const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
+                if (!isNaN(progress)) setVideoProgress(progress);
+              }}
+              onEnded={() => {
+                if (currentClipIndex < compilationClips.length - 1) {
+                  setCurrentClipIndex(prev => prev + 1);
+                } else {
+                  onClose();
+                }
+              }}
+              className="absolute inset-0 w-full h-full object-cover z-0"
+            />
+            <AnimatePresence>
+              {!isVideoLoaded && compilationClips[currentClipIndex]?.thumbnailBlurUrl && (
+                <motion.img
+                  initial={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  src={compilationClips[currentClipIndex].thumbnailBlurUrl}
+                  alt="Loading clip..."
+                  className="absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none"
+                />
+              )}
+            </AnimatePresence>
+          </div>
+          
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-10" />
+
+          <PhotoResponsesOverlay 
+            responses={compilationClips[currentClipIndex]?.photoResponses || []} 
+            videoProgress={videoProgress}
+          />
+
+          {/* Fullscreen HUD Header */}
+          <div 
+            className="relative z-20 p-4 flex justify-between items-center pointer-events-auto"
+            style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top, 1.25rem))" }}
+          >
+            <div className="flex flex-col">
+              <span className="text-white text-sm font-bold tracking-tight drop-shadow-md">
+                {new Date(compilationClips[currentClipIndex].recordedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+              </span>
+              <span className="text-white/60 text-xs font-semibold mt-0.5">{compilationClips[currentClipIndex].location || "Earth"}</span>
             </div>
             
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/80 pointer-events-none z-10" />
+            <div className="flex gap-2">
+              {playbackMode === "highlights" && (
+                <div className="px-3 py-1.5 bg-[#e07c30]/20 border border-[#e07c30]/30 rounded-full flex items-center gap-1.5 mr-1 backdrop-blur-sm">
+                  <Sparkles size={11} className="text-[#e07c30]" />
+                  <span className="text-[#e07c30] text-[10px] font-black uppercase tracking-widest">Highlights</span>
+                </div>
+              )}
+              <button 
+                onClick={(e) => { e.stopPropagation(); onClose(); }}
+                className="w-10 h-10 bg-black/40 backdrop-blur rounded-full text-white font-extrabold flex items-center justify-center hover:bg-white/20 transition border border-white/10"
+              >
+                <X size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+          </div>
 
-            <PhotoResponsesOverlay 
-              responses={compilationClips[currentClipIndex]?.photoResponses || []} 
-              videoProgress={videoProgress}
-            />
-
-            {/* Fullscreen HUD Header */}
-            <div 
-              className="relative z-20 p-4 flex justify-between items-center pointer-events-auto"
-              style={{ paddingTop: "max(1.25rem, env(safe-area-inset-top, 1.25rem))" }}
-            >
-              <div className="flex flex-col">
-                <span className="text-white text-sm font-bold tracking-tight drop-shadow-md">
-                  {new Date(compilationClips[currentClipIndex].recordedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
-                </span>
-                <span className="text-white/60 text-xs font-semibold mt-0.5">{compilationClips[currentClipIndex].location || "Earth"}</span>
-              </div>
-              
-              <div className="flex gap-2">
-                {playbackMode === "highlights" && (
-                  <div className="px-3 py-1.5 bg-[#e07c30]/20 border border-[#e07c30]/30 rounded-full flex items-center gap-1.5 mr-1 backdrop-blur-sm">
-                    <Sparkles size={11} className="text-[#e07c30]" />
-                    <span className="text-[#e07c30] text-[10px] font-black uppercase tracking-widest">Highlights</span>
+          {/* Custom Progress Bar HUD Footer */}
+          <div className="relative z-20 p-6 mt-auto pointer-events-none w-full">
+             <div className="flex gap-1.5 mb-3.5">
+                {compilationClips.map((c: any, i: number) => (
+                  <div key={c.id} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden shadow-inner">
+                    {i === currentClipIndex && (
+                      <motion.div 
+                         initial={{ width: 0 }}
+                         animate={{ width: "100%" }}
+                         transition={{ duration: playbackMode === "highlights" ? 2.5 : 15, ease: "linear" }}
+                         className="h-full bg-white rounded-full"
+                      />
+                    )}
+                    {i < currentClipIndex && <div className="h-full bg-white rounded-full" />}
                   </div>
-                )}
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setIsPlayingCompilation(false); onClose(); }}
-                  className="w-10 h-10 bg-black/40 backdrop-blur rounded-full text-white font-extrabold flex items-center justify-center hover:bg-white/20 transition border border-white/10"
-                >
-                  <X size={18} strokeWidth={2.5} />
-                </button>
-              </div>
-            </div>
-
-            {/* Custom Progress Bar HUD Footer */}
-            <div className="relative z-20 p-6 mt-auto pointer-events-none w-full">
-               <div className="flex gap-1.5 mb-3.5">
-                  {compilationClips.map((c: any, i: number) => (
-                    <div key={c.id} className="h-1 flex-1 bg-white/20 rounded-full overflow-hidden shadow-inner">
-                      {i === currentClipIndex && (
-                        <motion.div 
-                           initial={{ width: 0 }}
-                           animate={{ width: "100%" }}
-                           transition={{ duration: playbackMode === "highlights" ? 2.5 : 15, ease: "linear" }}
-                           className="h-full bg-white rounded-full"
-                        />
-                      )}
-                      {i < currentClipIndex && <div className="h-full bg-white rounded-full" />}
-                    </div>
-                  ))}
-               </div>
-              <span className="text-white/50 text-[10px] font-black tracking-widest uppercase">
-                {playbackMode === "highlights" ? "Fast Recap" : "Archive Playback"}
-              </span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                ))}
+             </div>
+            <span className="text-white/50 text-[10px] font-black tracking-widest uppercase">
+              {playbackMode === "highlights" ? "Fast Recap" : "Archive Playback"}
+            </span>
+          </div>
+        </motion.div>
+      )}
     </motion.div>
   );
 }

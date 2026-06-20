@@ -1,4 +1,3 @@
-// Changelog: Fixed early return bug by using the `groupId` foreign key on the root assignment model instead of the unselected nested relation.
 // ./components/today/use-today-page.ts
 "use client";
 
@@ -301,6 +300,7 @@ export function useTodayPage() {
   const activeClipThumbnailUrl = activeClip ? resolvedClipThumbnails[activeClip.id] : null;
   const activeClipThumbnailBlurUrl = activeClip ? resolvedClipBlurThumbnails[activeClip.id] : null;
   
+  const groupMembers = assignment?.group?.members?.map((m: any) => m.user) || [];
   const uploadedSlots = clips.map((clip) => getSlotForClip(clip.recordedAt, timezone));
   const isCurrentUserVlogger = assignment?.userId === session?.user?.id;
   const hasPostedInCurrentSlot = clips.some(c => getSlotForClip(c.recordedAt, timezone) === actualHourIndex);
@@ -311,16 +311,10 @@ export function useTodayPage() {
     if (currentClipSubIndex < slotClips.length - 1) {
       setCurrentClipSubIndex(prev => prev + 1);
     } else {
-      let nextSlot = -1;
-      for (let s = currentHourIndex + 1; s <= 5; s++) {
-        const hasClips = clips.some(c => getSlotForClip(c.recordedAt, timezone) === s);
-        if (hasClips) {
-          nextSlot = s;
-          break;
-        }
-      }
-
-      if (nextSlot !== -1) {
+      const activeSlotsSorted = Array.from(new Set(clips.map(c => getSlotForClip(c.recordedAt, timezone)))).sort((a, b) => a - b);
+      const currentIdx = activeSlotsSorted.indexOf(currentHourIndex);
+      if (currentIdx !== -1 && currentIdx < activeSlotsSorted.length - 1) {
+        const nextSlot = activeSlotsSorted[currentIdx + 1];
         prevHourIndexRef.current = nextSlot;
         setCurrentHourIndex(nextSlot);
         setCurrentClipSubIndex(0);
@@ -350,6 +344,11 @@ export function useTodayPage() {
     }
   }, [clips, currentHourIndex, currentClipSubIndex, timezone]);
 
+  // Real-time viewed clip matrices
+  const viewed = getViewedClips();
+  const allVideosViewed = clips.length > 0 && clips.every((c) => !!viewed[c.id]);
+  const isLastClipOverall = clips.length > 0 && activeClip?.id === clips[clips.length - 1].id;
+
   useEffect(() => {
     if (activeClip) {
       setLikeCount(activeClip.reactions?.length || 0);
@@ -357,8 +356,8 @@ export function useTodayPage() {
       setCommentList(activeClip.comments || []);
 
       const timer = setTimeout(() => {
-        const viewed = getViewedClips();
-        if (!viewed[activeClip.id]) {
+        const currentViewed = getViewedClips();
+        if (!currentViewed[activeClip.id]) {
           markClipAsViewed(activeClip.id);
           
           const isOwnClip = activeClip.userId === session?.user?.id || assignment?.userId === session?.user?.id;
@@ -369,32 +368,17 @@ export function useTodayPage() {
                 window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
               });
             }
-          }).catch((e) => console.error("Failed to track view:", e));
-
-          if (!isOwnClip) {
-            setClips(prev => prev.map(c => c.id === activeClip.id ? { 
-              ...c, 
-              views: [...(c.views || []), { 
-                id: `temp-view-${Date.now()}`, 
-                user: { 
-                  id: session?.user?.id, 
-                  name: session?.user?.name, 
-                  image: session?.user?.image, 
-                  handle: (session?.user as any)?.handle 
-                } 
-              }] 
-            } : c));
+          }).catch(() => {});
+          
+          if (isOwnClip) {
+            window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
           }
         }
       }, 1200);
 
       return () => clearTimeout(timer);
-    } else {
-      setLikeCount(0);
-      setLiked(false);
-      setCommentList([]);
     }
-  }, [activeClip, session, assignment?.userId]);
+  }, [activeClip, session, assignment]);
 
   useEffect(() => {
     if (assignment?.pokes?.[0]) {
@@ -411,47 +395,56 @@ export function useTodayPage() {
   }, [assignment]);
 
   useEffect(() => {
+    let interval: NodeJS.Timeout;
     if (pokeCooldown > 0) {
-      const interval = setInterval(() => {
+      interval = setInterval(() => {
         setPokeCooldown(prev => Math.max(0, prev - 1));
       }, 1000);
-      return () => clearInterval(interval);
     }
+    return () => clearInterval(interval);
   }, [pokeCooldown]);
 
-  const handleLike = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleLike = useCallback(async () => {
     if (!activeClip) return;
-
-    setLiked((v) => !v);
-    setLikeCount((c) => (liked ? c - 1 : c + 1));
+    const prevLiked = liked;
+    setLiked(!prevLiked);
+    setLikeCount(prev => prevLiked ? prev - 1 : prev + 1);
 
     const res = await toggleReaction(activeClip.id, "❤️");
-
-    if (res.success && res.newlyUnlocked && res.newlyUnlocked.length > 0) {
+    if (!res.success) {
+      setLiked(prevLiked);
+      setLikeCount(prev => prevLiked ? prev + 1 : prev - 1);
+    } else if (res.newlyUnlocked?.length) {
       res.newlyUnlocked.forEach((id: string) => {
         window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
       });
     }
   }, [liked, activeClip]);
 
-  const handleSendComment = async (e: React.FormEvent) => {
+  const handleSendComment = async (e: React.FormEvent, parentId?: string) => {
     e.preventDefault();
     if (!activeClip || !newComment.trim()) return;
 
-    const tempCommentText = newComment;
-    setNewComment("");
+    const tempCommentText = newComment.trim();
 
-    const res = await addComment(activeClip.id, tempCommentText);
-    if (res.success && res.comment) {
-      setCommentList((prev) => [...prev, res.comment]);
-      setClips(prev => prev.map(c => c.id === activeClip.id ? { ...c, comments: [...(c.comments || []), res.comment] } : c));
+    try {
+      const res = await addComment(activeClip.id, tempCommentText, parentId);
+      
+      if (res.success && res.comment) {
+        setNewComment(""); 
+        setCommentList((prev) => [...prev, res.comment]);
+        setClips(prev => prev.map(c => c.id === activeClip.id ? { ...c, comments: [...(c.comments || []), res.comment] } : c));
 
-      if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
-        res.newlyUnlocked.forEach((id: string) => {
-          window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
-        });
+        if (res.newlyUnlocked && res.newlyUnlocked.length > 0) {
+          res.newlyUnlocked.forEach((id: string) => {
+            window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
+          });
+        }
+      } else {
+        showToast(res.error || "Failed to post comment. Please try again.", "error");
       }
+    } catch (err: any) {
+      showToast("Network error. Unable to post comment.", "error");
     }
   };
 
@@ -507,23 +500,22 @@ export function useTodayPage() {
       formData.append("file", file);
       formData.append("bucket", "vlogs");
       formData.append("path", path);
-      
-      const uploadRes = await fetch("/api/media", { method: "POST", body: formData });
-      if (!uploadRes.ok) throw new Error("Upload failed");
-      
+
+      const uploadRes = await fetch("/api/media", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Upload request failed.");
+      }
+
       const res = await addPhotoResponse(activeClip.id, path);
-      if (res.success && res.photoResponse) {
-        const urlRes = await getSignedReadUrl("vlogs", path);
-        const signedUrl = urlRes.success ? urlRes.url : path;
-        const newResponse = { ...res.photoResponse, imageUrl: signedUrl };
-        
-        setClips(prev => prev.map(c => c.id === activeClip.id ? { 
-          ...c, 
-          photoResponses: [...(c.photoResponses || []), newResponse] 
-        } : c));
-        showToast("Photo response added!", "success");
+      if (res.error) {
+        showToast(res.error, "error");
       } else {
-        showToast(res.error || "Failed to add response", "error");
+        showToast("Photo response added!", "success");
+        window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
       }
     } catch (err) {
       showToast("Failed to upload photo", "error");
@@ -546,6 +538,7 @@ export function useTodayPage() {
     activeClipUrl,
     activeClipThumbnailUrl,
     activeClipThumbnailBlurUrl,
+    groupMembers,
     uploadedSlots,
     isCurrentUserVlogger,
     refreshing,
@@ -578,5 +571,7 @@ export function useTodayPage() {
     fileInputRef,
     handlePhotoResponseClick,
     handlePhotoResponseUpload,
+    allVideosViewed,
+    isLastClipOverall,
   };
 }

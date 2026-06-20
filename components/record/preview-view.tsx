@@ -1,3 +1,4 @@
+// ./components/record/preview-view.tsx
 "use client";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Loader2, ChevronRight, Clock, MapPin, AlertCircle, Check, X } from "lucide-react";
@@ -95,6 +96,7 @@ type PreviewViewProps = {
   recordedFacingMode: "user" | "environment";
   miniVideoRef: React.RefObject<HTMLVideoElement | null>;
   miniProgress: number;
+  speedSegments: {start: number, speed: number}[];
   onMiniTimeUpdate: () => void;
   caption: string;
   onCaptionChange: (value: string) => void;
@@ -126,6 +128,7 @@ export function PreviewView(props: PreviewViewProps) {
     recordedFacingMode,
     miniVideoRef,
     miniProgress,
+    speedSegments,
     onMiniTimeUpdate,
     caption,
     onCaptionChange,
@@ -214,7 +217,20 @@ export function PreviewView(props: PreviewViewProps) {
                   loop
                   muted={!isPreviewFullscreen}
                   playsInline
-                  onTimeUpdate={onMiniTimeUpdate}
+                  onTimeUpdate={(e) => {
+                    onMiniTimeUpdate();
+                    
+                    // Interpret variable 2x speed maps seamlessly scaling up video parameters
+                    const ct = e.currentTarget.currentTime;
+                    let targetSpeed = 1;
+                    if (speedSegments && speedSegments.length > 0) {
+                      const activeSeg = [...speedSegments].reverse().find(s => ct >= s.start);
+                      if (activeSeg) targetSpeed = activeSeg.speed;
+                    }
+                    if (miniVideoRef.current && miniVideoRef.current.playbackRate !== targetSpeed) {
+                      miniVideoRef.current.playbackRate = targetSpeed;
+                    }
+                  }}
                   transition={{
                     layout: { type: "spring", damping: 30, stiffness: 250, mass: 0.9 },
                   }}
@@ -350,11 +366,13 @@ export function PreviewView(props: PreviewViewProps) {
             <span>Verifying turn access parameters...</span>
           </div>
         ) : (
-          !isTurnAuthorized && error && (
+          error && (
             <div className="p-3.5 bg-red-950/20 border border-red-500/20 rounded-2xl flex items-start gap-3">
               <AlertCircle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
               <div className="flex flex-col gap-0.5">
-                <span className="text-red-400 text-xs font-bold leading-tight">Posting Blocked</span>
+                <span className="text-red-400 text-xs font-bold leading-tight">
+                  {!isTurnAuthorized ? "Posting Blocked" : "Upload Error"}
+                </span>
                 <span className="text-white/60 text-[10px] leading-snug">{error}</span>
               </div>
             </div>

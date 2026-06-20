@@ -191,6 +191,7 @@ model Clip {
   transcodeStatus   String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, FAILED_PERMANENTLY
   transcodeAttempts Int      @default(0)
   location          String?
+  metadata          String?  @db.Text
   recordedAt        DateTime @default(now())
 
   assignment     DailyAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
@@ -243,13 +244,17 @@ model Comment {
   clipId    String
   userId    String
   text      String
+  parentId  String?
   createdAt DateTime @default(now())
 
-  clip Clip @relation(fields: [clipId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clip    Clip      @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  user    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentReplies")
 
   @@index([clipId])
   @@index([userId])
+  @@index([parentId])
   @@map("comments")
 }
 

@@ -49,14 +49,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${satoshi.variable} ${satoshi.className} h-screen overflow-hidden antialiased`}
+      className={`${satoshi.variable} ${satoshi.className} h-full overflow-hidden antialiased`}
     >
       <head>
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="h-screen w-full overflow-hidden flex flex-col bg-black">
+      <body className="h-full w-full overflow-hidden flex flex-col bg-black">
         <OrientationManager />
         
         <div className="portrait-app h-full w-full flex flex-col overflow-hidden">
