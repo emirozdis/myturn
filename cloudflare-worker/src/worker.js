@@ -1,4 +1,4 @@
-// index.js (or worker.js)
+// cloudflare-worker/src/worker.js
 
 function decodeBase64Url(str) {
   let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
@@ -49,7 +49,6 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     
-    // Loaded dynamically via the local dashboard bindings
     const bucket = env.MY_BUCKET;
     const allowedOrigin = env.ALLOWED_ORIGIN;
 
@@ -59,7 +58,7 @@ export default {
         headers: {
           "Access-Control-Allow-Origin": allowedOrigin || "*",
           "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, Range",
           "Access-Control-Allow-Credentials": "true",
           "Access-Control-Max-Age": "86400",
         }
@@ -78,7 +77,7 @@ export default {
       return new Response("Unauthorized - Missing Token", { status: 401 });
     }
 
-    // 3. Signature & Expiry Validation
+    // 3. Signature & Expiry Verification
     const payload = await verifyToken(tokenToVerify, env.MEDIA_SECRET_KEY);
     if (!payload) {
       return new Response("Forbidden - Invalid or Expired Token", { status: 403 });
@@ -90,42 +89,107 @@ export default {
       return new Response("Forbidden - Path Mismatch", { status: 403 });
     }
 
-    // 5. Fetch directly from the R2 Binding
     if (!bucket) {
       return new Response("Internal Server Error - R2 Bucket Not Configured", { status: 500 });
     }
-    const object = await bucket.get(cleanPath);
 
+    // 5. HTTP Range Request Support (Essential for Safari video buffering)
+    const rangeHeader = request.headers.get("Range");
+    let object;
+    try {
+      if (rangeHeader) {
+        object = await bucket.get(cleanPath, {
+          range: request.headers,
+          onlyIf: request.headers,
+        });
+      } else {
+        object = await bucket.get(cleanPath, {
+          onlyIf: request.headers,
+        });
+      }
+    } catch (e) {
+      return new Response("Internal Server Error", { status: 500 });
+    }
+
+    if (object === null) {
+      return new Response("Not Modified", { status: 304 });
+    }
     if (!object) {
       return new Response("Not Found", { status: 404 });
     }
 
-    // 6. Build Headers
+    // 6. Build Baseline Response Headers
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set("etag", object.httpEtag);
     headers.set("Access-Control-Allow-Origin", allowedOrigin || "*");
     headers.set("Access-Control-Allow-Credentials", "true");
+    headers.set("Accept-Ranges", "bytes");
 
-    // 7. Inject HttpOnly Signed Cookie if requested via Query Param
+    let status = 200;
+
+    if (rangeHeader && object.range) {
+      status = 206;
+      headers.set("Content-Range", `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${object.size}`);
+      headers.set("Content-Length", object.range.length.toString());
+    } else {
+      headers.set("Content-Length", object.size.toString());
+    }
+
+    // 7. Inject Scoped Fallback Cookie
     if (queryToken) {
+      const cookiePath = payload.p.startsWith("/") ? payload.p : `/${payload.p}`;
       headers.append(
         "Set-Cookie", 
-        `media_session=${queryToken}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=3600`
+        `media_session=${queryToken}; Path=${cookiePath}; HttpOnly; Secure; SameSite=None; Max-Age=3600`
       );
     }
     
-    // 8. Dynamic Edge Caching
+    // Explicit Content-Type mappings
+    const ext = cleanPath.split('.').pop().toLowerCase();
+    const contentTypeMap = {
+      "m3u8": "application/vnd.apple.mpegurl",
+      "ts": "video/MP2T",
+      "mp4": "video/mp4",
+      "webm": "video/webm",
+      "jpg": "image/jpeg",
+      "jpeg": "image/jpeg",
+      "png": "image/png"
+    };
+
+    if (contentTypeMap[ext]) {
+      headers.set("Content-Type", contentTypeMap[ext]);
+    }
+
+    // 8. Dynamic Playlist Rewriting
+    // If requesting HLS (.m3u8) files, we rewrite them on the fly to append the verified 
+    // query token to all relative chunk and playlist paths.
     if (cleanPath.endsWith(".m3u8")) {
       headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
-      headers.set("Content-Type", "application/vnd.apple.mpegurl");
-    } else if (cleanPath.endsWith(".ts")) {
-      headers.set("Cache-Control", "public, max-age=31536000, immutable");
-      headers.set("Content-Type", "video/MP2T");
+      
+      if (tokenToVerify) {
+        const text = await object.text();
+        const lines = text.split("\n");
+        const rewrittenLines = lines.map((line) => {
+          const trimmed = line.trim();
+          // Rewrite URIs (lines not starting with '#' and not empty)
+          if (trimmed && !trimmed.startsWith("#")) {
+            const separator = trimmed.includes("?") ? "&" : "?";
+            return `${trimmed}${separator}token=${encodeURIComponent(tokenToVerify)}`;
+          }
+          return line;
+        });
+        
+        const rewrittenText = rewrittenLines.join("\n");
+        const encodedText = new TextEncoder().encode(rewrittenText);
+        
+        headers.set("Content-Length", encodedText.length.toString());
+        return new Response(encodedText, { status, headers });
+      }
     } else {
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
     }
 
-    return new Response(object.body, { headers });
+    return new Response(object.body, { status, headers });
   }
 };
