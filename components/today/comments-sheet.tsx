@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { MessageCircle, Send, Trash2, X, CornerDownRight, AtSign } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { MessageCircle, Send, Trash2, X, CornerDownRight, AtSign, Loader2 } from "lucide-react";
 import { Avatar } from "@/components/shared/avatar";
 import { BottomSheet } from "@/components/shared/bottom-sheet";
 import { motion, AnimatePresence } from "framer-motion";
@@ -32,8 +32,10 @@ export function CommentsSheet({
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [cursorPos, setCursorPos] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const commentsEndRef = useRef<HTMLDivElement>(null);
 
   // Derive contextual threaded grouping mapping out isolated child paths correctly
   const topLevel = commentList.filter((c) => !c.parentId);
@@ -44,6 +46,16 @@ export function CommentsSheet({
     }
     return acc;
   }, {} as Record<string, any[]>);
+
+  // Automatically scroll to the bottom when sheet opens or a new comment is added
+  useEffect(() => {
+    if (isOpen && commentsEndRef.current) {
+      // Use setTimeout to ensure the DOM rendering cycle has finished before scrolling
+      setTimeout(() => {
+        commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 80);
+    }
+  }, [commentList.length, isOpen]);
 
   // Unified scroll sync using requestAnimationFrame to prevent visual lag
   const syncScroll = () => {
@@ -115,10 +127,16 @@ export function CommentsSheet({
       )
     : [];
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(e, replyToId || undefined);
-    setReplyToId(null);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await onSubmit(e, replyToId || undefined);
+      setReplyToId(null);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const renderCommentText = (text: string) => {
@@ -240,6 +258,8 @@ export function CommentsSheet({
             <span className="text-white/25 text-[9px] mt-0.5">Be the first to react to today&apos;s turn!</span>
           </div>
         )}
+        {/* Dummy div to anchor scroll location */}
+        <div ref={commentsEndRef} />
       </div>
 
       <div className="relative pt-2 flex flex-col flex-shrink-0">
@@ -318,10 +338,14 @@ export function CommentsSheet({
 
           <button
             type="submit"
-            disabled={!newComment.trim()}
+            disabled={!newComment.trim() || isSubmitting}
             className={`p-2 bg-[#e07c30] disabled:bg-neutral-800 disabled:text-white/30 text-black transition-colors flex items-center justify-center h-10 w-10 flex-shrink-0 relative z-10 ${replyToId ? "rounded-xl" : "rounded-full"}`}
           >
-            <Send size={14} strokeWidth={2.5} className="mr-0.5" />
+            {isSubmitting ? (
+              <Loader2 size={14} className="animate-spin text-black" />
+            ) : (
+              <Send size={14} strokeWidth={2.5} className="mr-0.5" />
+            )}
           </button>
         </form>
       </div>

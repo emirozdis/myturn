@@ -33,7 +33,23 @@ export function getCachedToday() {
       const groupId = localStorage.getItem("active_group_id");
       if (!groupId) return null;
       const cached = localStorage.getItem(`cached_today_${groupId}`);
-      if (cached) return JSON.parse(cached);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        
+        // If cache was saved more than 45 minutes ago, discard the pre-signed URLs
+        // to prevent the player from loading expired R2 signatures (1 hour lifespan)
+        if (parsed.savedAt && Date.now() - parsed.savedAt > 45 * 60 * 1000) {
+          return {
+            assignment: parsed.assignment,
+            clips: parsed.clips,
+            isSleepMode: parsed.isSleepMode,
+            resolvedClipUrls: {}, // Forces silent background re-fetch of fresh tokens
+            resolvedClipThumbnails: {},
+            resolvedClipBlurThumbnails: {},
+          };
+        }
+        return parsed;
+      }
     } catch { }
   }
   return null;

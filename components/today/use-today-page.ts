@@ -1,11 +1,10 @@
 // ./components/today/use-today-page.ts
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import {
   getOrCreateTodayAssignment,
-  getSignedReadUrl,
   toggleReaction,
   addComment,
   deleteComment,
@@ -85,6 +84,9 @@ export function useTodayPage() {
   const timezone = assignment?.group?.timezone || cachedData?.assignment?.group?.timezone;
 
   const [actualHourIndex, setActualHourIndex] = useState(() => getSlotForClip(new Date(), timezone));
+
+  // local in-flight tracking set to eliminate concurrent duplicate view tracking actions
+  const trackingClipIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const tz = assignment?.group?.timezone || cachedData?.assignment?.group?.timezone;
@@ -192,26 +194,14 @@ export function useTodayPage() {
       const blurThumbUrls: Record<string, string> = {};
       const disableAbr = typeof window !== "undefined" && localStorage.getItem("disable_abr") === "true";
 
+      // Utilize server-pre-signed URLs directly rather than dispatching redundant client calls to the database
       for (const clip of fetchedClips) {
-        const videoTarget = (!disableAbr && clip.transcodeStatus === "COMPLETED" && clip.hlsUrl) ? clip.hlsUrl : clip.videoUrl;
-        const urlRes = await getSignedReadUrl("vlogs", videoTarget);
-        if (urlRes.success && urlRes.url) urls[clip.id] = urlRes.url;
+        urls[clip.id] = disableAbr
+          ? clip.videoUrl 
+          : (clip.transcodeStatus === "COMPLETED" && clip.hlsUrl) ? clip.hlsUrl : clip.videoUrl;
 
-        const thumbRes = await getSignedReadUrl("vlogs", clip.thumbnailUrl);
-        if (thumbRes.success && thumbRes.url) thumbUrls[clip.id] = thumbRes.url;
-
-        const blurTarget = clip.thumbnailBlurUrl || clip.thumbnailUrl;
-        const blurThumbRes = await getSignedReadUrl("vlogs", blurTarget);
-        if (blurThumbRes.success && blurThumbRes.url) blurThumbUrls[clip.id] = blurThumbRes.url;
-
-        if (clip.photoResponses) {
-          for (const pr of clip.photoResponses) {
-            if (!pr.imageUrl.startsWith("http") && !pr.imageUrl.startsWith("/")) {
-              const prUrlRes = await getSignedReadUrl("vlogs", pr.imageUrl);
-              if (prUrlRes.success && prUrlRes.url) pr.imageUrl = prUrlRes.url;
-            }
-          }
-        }
+        thumbUrls[clip.id] = clip.thumbnailUrl;
+        blurThumbUrls[clip.id] = clip.thumbnailBlurUrl || clip.thumbnailUrl;
       }
       
       setClips([...fetchedClips]);
@@ -227,6 +217,7 @@ export function useTodayPage() {
           resolvedClipThumbnails: thumbUrls,
           resolvedClipBlurThumbnails: blurThumbUrls,
           isSleepMode: res.isSleepMode || false,
+          savedAt: Date.now(), // Store timestamp to prevent expired cache loading
         }));
       }
     } else {
@@ -347,38 +338,52 @@ export function useTodayPage() {
 
   const viewed = getViewedClips();
   const allVideosViewed = clips.length > 0 && clips.every((c) => !!viewed[c.id]);
-  const isLastClipOverall = clips.length > 0 && activeClip?.id === clips[clips.length - 1].id;
+
+  const isLastClipOverall = useMemo(() => {
+    if (clips.length === 0 || !activeClip) return false;
+    const sorted = [...clips].sort(
+      (a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime()
+    );
+    return activeClip.id === sorted[sorted.length - 1].id;
+  }, [clips, activeClip]);
+
+  // targeted primitives to enforce strict renders without trigger loops
+  const activeClipId = activeClip?.id;
+  const reactionsLength = activeClip?.reactions?.length;
+  const isLikedByMe = activeClip?.reactions?.some((r: any) => r.userId === session?.user?.id);
+  const commentsListString = JSON.stringify(activeClip?.comments || []);
 
   useEffect(() => {
     if (activeClip) {
-      setLikeCount(activeClip.reactions?.length || 0);
-      setLiked(activeClip.reactions?.some((r: any) => r.userId === session?.user?.id) || false);
+      setLikeCount(reactionsLength || 0);
+      setLiked(isLikedByMe || false);
       setCommentList(activeClip.comments || []);
 
       const timer = setTimeout(() => {
         const currentViewed = getViewedClips();
-        if (!currentViewed[activeClip.id]) {
-          markClipAsViewed(activeClip.id);
+        const clipId = activeClip.id;
+
+        // Combine localStorage checks with in-flight request set to completely eliminate redundant concurrent trackView calls
+        if (!currentViewed[clipId] && !trackingClipIdsRef.current.has(clipId)) {
+          trackingClipIdsRef.current.add(clipId);
+          markClipAsViewed(clipId);
           
-          const isOwnClip = activeClip.userId === session?.user?.id || assignment?.userId === session?.user?.id;
-          
-          trackView(activeClip.id).then((res) => {
+          trackView(clipId).then((res) => {
             if (res.success && res.newlyUnlocked && res.newlyUnlocked.length > 0) {
               res.newlyUnlocked.forEach((id: string) => {
                 window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
               });
             }
-          }).catch(() => {});
-          
-          if (isOwnClip) {
-            window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
-          }
+          }).catch(() => {
+            // Clean up tracking state if request fails to allow subsequent retry attempts
+            trackingClipIdsRef.current.delete(clipId);
+          });
         }
       }, 1200);
 
       return () => clearTimeout(timer);
     }
-  }, [activeClip, session, assignment]);
+  }, [activeClipId, reactionsLength, isLikedByMe, commentsListString, session?.user?.id]);
 
   useEffect(() => {
     if (assignment?.pokes?.[0]) {
@@ -514,7 +519,6 @@ export function useTodayPage() {
       } else {
         showToast("Photo response added!", "success");
         
-        // Optimistic UI Append - Inject local Blob immediately into the active feed
         if (res.photoResponse) {
           const optimisticResponse = {
             ...res.photoResponse,
@@ -529,7 +533,6 @@ export function useTodayPage() {
           );
         }
 
-        // Silent background sync
         window.dispatchEvent(new CustomEvent("vlogs-refreshed"));
       }
     } catch (err) {
@@ -585,7 +588,7 @@ export function useTodayPage() {
     hasPostedInCurrentSlot,
     uploadingPhoto,
     hasResponded,
-    fileInputRef: { current: null }, // Nullified as we use custom WebRTC
+    fileInputRef: { current: null }, 
     handlePhotoResponseClick,
     handlePhotoResponseUpload,
     allVideosViewed,

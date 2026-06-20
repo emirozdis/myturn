@@ -266,26 +266,28 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const [modalQueue, setModalQueue] = useState<ModalTask[]>([]);
   
   const enqueueModal = useCallback((task: ModalTask) => {
-    const isDuplicate = modalQueue.some((existing) => {
-      if (existing.type !== task.type) return false;
-      
-      if (("groupId" in existing) && ("groupId" in task)) {
-        if (existing.groupId !== task.groupId) return false;
-        if (getAssignmentDateStr(existing.assignment) !== getAssignmentDateStr(task.assignment)) return false;
-        return true;
-      }
-      
-      if (("config" in existing) && ("config" in task)) {
-        if (existing.config.id !== task.config.id) return false;
-        return true;
-      }
+    setModalQueue((prev) => {
+      const isDuplicate = prev.some((existing) => {
+        if (existing.type !== task.type) return false;
+        
+        if (("groupId" in existing) && ("groupId" in task)) {
+          if (existing.groupId !== task.groupId) return false;
+          if (getAssignmentDateStr(existing.assignment) !== getAssignmentDateStr(task.assignment)) return false;
+          return true;
+        }
+        
+        if (("config" in existing) && ("config" in task)) {
+          if (existing.config.id !== task.config.id) return false;
+          return true;
+        }
 
-      return false;
+        return false;
+      });
+
+      if (isDuplicate) return prev;
+      return [...prev, task];
     });
-
-    if (isDuplicate) return;
-    setModalQueue((prev) => [...prev, task]);
-  }, [modalQueue]);
+  }, []);
   
   const dequeueModal = useCallback(() => {
     setModalQueue((prev) => prev.slice(1));
@@ -381,9 +383,11 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     }
   }, [checkRevealStatus, checkGlobalCompilation]);
 
+  // Strictly initialize groups once on layout mount, breaking any loop cascades
   useEffect(() => {
     loadGroups();
-  }, [loadGroups]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Once the route actually transitions server-side, remove the optimistic override flag entirely
   useEffect(() => {
@@ -826,8 +830,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     style={{
                       backdropFilter: "blur(8px)",
                       WebkitBackdropFilter: "blur(8px)",
-                      maskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(0,0,0,1) 60%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 90%)",
-                      WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(0,0,0,1) 60%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 90%)",
+                      maskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 90%)",
+                      WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,0) 40%, rgba(0,0,0,1) 80%, rgba(0,0,0,0) 90%)",
                     }}
                   />
                   {/* Layer 4: deep blur intensifying near the bottom */}

@@ -7,6 +7,7 @@ import { sendPushToUser } from "@/actions/push";
 import { calculateGroupLevel, getVibeArchetype } from "@/lib/vibe";
 import { generateEdgeUrl } from "@/lib/media-signing";
 import { generateMissingThumbnails } from "@/lib/transcoder";
+import { r2 } from "@/lib/r2";
 
 function getVlogCircadianState(timezone: string) {
   const now = new Date();
@@ -40,13 +41,16 @@ function getVlogCircadianState(timezone: string) {
     second = now.getUTCSeconds();
   }
 
+  // Generate date boundary at midnight in the group's local timezone
   const localDate = new Date(`${year}-${month}-${day}T00:00:00Z`);
   const currentSeconds = hour * 3600 + minute * 60 + second;
 
+  // Sleep mode is active between 12:00 AM (00:00) and 9:00 AM (09:00)
   const isSleepMode = hour >= 0 && hour < 9;
 
   let businessDate = new Date(localDate);
   if (isSleepMode) {
+    // During sleep mode, the business date defaults back to yesterday's date
     businessDate.setDate(businessDate.getDate() - 1);
   }
 
@@ -152,6 +156,7 @@ export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
 }
 
 export async function processGroupDayTransition(groupId: string, localDate: Date) {
+  // 1. Mark missed assignments and process decay
   const missedAssignments = await db.dailyAssignment.findMany({
     where: {
       groupId,
@@ -184,6 +189,7 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
     }
   }
 
+  // 2. Identify freshly completed assignments from yesterday to trigger push notifications
   const completedAssignments = await db.dailyAssignment.findMany({
     where: {
       groupId,
@@ -250,6 +256,7 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     return null;
   }
 
+  // Guard: If currently in local sleep mode, do not roll a new assignment!
   const circadian = getVlogCircadianState(group.timezone);
   if (circadian.isSleepMode) {
     return await db.dailyAssignment.findFirst({
@@ -274,6 +281,7 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     where: { groupId, date: yesterdayDate },
   });
 
+  // Cycle Distribution Logic (Shuffle Bag implementation)
   const recentAssignments = await db.dailyAssignment.findMany({
     where: { groupId, date: { lt: localDate } },
     orderBy: { date: "desc" },
@@ -425,6 +433,34 @@ export async function getOrCreateTodayAssignment(groupId: string) {
             clip.thumbnailBlurUrl = updated.thumbnailBlurUrl;
           }
         }
+
+        // Pre-sign all clip media URLs directly on the server to prevent heavy client-side request spam
+        clip.videoUrl = clip.videoUrl.startsWith("http") || clip.videoUrl.startsWith("/") 
+          ? clip.videoUrl 
+          : generateEdgeUrl("vlogs", clip.videoUrl);
+
+        if (clip.hlsUrl) {
+          clip.hlsUrl = clip.hlsUrl.startsWith("http") || clip.hlsUrl.startsWith("/") 
+            ? clip.hlsUrl 
+            : generateEdgeUrl("vlogs", clip.hlsUrl);
+        }
+
+        clip.thumbnailUrl = clip.thumbnailUrl.startsWith("http") || clip.thumbnailUrl.startsWith("/") 
+          ? clip.thumbnailUrl 
+          : generateEdgeUrl("vlogs", clip.thumbnailUrl);
+
+        const thumbnailBlurTarget = clip.thumbnailBlurUrl || clip.thumbnailUrl;
+        clip.thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
+          ? thumbnailBlurTarget 
+          : generateEdgeUrl("vlogs", thumbnailBlurTarget);
+
+        if (clip.photoResponses) {
+          for (const pr of clip.photoResponses) {
+            if (!pr.imageUrl.startsWith("http") && !pr.imageUrl.startsWith("/")) {
+              pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl);
+            }
+          }
+        }
       }
     }
 
@@ -440,13 +476,32 @@ export async function getOrCreateTodayAssignment(groupId: string) {
   }
 }
 
+/**
+ * Retrieves the most recent finished, completed daily assignment compilation.
+ * Excludes today's active business date to prevent premature recap popups.
+ */
 export async function getLatestCompilation(groupId: string) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
+    // 1. Fetch target group's timezone
+    const group = await db.group.findUnique({
+      where: { id: groupId },
+      select: { timezone: true }
+    });
+    if (!group) return { error: "Group not found" };
+
+    // 2. Fetch current local business date boundary
+    const circadian = getVlogCircadianState(group.timezone);
+
+    // 3. Retrieve only completed compilations strictly older than today's business date
     const assignment = await db.dailyAssignment.findFirst({
-      where: { groupId, status: "completed" },
+      where: { 
+        groupId, 
+        status: "completed",
+        date: { lt: circadian.businessDate } // Exclude today!
+      },
       orderBy: { date: "desc" },
       include: {
         user: { select: { id: true, name: true, image: true, handle: true } },

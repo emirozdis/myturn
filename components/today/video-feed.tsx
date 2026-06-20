@@ -119,7 +119,7 @@ export function VideoFeed({
   const [seekIndicatorText, setSeekIndicatorText] = useState("");
 
   const pointerIdRef = useRef<number | null>(null);
-  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const isHoldingRef = useRef(false);
@@ -157,6 +157,9 @@ export function VideoFeed({
 
   // Unified Pointer Event Controller
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Completely disable gesture controls if any modal/sheet overlay is active
+    if (isCommentsOpen || isViewsOpen || isPhotoCaptureOpen) return;
+    
     if (e.button !== 0) return;
     const target = e.target as HTMLElement;
 
@@ -195,6 +198,7 @@ export function VideoFeed({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isCommentsOpen || isViewsOpen || isPhotoCaptureOpen) return;
     if (pointerIdRef.current !== e.pointerId) return;
 
     // Stop propagation to prevent drag handlers on parent layers from firing
@@ -249,6 +253,7 @@ export function VideoFeed({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isCommentsOpen || isViewsOpen || isPhotoCaptureOpen) return;
     if (pointerIdRef.current !== e.pointerId) return;
 
     e.stopPropagation();
@@ -397,7 +402,7 @@ export function VideoFeed({
             key={activeClip.id}
             ref={videoRef}
             autoPlay
-            loop={shouldLoop}          // ← add this
+            loop={shouldLoop}          
             muted={isMuted}
             playsInline
             onTimeUpdate={(e) => {
