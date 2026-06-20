@@ -1,41 +1,41 @@
+// ./lib/media-signing.ts
 import crypto from "crypto";
 
 const SIGNING_SECRET = process.env.NEXTAUTH_SECRET || "default-media-signing-secret";
+const MEDIA_URL = process.env.NEXT_PUBLIC_MEDIA_URL || "https://media.myturn.app";
 
-/**
- * Generates a secure, temporary, and cryptographically signed application-level URL 
- * to retrieve private media assets via the local `/api/media` endpoint.
- * Outputs dynamic route path compatible with HLS relative mapping.
- */
-export function generateSignedMediaUrl(bucket: string, path: string, expiresInSeconds = 3600): string {
-  const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
-  const payload = `${bucket}:${path}:${expiresAt}`;
-  const signature = crypto
-    .createHmac("sha256", SIGNING_SECRET)
-    .update(payload)
-    .digest("hex");
-  
-  // Format as /api/media/bucket/path allowing dynamic Next.js param capturing
-  const cleanPath = path.startsWith("/") ? path.substring(1) : path;
-  return `/api/media/${bucket}/${cleanPath}?expires=${expiresAt}&sig=${signature}`;
+function base64url(str: string | Buffer) {
+  if (typeof str === "string") {
+    return Buffer.from(str).toString("base64url");
+  }
+  return str.toString("base64url");
 }
 
 /**
- * Validates a signed media URL's cryptographic signature and checks for expiration.
+ * Mints an Edge Authorization Token and appends it to the Cloudflare Worker domain.
+ * If the path belongs to a playlist (.m3u8), it authorizes the entire parent directory
+ * to ensure all relative segment chunk requests are validated automatically via the cookie.
  */
-export function verifySignedMediaUrl(bucket: string, path: string, expiresAt: number, signature: string): boolean {
-  if (Math.floor(Date.now() / 1000) > expiresAt) {
-    return false; // Token has expired
-  }
-  const payload = `${bucket}:${path}:${expiresAt}`;
-  const expectedSignature = crypto
-    .createHmac("sha256", SIGNING_SECRET)
-    .update(payload)
-    .digest("hex");
+export function generateEdgeUrl(bucket: string, path: string, expiresInSeconds = 3600): string {
+  const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
   
-  try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
-  } catch {
-    return false;
-  }
+  const cleanPath = path.startsWith("/") ? path.substring(1) : path;
+  const fullPath = `${bucket}/${cleanPath}`;
+  
+  const isHls = fullPath.includes(".m3u8");
+  
+  // Authorize directory prefix for HLS, or exact file path for standalone assets
+  const authPath = isHls ? fullPath.substring(0, fullPath.lastIndexOf("/") + 1) : fullPath;
+
+  const payload = JSON.stringify({ p: authPath, e: expiresAt });
+  const encodedPayload = base64url(payload);
+  
+  const signature = crypto
+    .createHmac("sha256", SIGNING_SECRET)
+    .update(encodedPayload)
+    .digest("base64url");
+    
+  const token = `${encodedPayload}.${signature}`;
+  
+  return `${MEDIA_URL}/${fullPath}?token=${token}`;
 }

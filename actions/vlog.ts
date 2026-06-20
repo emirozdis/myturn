@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { sendPushToUser } from "@/actions/push";
 import { calculateGroupLevel, getVibeArchetype } from "@/lib/vibe";
-import { generateSignedMediaUrl } from "@/lib/media-signing";
+import { generateEdgeUrl } from "@/lib/media-signing";
 import { generateMissingThumbnails } from "@/lib/transcoder";
 
 function getVlogCircadianState(timezone: string) {
@@ -40,16 +40,13 @@ function getVlogCircadianState(timezone: string) {
     second = now.getUTCSeconds();
   }
 
-  // Generate date boundary at midnight in the group's local timezone
   const localDate = new Date(`${year}-${month}-${day}T00:00:00Z`);
   const currentSeconds = hour * 3600 + minute * 60 + second;
 
-  // Sleep mode is active between 12:00 AM (00:00) and 9:00 AM (09:00)
   const isSleepMode = hour >= 0 && hour < 9;
 
   let businessDate = new Date(localDate);
   if (isSleepMode) {
-    // During sleep mode, the business date defaults back to yesterday's date
     businessDate.setDate(businessDate.getDate() - 1);
   }
 
@@ -155,7 +152,6 @@ export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
 }
 
 export async function processGroupDayTransition(groupId: string, localDate: Date) {
-  // 1. Mark missed assignments and process decay
   const missedAssignments = await db.dailyAssignment.findMany({
     where: {
       groupId,
@@ -188,7 +184,6 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
     }
   }
 
-  // 2. Identify freshly completed assignments from yesterday to trigger push notifications
   const completedAssignments = await db.dailyAssignment.findMany({
     where: {
       groupId,
@@ -255,7 +250,6 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     return null;
   }
 
-  // Guard: If currently in local sleep mode, do not roll a new assignment!
   const circadian = getVlogCircadianState(group.timezone);
   if (circadian.isSleepMode) {
     return await db.dailyAssignment.findFirst({
@@ -280,49 +274,36 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     where: { groupId, date: yesterdayDate },
   });
 
-  // Cycle Distribution Logic (Shuffle Bag implementation)
-  // Ensures every group member gets exactly 1 random turn per full cycle
   const recentAssignments = await db.dailyAssignment.findMany({
     where: { groupId, date: { lt: localDate } },
     orderBy: { date: "desc" },
-    take: group.members.length * 2, // Grab enough history to identify the cycle boundary
+    take: group.members.length * 2, 
   });
 
   const currentMemberIds = new Set(group.members.map((m) => m.userId));
   const seenInCycle = new Set<string>();
 
   for (const asg of recentAssignments) {
-    // Ignore historical assignments from users who are no longer in the group
     if (!currentMemberIds.has(asg.userId)) continue;
-    
-    // If we hit someone already in the current cycle set, the previous cycle has officially ended.
     if (seenInCycle.has(asg.userId)) break;
-    
     seenInCycle.add(asg.userId);
-    
-    // If the cycle currently holds everyone in the group, a perfect cycle was just completed.
     if (seenInCycle.size === currentMemberIds.size) break;
   }
 
-  // Define our eligible candidate pool to only those who HAVE NOT vlogged in the current cycle
   let pool = group.members.filter((m) => !seenInCycle.has(m.userId));
 
-  // If the pool is empty, it means a perfect cycle just completed and everyone is eligible again.
   if (pool.length === 0) {
     pool = [...group.members];
   }
 
-  // Anti-Consecutive Guard: Ensure yesterday's vlogger doesn't go twice in a row (unless they are the only member)
   if (pool.length > 1 && yesterdayAssignment) {
     pool = pool.filter((m) => m.userId !== yesterdayAssignment.userId);
   }
 
-  // Absolute fallback guard incase filters errantly empty the array
   if (pool.length === 0 && group.members.length > 0) {
     pool = [...group.members];
   }
 
-  // Randomize the pick from the filtered equal-distribution cycle pool
   const chosenMember = pool[Math.floor(Math.random() * pool.length)];
 
   const assignment = await db.dailyAssignment.create({
@@ -379,7 +360,6 @@ export async function getOrCreateTodayAssignment(groupId: string) {
 
     let assignment;
     if (circadian.isSleepMode) {
-      // Retain the prior day's assignment for viewing and grace period updates
       assignment = await db.dailyAssignment.findFirst({
         where: { groupId, date: circadian.businessDate },
       });
@@ -436,7 +416,6 @@ export async function getOrCreateTodayAssignment(groupId: string) {
       },
     });
 
-    // Check dynamically if any retrieved clip has no regular or blur thumbnail
     if (fullyPopulatedAssignment && fullyPopulatedAssignment.clips) {
       for (const clip of fullyPopulatedAssignment.clips) {
         if (!clip.thumbnailUrl || !clip.thumbnailBlurUrl) {
@@ -487,7 +466,6 @@ export async function getLatestCompilation(groupId: string) {
     const resolvedClips: any[] = [];
     for (const clip of assignment.clips) {
       let activeClip = clip;
-      // Guarantee both thumbnail properties are set and verified
       if (!clip.thumbnailUrl || !clip.thumbnailBlurUrl) {
         const updated = await generateMissingThumbnails(clip.id);
         if (updated) {
@@ -499,31 +477,30 @@ export async function getLatestCompilation(groupId: string) {
         }
       }
 
-      // Split the raw file URL and adaptive URL signature so the client can toggle ABR
       const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
         ? activeClip.videoUrl 
-        : generateSignedMediaUrl("vlogs", activeClip.videoUrl);
+        : generateEdgeUrl("vlogs", activeClip.videoUrl);
 
       const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
         ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
             ? activeClip.hlsUrl 
-            : generateSignedMediaUrl("vlogs", activeClip.hlsUrl))
+            : generateEdgeUrl("vlogs", activeClip.hlsUrl))
         : null;
 
       const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
         ? activeClip.thumbnailUrl 
-        : generateSignedMediaUrl("vlogs", activeClip.thumbnailUrl);
+        : generateEdgeUrl("vlogs", activeClip.thumbnailUrl);
 
       const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
       const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
         ? thumbnailBlurTarget 
-        : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+        : generateEdgeUrl("vlogs", thumbnailBlurTarget);
 
       if (activeClip.photoResponses) {
         for (const pr of activeClip.photoResponses) {
           pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
             ? pr.imageUrl
-            : generateSignedMediaUrl("vlogs", pr.imageUrl);
+            : generateEdgeUrl("vlogs", pr.imageUrl);
         }
       }
 
@@ -573,7 +550,6 @@ export async function createClip(data: {
 
     const isFirstClip = assignment.status === "active";
 
-    // Build the baseline payload safely omitting potentially missing schema additions
     const payload: any = {
       assignmentId: data.assignmentId,
       userId: session.user.id,
@@ -591,8 +567,6 @@ export async function createClip(data: {
     try {
       clip = await db.clip.create({ data: payload });
     } catch (dbErr: any) {
-      // Intercept Prisma Client validation errors related to newly added fields being missing 
-      // from the developer's un-generated local environment to ensure the upload still succeeds.
       if (dbErr.message && dbErr.message.includes('Unknown arg')) {
         console.warn("[createClip] Stale Prisma client detected. Retrying with safe baseline payload.");
         delete payload.metadata;
@@ -771,7 +745,6 @@ export async function addPhotoResponse(clipId: string, path: string) {
       }
     }
 
-    // Send push notification to the vlogger
     try {
       const targetClip = await db.clip.findUnique({
         where: { id: clipId },
@@ -884,7 +857,7 @@ export async function deleteComment(commentId: string) {
 
 export async function getSignedReadUrl(bucket: "vlogs" | "thumbnails" | "avatars", path: string) {
   try {
-    const url = generateSignedMediaUrl(bucket, path);
+    const url = generateEdgeUrl(bucket, path);
     return { success: true, url };
   } catch (error: any) {
     return { error: error?.message || "Failed to generate read URL." };
@@ -1007,7 +980,6 @@ export async function addComment(clipId: string, text: string, parentId?: string
       const commenterName = commenter?.name || "A friend";
       const truncatedText = text.length > 60 ? `${text.substring(0, 57)}...` : text;
 
-      // Extract raw `@handles` to notify specifically mentioned users
       const mentions = text.match(/@([a-zA-Z0-9_]+)/g);
       const notifiedUserIds = new Set<string>();
 
@@ -1029,7 +1001,6 @@ export async function addComment(clipId: string, text: string, parentId?: string
         }
       }
 
-      // Check if this was a thread reply, notify the target parent poster
       if (parentId) {
         const parentComment = await db.comment.findUnique({ where: { id: parentId } });
         if (parentComment && parentComment.userId !== session.user.id && !notifiedUserIds.has(parentComment.userId)) {
@@ -1042,7 +1013,6 @@ export async function addComment(clipId: string, text: string, parentId?: string
         }
       }
 
-      // Dispatch universal alert to the clip's host vlogger if they weren't explicitly mentioned above
       const targetClip = await db.clip.findUnique({
         where: { id: clipId },
         include: { group: { select: { name: true } } },
@@ -1075,7 +1045,6 @@ export async function trackView(clipId: string) {
     const clip = await db.clip.findUnique({ where: { id: clipId }, select: { groupId: true, views: true, userId: true } });
     if (!clip) return { error: "Clip details unresolved" };
 
-    // Explicitly block recording a view if the vlogger is watching their own clip
     if (clip.userId === session.user.id) {
       return { success: true, alreadyViewed: true, isOwnClip: true };
     }

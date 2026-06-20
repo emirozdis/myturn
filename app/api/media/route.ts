@@ -1,7 +1,7 @@
 // ./app/api/media/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
-import { supabaseServer } from "@/lib/supabase";
+import { r2 } from "@/lib/r2";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,16 +22,11 @@ export async function POST(req: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const { error } = await supabaseServer.storage
-      .from(bucket)
-      .upload(path, buffer, {
-        contentType: file.type || "application/octet-stream",
-        upsert: true,
-      });
-
-    if (error) {
+    try {
+      await r2.upload(bucket, path, buffer, file.type || "application/octet-stream");
+    } catch (error: any) {
       console.error("[Media API] Upload error:", error);
-      return new NextResponse(`Upload failed: ${error.message}`, { status: 500 });
+      return new NextResponse(`Upload failed: ${error.message || "Unknown R2 error"}`, { status: 500 });
     }
 
     return NextResponse.json({ success: true, path });

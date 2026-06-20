@@ -2,10 +2,10 @@
 
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
-import { supabaseServer } from "@/lib/supabase";
 import { getVibeArchetype } from "@/lib/vibe";
-import { generateSignedMediaUrl } from "@/lib/media-signing";
+import { generateEdgeUrl } from "@/lib/media-signing";
 import { generateMissingThumbnails } from "@/lib/transcoder";
+import { r2 } from "@/lib/r2";
 
 export async function getUserPublicProfile(userId: string) {
   try {
@@ -37,7 +37,7 @@ export async function getUserPublicProfile(userId: string) {
 
     let avatarUrl = user.image;
     if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {
-      avatarUrl = generateSignedMediaUrl("avatars", user.image);
+      avatarUrl = generateEdgeUrl("avatars", user.image);
     }
 
     return {
@@ -62,18 +62,14 @@ export async function uploadAvatar(base64Data: string) {
     const userId = session.user.id;
     const path = `avatars/${userId}-${Date.now()}.jpg`;
 
-    const { error: uploadError } = await supabaseServer.storage
-      .from("avatars")
-      .upload(path, buffer, { contentType: "image/jpeg", upsert: true });
-
-    if (uploadError) return { error: `Upload failed: ${uploadError.message}` };
+    await r2.upload("avatars", path, buffer, "image/jpeg");
 
     await db.user.update({
       where: { id: userId },
       data: { image: path },
     });
 
-    const imageUrl = generateSignedMediaUrl("avatars", path);
+    const imageUrl = generateEdgeUrl("avatars", path);
 
     return { success: true, imagePath: path, imageUrl };
   } catch (error: any) {
@@ -135,7 +131,6 @@ export async function getProfileData() {
     const clips: any[] = [];
     for (const clip of rawClips) {
       let activeClip = clip;
-      // Guarantee both thumbnail properties are set and verified
       if (!clip.thumbnailUrl || !clip.thumbnailBlurUrl) {
         const updatedThumbs = await generateMissingThumbnails(clip.id);
         if (updatedThumbs) {
@@ -147,31 +142,30 @@ export async function getProfileData() {
         }
       }
 
-      // Keep HLS stream URL and raw file URL completely separate for client-side selection
       const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
         ? activeClip.videoUrl 
-        : generateSignedMediaUrl("vlogs", activeClip.videoUrl);
+        : generateEdgeUrl("vlogs", activeClip.videoUrl);
 
       const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
         ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
             ? activeClip.hlsUrl 
-            : generateSignedMediaUrl("vlogs", activeClip.hlsUrl))
+            : generateEdgeUrl("vlogs", activeClip.hlsUrl))
         : null;
 
       const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
         ? activeClip.thumbnailUrl 
-        : generateSignedMediaUrl("vlogs", activeClip.thumbnailUrl);
+        : generateEdgeUrl("vlogs", activeClip.thumbnailUrl);
 
       const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
       const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
         ? thumbnailBlurTarget 
-        : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+        : generateEdgeUrl("vlogs", thumbnailBlurTarget);
 
       if (activeClip.photoResponses) {
         for (const pr of activeClip.photoResponses) {
           pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
             ? pr.imageUrl
-            : generateSignedMediaUrl("vlogs", pr.imageUrl);
+            : generateEdgeUrl("vlogs", pr.imageUrl);
         }
       }
 
@@ -186,7 +180,7 @@ export async function getProfileData() {
 
     let avatarUrl = user.image;
     if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {
-      avatarUrl = generateSignedMediaUrl("avatars", user.image);
+      avatarUrl = generateEdgeUrl("avatars", user.image);
     }
 
     const highestMemberXp = await db.groupMember.findFirst({
@@ -210,7 +204,6 @@ export async function getProfileData() {
       unlockedIds,
     };
 
-    // Calculate calendar days properly mapping exact current month timeline offsets
     const today = new Date();
     const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();

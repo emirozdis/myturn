@@ -3,7 +3,7 @@ import { exec } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { supabaseServer } from "./supabase";
+import { r2 } from "./r2";
 import { db } from "./db";
 
 /**
@@ -24,15 +24,16 @@ function runCommand(cmd: string): Promise<string> {
 
 /**
  * Downloads a raw video clip, uses local FFmpeg to generate 480p, 720p, and 1080p 
- * adaptive bitrate HLS streams, and uploads the chunks back to Supabase.
+ * adaptive bitrate HLS streams, and uploads the chunks back to Cloudflare R2.
  */
 export async function processClipHls(clipId: string, bucket: string, rawPath: string): Promise<string> {
-  const { data, error } = await supabaseServer.storage.from(bucket).download(rawPath);
-  if (error || !data) {
-    throw new Error(`Failed to download source video for clip ${clipId}`);
+  let data: Buffer;
+  try {
+    data = await r2.download(bucket, rawPath);
+  } catch (downloadError: any) {
+    throw new Error(`Failed to download source video for clip ${clipId}: ${downloadError.message}`);
   }
 
-  const buffer = Buffer.from(await data.arrayBuffer());
   const workDir = path.join(os.tmpdir(), `myturn_hls_${clipId}`);
   
   // Ensure a clean working directory
@@ -40,14 +41,13 @@ export async function processClipHls(clipId: string, bucket: string, rawPath: st
   await fs.mkdir(workDir, { recursive: true });
 
   const inputPath = path.join(workDir, "input.mp4");
-  await fs.writeFile(inputPath, buffer);
+  await fs.writeFile(inputPath, data);
 
   // Dynamic Resource Boundary: Constrain CPU allocation to half of available cores
   const totalCores = os.cpus().length;
   const targetCpuCores = Math.max(1, Math.floor(totalCores / 2));
 
   // Platform Check: Linux VPS supports standard low-priority scheduling wrappers.
-  // macOS / Windows local environments will fallback to standard direct command invocation.
   const isLinux = process.platform === "linux";
   const priorityPrefix = isLinux ? "nice -n 19 ionice -c 3 " : "";
 
@@ -55,12 +55,9 @@ export async function processClipHls(clipId: string, bucket: string, rawPath: st
   const outputSegmentFormat = path.join(workDir, "output_%v_%03d.ts");
 
   // Standardize video encoding arguments to fix Safari/Chrome MSE compatibility:
-  // 1. Force 8-bit SDR (yuv420p) to prevent 10-bit HDR iOS uploads from causing black screens.
-  // 2. Enforce strict IDR keyframes every 2s (-g 60) for perfect HLS chunk slicing.
   const commonVideoOpts = "-preset veryfast -pix_fmt yuv420p -profile:v main -g 60 -keyint_min 60 -sc_threshold 0";
 
   // PRIMARY COMMAND (With Audio Multiplexing)
-  // Maps the input audio stream to separate unique HLS variants to prevent A/V stream collisions and audio loss.
   const cmdWithAudio = `${priorityPrefix}ffmpeg -y -i "${inputPath}" \
     -filter_complex "[0:v]split=3[v1][v2][v3];[v1]scale=w=-2:h=480[v480];[v2]scale=w=-2:h=720[v720];[v3]scale=w=-2:h=1080[v1080]" \
     -map "[v480]" -c:v:0 libx264 ${commonVideoOpts} -b:v:0 800k -maxrate:v:0 850k -bufsize:v:0 1200k \
@@ -120,12 +117,10 @@ export async function processClipHls(clipId: string, bucket: string, rawPath: st
         ? "video/MP2T" 
         : "application/octet-stream";
     
-    const { error: uploadError } = await supabaseServer.storage
-      .from(bucket)
-      .upload(dest, fileBuf, { contentType, upsert: true });
-
-    if (uploadError) {
-      console.error(`[Transcoder] Failed to upload chunk ${file} for ${clipId}:`, uploadError.message);
+    try {
+      await r2.upload(bucket, dest, fileBuf, contentType);
+    } catch (uploadError: any) {
+      console.error(`[Transcoder] Failed to upload chunk ${file} for ${clipId}:`, uploadError.message || uploadError);
     }
 
     if (file === "master.m3u8") {
@@ -143,11 +138,6 @@ export async function processClipHls(clipId: string, bucket: string, rawPath: st
   return masterUrl;
 }
 
-/**
- * Inspects database records for a given clip. If the regular thumbnail or blur placeholder
- * is absent, it executes local FFmpeg extraction on the source video, uploads the assets,
- * and updates the database records cleanly.
- */
 export async function generateMissingThumbnails(clipId: string): Promise<{ thumbnailUrl: string; thumbnailBlurUrl: string } | null> {
   try {
     const clip = await db.clip.findUnique({ where: { id: clipId } });
@@ -166,13 +156,14 @@ export async function generateMissingThumbnails(clipId: string): Promise<{ thumb
 
     console.log(`[Transcoder] Generating missing thumbnails for clip: ${clipId}`);
 
-    // Download raw video directly from secure storage
-    const { data, error } = await supabaseServer.storage.from("vlogs").download(clip.videoUrl);
-    if (error || !data) {
-      throw new Error(`Failed to download source video for clip ${clipId}`);
+    // Download raw video directly from Cloudflare R2
+    let buffer: Buffer;
+    try {
+      buffer = await r2.download("vlogs", clip.videoUrl);
+    } catch (downloadError: any) {
+      throw new Error(`Failed to download source video for clip ${clipId}: ${downloadError.message}`);
     }
 
-    const buffer = Buffer.from(await data.arrayBuffer());
     const workDir = path.join(os.tmpdir(), `myturn_thumb_${clipId}`);
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
     await fs.mkdir(workDir, { recursive: true });
@@ -193,10 +184,7 @@ export async function generateMissingThumbnails(clipId: string): Promise<{ thumb
       const thumbBuf = await fs.readFile(thumbLocalPath);
       const thumbDest = dirName ? `${dirName}/${timestamp}-thumb.jpg` : `${timestamp}-thumb.jpg`;
       
-      await supabaseServer.storage.from("vlogs").upload(thumbDest, thumbBuf, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+      await r2.upload("vlogs", thumbDest, thumbBuf, "image/jpeg");
 
       currentThumb = thumbDest;
       updated = true;
@@ -212,10 +200,7 @@ export async function generateMissingThumbnails(clipId: string): Promise<{ thumb
       const blurBuf = await fs.readFile(blurLocalPath);
       const blurDest = dirName ? `${dirName}/${timestamp}-thumb-blur.jpg` : `${timestamp}-thumb-blur.jpg`;
       
-      await supabaseServer.storage.from("vlogs").upload(blurDest, blurBuf, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+      await r2.upload("vlogs", blurDest, blurBuf, "image/jpeg");
 
       currentBlur = blurDest;
       updated = true;

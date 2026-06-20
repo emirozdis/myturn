@@ -4,7 +4,7 @@
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { getVibeArchetype } from "@/lib/vibe";
-import { generateSignedMediaUrl } from "@/lib/media-signing";
+import { generateEdgeUrl } from "@/lib/media-signing";
 import { generateMissingThumbnails } from "@/lib/transcoder";
 
 export async function getStreaksData(groupId: string) {
@@ -75,7 +75,6 @@ export async function getStreaksData(groupId: string) {
             resolvedClips = [];
             for (const clip of matchingAssignment.clips) {
               let activeClip = clip;
-              // Guarantee both thumbnail properties are set and verified
               if (!clip.thumbnailUrl || !clip.thumbnailBlurUrl) {
                 const updatedThumbs = await generateMissingThumbnails(clip.id);
                 if (updatedThumbs) {
@@ -87,31 +86,30 @@ export async function getStreaksData(groupId: string) {
                 }
               }
 
-              // Keep HLS stream URL and raw file URL completely separate for client-side selection
               const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
                 ? activeClip.videoUrl 
-                : generateSignedMediaUrl("vlogs", activeClip.videoUrl);
+                : generateEdgeUrl("vlogs", activeClip.videoUrl);
 
               const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
                 ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
                     ? activeClip.hlsUrl 
-                    : generateSignedMediaUrl("vlogs", activeClip.hlsUrl))
+                    : generateEdgeUrl("vlogs", activeClip.hlsUrl))
                 : null;
 
               const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
                 ? activeClip.thumbnailUrl 
-                : generateSignedMediaUrl("vlogs", activeClip.thumbnailUrl);
+                : generateEdgeUrl("vlogs", activeClip.thumbnailUrl);
 
               const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
               const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
                 ? thumbnailBlurTarget 
-                : generateSignedMediaUrl("vlogs", thumbnailBlurTarget);
+                : generateEdgeUrl("vlogs", thumbnailBlurTarget);
 
               if (activeClip.photoResponses) {
                 for (const pr of activeClip.photoResponses) {
-                  pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
-                    ? pr.imageUrl
-                    : generateSignedMediaUrl("vlogs", pr.imageUrl);
+                  if (!pr.imageUrl.startsWith("http") && !pr.imageUrl.startsWith("/")) {
+                    pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl);
+                  }
                 }
               }
 
