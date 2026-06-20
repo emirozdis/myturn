@@ -8,6 +8,7 @@ import { calculateGroupLevel, getVibeArchetype } from "@/lib/vibe";
 import { generateEdgeUrl } from "@/lib/media-signing";
 import { generateMissingThumbnails } from "@/lib/transcoder";
 import { r2 } from "@/lib/r2";
+import { rateLimit } from "@/lib/rate-limit";
 
 function getVlogCircadianState(timezone: string) {
   const now = new Date();
@@ -544,7 +545,7 @@ export async function getLatestCompilation(groupId: string) {
 
       const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
         ? activeClip.thumbnailUrl 
-        : generateEdgeUrl("vlogs", activeClip.thumbnailUrl);
+        : generateEdgeUrl("vlogs", clip.thumbnailUrl);
 
       const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
       const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
@@ -591,6 +592,10 @@ export async function createClip(data: {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
+
+    // Rate Limit: Max 5 clips per minute per user to prevent upload endpoint abuse
+    const rl = rateLimit(`create_clip_${session.user.id}`, 5, 60000);
+    if (!rl.success) return { error: `You're posting too fast! Try again in ${rl.retryAfter}s.` };
 
     if (data.duration === undefined || data.duration < 4 || data.duration > 120) {
       return { error: "Video clip must be between 5 and 120 seconds." };
@@ -768,6 +773,10 @@ export async function addPhotoResponse(clipId: string, path: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
+    // Rate Limit: Max 15 photo responses per minute
+    const rlPhoto = rateLimit(`photo_res_${session.user.id}`, 15, 60000);
+    if (!rlPhoto.success) return { error: `Please wait a moment before sending more photo responses.` };
+
     const existing = await db.photoResponse.findFirst({
       where: { clipId, userId: session.user.id },
     });
@@ -830,6 +839,10 @@ export async function pokeVlogger(assignmentId: string) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
+
+    // Rate Limit: Max 20 overall pokes per minute to prevent global push notification spam
+    const rlPoke = rateLimit(`poke_${session.user.id}`, 20, 60000);
+    if (!rlPoke.success) return { error: "You are poking too often across the app!" };
 
     const THIRTY_MINUTES = 30 * 60 * 1000;
     
@@ -972,6 +985,10 @@ export async function addComment(clipId: string, text: string, parentId?: string
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
+
+    // Rate Limit: Max 15 comments per minute
+    const rlComm = rateLimit(`comment_${session.user.id}`, 15, 60000);
+    if (!rlComm.success) return { error: `You are commenting too fast. Slow down! Try again in ${rlComm.retryAfter}s.` };
 
     const clip = await db.clip.findUnique({ where: { id: clipId }, select: { groupId: true, userId: true } });
     if (!clip) return { error: "Target clip parameters unresolved" };

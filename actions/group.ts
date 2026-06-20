@@ -3,6 +3,7 @@
 
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 
 async function generateInviteCode(): Promise<string> {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -35,6 +36,11 @@ export async function createGroup(name: string, timezone: string = "UTC", emoji:
       return { error: "Unauthorized. Please log in." };
     }
 
+    const rl = rateLimit(`create_group_${session.user.id}`, 5, 60000);
+    if (!rl.success) {
+      return { error: `You are creating groups too fast. Try again in ${rl.retryAfter}s.` };
+    }
+
     const inviteCode = await generateInviteCode();
 
     const group = await db.group.create({
@@ -63,6 +69,11 @@ export async function joinGroup(inviteCode: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) {
       return { error: "Unauthorized. Please log in." };
+    }
+
+    const rl = rateLimit(`join_group_${session.user.id}`, 10, 60000);
+    if (!rl.success) {
+      return { error: `You are joining groups too fast. Try again in ${rl.retryAfter}s.` };
     }
 
     const formattedCode = inviteCode.trim().toUpperCase();
@@ -198,6 +209,11 @@ export async function leaveGroup(groupId: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) {
       return { error: "Unauthorized" };
+    }
+
+    const rl = rateLimit(`leave_group_${session.user.id}`, 10, 60000);
+    if (!rl.success) {
+      return { error: `You are leaving groups too fast. Try again in ${rl.retryAfter}s.` };
     }
 
     await db.groupMember.delete({

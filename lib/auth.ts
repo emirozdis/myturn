@@ -5,6 +5,8 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { compare } from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { headers } from "next/headers";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const authOptions: AuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -33,6 +35,16 @@ export const authOptions: AuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
           return null;
+        }
+
+        // --- Abuse Protection: Brute-Force & Credential Stuffing Prevention ---
+        const reqHeaders = await headers();
+        const ip = reqHeaders.get("cf-connecting-ip") || reqHeaders.get("x-forwarded-for") || "unknown_ip";
+
+        // Limit to 10 login attempts per 15 minutes per IP address
+        const rl = rateLimit(`login_${ip}`, 10, 15 * 60 * 1000);
+        if (!rl.success) {
+          throw new Error("Too many login attempts. Please try again later.");
         }
 
         // Normalize the email input during sign-in to match sign-up constraints

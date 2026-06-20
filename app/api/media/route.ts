@@ -2,12 +2,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { r2 } from "@/lib/r2";
+import { rateLimit } from "@/lib/rate-limit";
+
+// Maximum 50MB file size limit for raw video assets
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+// Restrict access to designated buckets to prevent accidental overrides
+const ALLOWED_BUCKETS = ["vlogs", "avatars", "thumbnails"];
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) {
       return new NextResponse("Unauthorized.", { status: 401 });
+    }
+
+    // --- Rate Limiting: Max 30 media uploads per minute per user ---
+    const rl = rateLimit(`media_upload_${session.user.id}`, 30, 60000);
+    if (!rl.success) {
+      return new NextResponse(`Rate limit exceeded. Try again in ${rl.retryAfter}s.`, { status: 429 });
     }
 
     const formData = await req.formData();
@@ -17,6 +29,26 @@ export async function POST(req: NextRequest) {
 
     if (!file || !bucket || !path) {
       return new NextResponse("Missing required fields.", { status: 400 });
+    }
+
+    // --- Abuse Protection: Size Limit ---
+    if (file.size > MAX_FILE_SIZE) {
+      return new NextResponse("Payload too large. Maximum file size is 50MB.", { status: 413 });
+    }
+
+    // --- Abuse Protection: Bucket Validation ---
+    if (!ALLOWED_BUCKETS.includes(bucket)) {
+      return new NextResponse("Invalid bucket destination.", { status: 400 });
+    }
+
+    // --- Abuse Protection: Path Traversal Prevention ---
+    if (path.includes("..") || path.startsWith("/")) {
+      return new NextResponse("Invalid path definition.", { status: 400 });
+    }
+
+    // --- Abuse Protection: MIME Type Validation ---
+    if (!file.type.startsWith("video/") && !file.type.startsWith("image/")) {
+      return new NextResponse("Invalid file format. Only images and videos are permitted.", { status: 415 });
     }
 
     const arrayBuffer = await file.arrayBuffer();

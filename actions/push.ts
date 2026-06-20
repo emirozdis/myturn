@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { DEFAULT_VAPID_PUBLIC_KEY } from "@/lib/push-client";
 import webpush from "web-push";
+import { rateLimit } from "@/lib/rate-limit";
 
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_KEY || DEFAULT_VAPID_PUBLIC_KEY;
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "";
@@ -33,6 +34,11 @@ export async function saveSubscription(subscription: {
     const session = await getAuthSession();
     if (!session?.user?.id) {
       return { error: "Unauthorized. Please log in first." };
+    }
+
+    const rl = rateLimit(`save_sub_${session.user.id}`, 10, 60000);
+    if (!rl.success) {
+      return { error: `Too many requests. Try again in ${rl.retryAfter}s.` };
     }
 
     const userId = session.user.id;
@@ -66,6 +72,14 @@ export async function saveSubscription(subscription: {
 // Server action to safely delete subscription endpoints from the database
 export async function deleteSubscription(endpoint: string) {
   try {
+    const session = await getAuthSession();
+    if (session?.user?.id) {
+      const rl = rateLimit(`del_sub_${session.user.id}`, 20, 60000);
+      if (!rl.success) {
+        return { error: `Too many requests. Try again in ${rl.retryAfter}s.` };
+      }
+    }
+
     // We use deleteMany so that it gracefully succeeds even if the record does not exist
     await db.pushSubscription.deleteMany({
       where: { endpoint }

@@ -6,6 +6,7 @@ import { getVibeArchetype } from "@/lib/vibe";
 import { generateEdgeUrl } from "@/lib/media-signing";
 import { generateMissingThumbnails } from "@/lib/transcoder";
 import { r2 } from "@/lib/r2";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function getUserPublicProfile(userId: string) {
   try {
@@ -54,6 +55,11 @@ export async function uploadAvatar(base64Data: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) {
       return { error: "Unauthorized" };
+    }
+
+    const rl = rateLimit(`upload_avatar_${session.user.id}`, 5, 60000);
+    if (!rl.success) {
+      return { error: `You are uploading avatars too fast. Try again in ${rl.retryAfter}s.` };
     }
 
     const base64Image = base64Data.replace(/^data:image\/\w+;base64,/, "");
@@ -243,6 +249,11 @@ export async function updateProfile(data: {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
+
+    const rl = rateLimit(`update_profile_${session.user.id}`, 10, 60000);
+    if (!rl.success) {
+      return { error: `You are updating your profile too fast. Try again in ${rl.retryAfter}s.` };
+    }
 
     const formattedHandle = data.handle.toLowerCase().trim().replace(/\s+/g, "");
 

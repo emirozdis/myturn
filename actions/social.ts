@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { getAuthSession } from "@/lib/auth";
 import { sendPushToUser } from "@/actions/push";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function getSocialData() {
   try {
@@ -132,6 +133,11 @@ export async function sendFriendRequest(targetUserId: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
+    const rl = rateLimit(`send_friend_${session.user.id}`, 10, 60000);
+    if (!rl.success) {
+      return { error: `You are sending friend requests too fast. Try again in ${rl.retryAfter}s.` };
+    }
+
     if (session.user.id === targetUserId) return { error: "Cannot send request to yourself." };
 
     const existing = await db.friendship.findFirst({
@@ -171,6 +177,11 @@ export async function respondFriendRequest(requestId: string, accept: boolean) {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
+    const rl = rateLimit(`respond_friend_${session.user.id}`, 20, 60000);
+    if (!rl.success) {
+      return { error: `Too many requests. Try again in ${rl.retryAfter}s.` };
+    }
+
     const request = await db.friendship.findUnique({
       where: { id: requestId }
     });
@@ -206,6 +217,11 @@ export async function cancelFriendRequest(requestId: string) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
+
+    const rl = rateLimit(`cancel_friend_${session.user.id}`, 20, 60000);
+    if (!rl.success) {
+      return { error: `Too many requests. Try again in ${rl.retryAfter}s.` };
+    }
 
     const request = await db.friendship.findUnique({
       where: { id: requestId }

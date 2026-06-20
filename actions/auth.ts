@@ -1,10 +1,21 @@
 "use server";
 
+import { headers } from "next/headers";
 import { hash } from "bcryptjs";
 import { db } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 
 export async function signUpUser(data: { name: string; email: string; password: string }) {
   try {
+    const reqHeaders = await headers();
+    const ip = reqHeaders.get("cf-connecting-ip") || reqHeaders.get("x-forwarded-for") || "unknown_ip";
+
+    // Rate Limit: Max 5 signups per hour per IP address
+    const rl = rateLimit(`signup_${ip}`, 5, 3600 * 1000);
+    if (!rl.success) {
+      return { error: `Too many registration attempts. Please try again later.` };
+    }
+
     // Prevent registration if system flag is disabled
     const allowRegistration = process.env.NEXT_PUBLIC_ALLOW_REGISTRATION !== "false";
     if (!allowRegistration) {

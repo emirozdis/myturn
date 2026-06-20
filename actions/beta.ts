@@ -1,6 +1,8 @@
 "use server";
 
+import { headers } from "next/headers";
 import { db } from "@/lib/db";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * Registers an email address to join the closed beta waitlist.
@@ -8,6 +10,15 @@ import { db } from "@/lib/db";
  */
 export async function registerBetaApply(email: string) {
   try {
+    const reqHeaders = await headers();
+    const ip = reqHeaders.get("cf-connecting-ip") || reqHeaders.get("x-forwarded-for") || "unknown_ip";
+
+    // Rate Limit: Max 10 attempts per hour per IP address
+    const rl = rateLimit(`beta_${ip}`, 10, 3600 * 1000);
+    if (!rl.success) {
+      return { error: `Too many waitlist submissions. Please try again later.` };
+    }
+
     if (!email) {
       return { error: "Email address is required." };
     }

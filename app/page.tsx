@@ -547,17 +547,27 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
     }
 
     setLoading(true);
-    const res = await signIn("credentials", {
-      redirect: false,
-      email,
-      password,
-    });
+    try {
+      const res = await signIn("credentials", {
+        redirect: false,
+        email,
+        password,
+      });
 
-    setLoading(false);
-    if (res?.error) {
-      setError("Invalid email or password.");
-    } else {
-      router.push("/today");
+      setLoading(false);
+      if (res?.error) {
+        if (res.status === 429 || res.error.includes("Too many login attempts")) {
+          setError("Too many login attempts. Please try again later.");
+        } else {
+          setError("Invalid email or password.");
+        }
+      } else {
+        router.push("/today");
+      }
+    } catch (err) {
+      setLoading(false);
+      setError("An unexpected error occurred. Please try again.");
+      console.error("Sign in failed:", err);
     }
   };
 
@@ -657,24 +667,34 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
     }
 
     setLoading(true);
-    const res = await signUpUser({ name, email, password });
+    try {
+      const res = await signUpUser({ name, email, password });
 
-    if (res.error) {
-      setError(res.error);
-      setLoading(false);
-    } else {
-      const loginRes = await signIn("credentials", {
-        redirect: false,
-        email,
-        password,
-      });
-      setLoading(false);
-      if (loginRes?.error) {
-        setError("Account created, please proceed to sign in.");
+      if (res.error) {
+        setError(res.error);
+        setLoading(false);
       } else {
-        onSignUpSuccess(name);
-        onNavigate("permissions");
+        const loginRes = await signIn("credentials", {
+          redirect: false,
+          email,
+          password,
+        });
+        setLoading(false);
+        if (loginRes?.error) {
+          if (loginRes.status === 429 || loginRes.error.includes("Too many login attempts")) {
+            setError("Too many login attempts. Please try again later.");
+          } else {
+            setError("Account created, please proceed to sign in.");
+          }
+        } else {
+          onSignUpSuccess(name);
+          onNavigate("permissions");
+        }
       }
+    } catch (err) {
+      setLoading(false);
+      setError("An unexpected error occurred. Please try again.");
+      console.error("Sign up failed:", err);
     }
   };
 
