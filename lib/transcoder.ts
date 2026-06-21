@@ -46,52 +46,28 @@ async function probeHasAudio(inputPath: string): Promise<boolean> {
 }
 
 interface VideoProbe {
-  /** True average FPS from the container (safe for VFR sources like iOS). */
-  fps: number;
   /** Duration in seconds. Used to compute a safe encode timeout. */
   durationSecs: number;
 }
 
 /**
- * Reads avg_frame_rate (not r_frame_rate) and duration from the first video stream.
- *
- * r_frame_rate reflects the stream's time-base and returns absurd values like
- * "1000/1" for VFR recordings from iOS. avg_frame_rate is the actual mean FPS
- * and is always a sane number (e.g. "29.97" or "30").
+ * Reads duration from the container. 
+ * (FPS is no longer probed since we force a strict 30 FPS timeline).
  */
 async function probeVideo(inputPath: string): Promise<VideoProbe> {
-  const defaults: VideoProbe = { fps: 30, durationSecs: 300 };
+  const defaults: VideoProbe = { durationSecs: 300 };
   try {
-    // Read avg_frame_rate and duration in one ffprobe call
     const out = await runCommand(
-      `ffprobe -v error -select_streams v:0 \
-        -show_entries stream=avg_frame_rate,duration \
-        -of csv=p=0 "${inputPath}"`,
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputPath}"`,
       10_000
     );
 
-    // Output is two lines: "avg_frame_rate\nduration"
-    const lines = out.trim().split("\n");
-
-    let fps = defaults.fps;
-    let durationSecs = defaults.durationSecs;
-
-    if (lines[0]) {
-      const [num, den] = lines[0].trim().split("/").map(Number);
-      const parsed = den ? num / den : num;
-      if (Number.isFinite(parsed) && parsed > 0 && parsed < 300) {
-        fps = parsed;
-      }
+    const parsed = parseFloat(out.trim());
+    if (Number.isFinite(parsed) && parsed > 0) {
+      defaults.durationSecs = parsed;
     }
 
-    if (lines[1]) {
-      const parsed = parseFloat(lines[1].trim());
-      if (Number.isFinite(parsed) && parsed > 0) {
-        durationSecs = parsed;
-      }
-    }
-
-    return { fps, durationSecs };
+    return defaults;
   } catch {
     return defaults;
   }
@@ -104,8 +80,6 @@ async function probeVideo(inputPath: string): Promise<VideoProbe> {
 /**
  * Downloads a raw video clip, uses local FFmpeg to generate 480p, 720p, and 1080p
  * adaptive-bitrate HLS streams, and uploads the segments back to Cloudflare R2.
- *
- * Returns the R2 path to the generated master.m3u8.
  */
 export async function processClipHls(
   clipId: string,
@@ -130,23 +104,26 @@ export async function processClipHls(
   const inputPath = path.join(workDir, "input.mp4");
   await fs.writeFile(inputPath, data);
 
+  // ── Strict Timeline Settings ───────────────────────────────────────────────
+  // We control the recorder (set to 30fps), so we strictly enforce 30fps decoding
+  // to immune the system against any VFR or metadata corruption from the browser.
+  const TARGET_FPS = 30;
+  
+  // Keyframe every 2 seconds, strictly aligned to the HLS segment boundary
+  const gopSize = TARGET_FPS * 2;
+
   // ── Probe ─────────────────────────────────────────────────────────────────
-  const [hasAudio, { fps, durationSecs }] = await Promise.all([
+  const [hasAudio, { durationSecs }] = await Promise.all([
     probeHasAudio(inputPath),
     probeVideo(inputPath),
   ]);
 
   console.log(
-    `[Transcoder] clip=${clipId} hasAudio=${hasAudio} fps=${fps.toFixed(2)} duration=${durationSecs.toFixed(1)}s`
+    `[Transcoder] clip=${clipId} hasAudio=${hasAudio} fps=${TARGET_FPS} (forced) duration=${durationSecs.toFixed(1)}s`
   );
 
-  // Keyframe every 2 seconds, aligned to HLS segment boundary (hls_time=4 → 2× GOP).
-  const gopSize = Math.round(fps * 2);
-
   // ── Encode timeout ────────────────────────────────────────────────────────
-  // This VPS encodes at roughly 0.1× realtime. We budget at 0.05× (20× realtime)
-  // to give a generous ceiling, with a minimum of 5 minutes for very short clips.
-  const ENCODE_SPEED_FLOOR = 0.05; // assume worst-case 5% realtime
+  const ENCODE_SPEED_FLOOR = 0.05; 
   const encodeTimeoutMs = Math.max(
     5 * 60 * 1000,
     Math.ceil((durationSecs / ENCODE_SPEED_FLOOR) * 1000)
@@ -157,25 +134,12 @@ export async function processClipHls(
   );
 
   // ── FFmpeg config ─────────────────────────────────────────────────────────
-  // Constrain CPU to half of available cores to avoid starving other processes.
   const targetCpuCores = Math.max(1, Math.floor(os.cpus().length / 2));
-
-  // Linux VPS: run at lowest I/O and CPU scheduling priority.
-  const priorityPrefix =
-    process.platform === "linux" ? "nice -n 19 ionice -c 3 " : "";
+  const priorityPrefix = process.platform === "linux" ? "nice -n 19 ionice -c 3 " : "";
 
   const segmentPattern = path.join(workDir, "output_%v_%03d.ts");
   const playlistPattern = path.join(workDir, "output_%v.m3u8");
 
-  // Video encoding flags:
-  // -pix_fmt yuv420p        → output TV-range YUV (Safari / MSE compat)
-  // -color_range tv         → explicitly declare TV range so swscaler
-  //                           correctly maps yuvj420p (full-range) input
-  // -vf scale flags         → force output color range in the filtergraph
-  //                           (belt-and-suspenders for the swscaler warning)
-  // -profile:v main         → broad device support
-  // -preset veryfast        → low CPU cost on ARM VPS
-  // -sc_threshold 0         → no scene-cut keyframes; rely solely on -g
   const commonVideoOpts = [
     `-preset veryfast`,
     `-pix_fmt yuv420p`,
@@ -186,24 +150,25 @@ export async function processClipHls(
     `-sc_threshold 0`,
   ].join(" ");
 
-  // Force stereo 44.1 kHz on output to handle mono / 48 kHz / ambiguous
-  // channel-layout inputs from iOS Core Media Audio.
   const commonAudioOpts = `-ar 44100 -ac 2`;
 
-  // Add :out_range=tv to each scale filter to suppress the swscaler
-  // "deprecated pixel format" warning from yuvj420p full-range sources.
+  // 1. Unified Filter Complex: Split the video and reset the audio timeline to 0
   const scaleFilter = [
     `[0:v]split=3[v1][v2][v3]`,
     `[v1]scale=w=-2:h=480:out_range=tv[v480]`,
     `[v2]scale=w=-2:h=720:out_range=tv[v720]`,
     `[v3]scale=w=-2:h=1080:out_range=tv[v1080]`,
-  ].join(";");
+    hasAudio ? `[0:a:0]asetpts=N/SR/TB,asplit=3[a1][a2][a3]` : ""
+  ]
+    .filter(Boolean)
+    .join(";");
 
+  // 2. Map the cleaned audio outputs (a1, a2, a3)
   const audioMaps = hasAudio
     ? [
-        `-map 0:a -c:a:0 aac ${commonAudioOpts} -b:a:0 128k`,
-        `-map 0:a -c:a:1 aac ${commonAudioOpts} -b:a:1 128k`,
-        `-map 0:a -c:a:2 aac ${commonAudioOpts} -b:a:2 128k`,
+        `-map "[a1]" -c:a:0 aac ${commonAudioOpts} -b:a:0 128k`,
+        `-map "[a2]" -c:a:1 aac ${commonAudioOpts} -b:a:1 128k`,
+        `-map "[a3]" -c:a:2 aac ${commonAudioOpts} -b:a:2 128k`,
       ].join(" \\\n    ")
     : "";
 
@@ -215,6 +180,8 @@ export async function processClipHls(
     `${priorityPrefix}ffmpeg`,
     `-y`,
     `-threads ${targetCpuCores}`,
+    `-fflags +igndts`,          // Ignore corrupted container timestamps
+    `-r ${TARGET_FPS}`,         // Force constant frame rate at input
     `-i "${inputPath}"`,
     `-filter_complex "${scaleFilter}"`,
     `-map "[v480]"  -c:v:0 libx264 ${commonVideoOpts} -b:v:0 800k  -maxrate:v:0 850k  -bufsize:v:0 1200k`,
@@ -224,6 +191,7 @@ export async function processClipHls(
     `-f hls`,
     `-hls_time 4`,
     `-hls_playlist_type vod`,
+    `-hls_flags independent_segments`, // Force Apple compatibility
     `-master_pl_name master.m3u8`,
     `-var_stream_map ${varStreamMap}`,
     `-hls_segment_filename "${segmentPattern}"`,
@@ -341,12 +309,13 @@ export async function generateMissingThumbnails(
     let currentBlur = clip.thumbnailBlurUrl;
     let updated = false;
 
+    // Apply the same front-door IGNDTS safety protocols to thumbnail generation
     try {
       if (needsThumb) {
         const thumbLocalPath = path.join(workDir, "thumb.jpg");
 
         await runCommand(
-          `ffmpeg -y -ss 0.5 -i "${inputPath}" -vframes 1 -q:v 2 "${thumbLocalPath}"`,
+          `ffmpeg -y -fflags +igndts -r 30 -i "${inputPath}" -ss 0.5 -vframes 1 -q:v 2 "${thumbLocalPath}"`,
           30_000
         );
 
@@ -363,9 +332,8 @@ export async function generateMissingThumbnails(
       if (needsBlur) {
         const blurLocalPath = path.join(workDir, "thumb-blur.jpg");
 
-        // 80×142 at q:v 15 → lightweight LQIP placeholder
         await runCommand(
-          `ffmpeg -y -ss 0.5 -i "${inputPath}" -vf "scale=80:142" -vframes 1 -q:v 15 "${blurLocalPath}"`,
+          `ffmpeg -y -fflags +igndts -r 30 -i "${inputPath}" -ss 0.5 -vf "scale=80:142" -vframes 1 -q:v 15 "${blurLocalPath}"`,
           30_000
         );
 

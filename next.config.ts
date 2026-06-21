@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  allowedDevOrigins: ["192.168.0.49"],
+  allowedDevOrigins: ["192.168.0.49", "3c90-88-238-61-142.ngrok-free.app"],
   experimental: {
     serverActions: {
       allowedOrigins: [
