@@ -1,15 +1,18 @@
 // ./scripts/fix-clips.js
-const { PrismaClient } = require("@prisma/client");
+require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 
-const prisma = new PrismaClient();
+const { PrismaClient } = require("@prisma/client");
+const { PrismaPg } = require("@prisma/adapter-pg");
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("Initializing queue reset for video vlogs from yesterday and the day before...");
 
-  // Calculate the start of 2 days ago (yesterday and 1 day before yesterday)
   const twoDaysAgo = new Date();
   twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-  twoDaysAgo.setHours(0, 0, 0, 0); // Reset hours to catch the full timeline
+  twoDaysAgo.setHours(0, 0, 0, 0);
 
   console.log(`Targeting clips recorded on or after: ${twoDaysAgo.toISOString()}`);
 
@@ -29,7 +32,9 @@ async function main() {
   });
 
   console.log(`\n✅ Success! Marked ${result.count} clips as 'PENDING'.`);
-  console.log("The background transcoder cron job will automatically pick these up and process them using the new timeline flags.");
+  console.log(
+    "The background transcoder cron job will automatically pick these up and process them."
+  );
 }
 
 main()

@@ -118,6 +118,10 @@ export async function processClipHls(
     probeVideo(inputPath),
   ]);
 
+  // SAFEGUARD: Clamp the duration to a maximum of 5 minutes (300s) for timeout calculations.
+  // This prevents TimeoutOverflowWarnings (Node.js 32-bit integer limits) on corrupted files.
+  const safeDurationSecs = Math.min(300, durationSecs);
+
   console.log(
     `[Transcoder] clip=${clipId} hasAudio=${hasAudio} fps=${TARGET_FPS} (forced) duration=${durationSecs.toFixed(1)}s`
   );
@@ -126,7 +130,7 @@ export async function processClipHls(
   const ENCODE_SPEED_FLOOR = 0.05; 
   const encodeTimeoutMs = Math.max(
     5 * 60 * 1000,
-    Math.ceil((durationSecs / ENCODE_SPEED_FLOOR) * 1000)
+    Math.ceil((safeDurationSecs / ENCODE_SPEED_FLOOR) * 1000)
   );
 
   console.log(
