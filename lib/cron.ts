@@ -1,8 +1,10 @@
+// ./lib/cron.ts
 import cron from "node-cron";
 import { db } from "@/lib/db";
 import { sendPushToUser } from "@/actions/push";
 import { rollGroupAssignmentForDate, getLocalDateInTimezone } from "@/actions/vlog";
 import { processClipHls } from "@/lib/transcoder";
+import { startArchiverWorker } from "./archiver";
 
 let isTranscoding = false;
 
@@ -61,7 +63,6 @@ function getSlotForClip(recordedAt: Date | string, timezone?: string): number {
 async function startTranscoderWorker() {
   console.log("[Transcoder Queue] Initializing background polling worker...");
   
-  // Recovery: Reset any clips that got stuck in "PROCESSING" if the server crashed/restarted
   try {
     await db.clip.updateMany({
       where: { transcodeStatus: "PROCESSING" },
@@ -73,21 +74,17 @@ async function startTranscoderWorker() {
   }
   
   setInterval(async () => {
-    // Lock guard: Prevent overlapping FFmpeg processes to protect server CPU
     if (isTranscoding) return; 
     
     try {
       isTranscoding = true;
       
-      // Chug through the backlog sequentially until the queue is completely empty
       while (true) {
-        // 1. Prioritize fresh PENDING clips first (Immediate processing for new uploads)
         let targetClip = await db.clip.findFirst({
           where: { transcodeStatus: "PENDING" },
           orderBy: { recordedAt: "asc" },
         });
         
-        // 2. If no new clips are waiting, utilize the "free time" to retry FAILED clips (Max 3 attempts)
         if (!targetClip) {
           targetClip = await db.clip.findFirst({
             where: { 
@@ -98,12 +95,10 @@ async function startTranscoderWorker() {
           });
         }
         
-        // Break out of the loop if absolutely nothing is left to process
         if (!targetClip) break;
 
         const nextAttemptCount = targetClip.transcodeAttempts + 1;
 
-        // Lock the record and increment the attempt counter
         await db.clip.update({
           where: { id: targetClip.id },
           data: { 
@@ -141,19 +136,18 @@ async function startTranscoderWorker() {
     } finally {
       isTranscoding = false;
     }
-  }, 10000); // Poll the queue every 10 seconds
+  }, 10000); 
 }
 
 export function startCronJobs() {
-  // Prevent multiple overlapping instances during development Fast Refresh
   if ((globalThis as any).__cron_initialized) return;
   (globalThis as any).__cron_initialized = true;
 
   console.log("[Cron] Initializing internal background jobs...");
 
   startTranscoderWorker();
+  startArchiverWorker();
 
-  // 1. Roll Assignments
   cron.schedule("0 * * * *", async () => {
     console.log("[Cron] Running daily assignment rolls...");
     try {
@@ -168,7 +162,6 @@ export function startCronJobs() {
     }
   });
 
-  // 2. Remind Vloggers (Evaluates every 30 minutes to check if any group local time matches a slot middle)
   cron.schedule("*/30 * * * *", async () => {
     console.log("[Cron] Running vlogger reminders check...");
     try {
@@ -179,7 +172,6 @@ export function startCronJobs() {
         const { hour, minute } = getLocalHourAndMinute(group.timezone);
         const slot = getSlotForHour(hour);
 
-        // Filter for exactly the target evaluation minute windows at slot middles (minute 15-45)
         if (slot !== null && minute >= 15 && minute <= 45) {
           const localDate = await getLocalDateInTimezone(group.timezone);
 

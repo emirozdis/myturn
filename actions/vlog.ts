@@ -1,3 +1,4 @@
+// ./actions/vlog.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -156,7 +157,6 @@ export async function getLocalDateInTimezone(timezone: string): Promise<Date> {
 }
 
 export async function processGroupDayTransition(groupId: string, localDate: Date) {
-  // 1. Mark missed assignments and process decay
   const missedAssignments = await db.dailyAssignment.findMany({
     where: {
       groupId,
@@ -189,7 +189,6 @@ export async function processGroupDayTransition(groupId: string, localDate: Date
     }
   }
 
-  // 2. Identify freshly completed assignments from yesterday to trigger push notifications
   const completedAssignments = await db.dailyAssignment.findMany({
     where: {
       groupId,
@@ -256,7 +255,6 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     return null;
   }
 
-  // Guard: If currently in local sleep mode, do not roll a new assignment!
   const circadian = getVlogCircadianState(group.timezone);
   if (circadian.isSleepMode) {
     return await db.dailyAssignment.findFirst({
@@ -281,7 +279,6 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     where: { groupId, date: yesterdayDate },
   });
 
-  // Cycle Distribution Logic (Shuffle Bag implementation)
   const recentAssignments = await db.dailyAssignment.findMany({
     where: { groupId, date: { lt: localDate } },
     orderBy: { date: "desc" },
@@ -312,7 +309,6 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
     pool = [...group.members];
   }
 
-  // Evaluate explicit user volunteer records mapped strictly to this target assignment date
   const volunteers = await db.volunteer.findMany({
     where: { groupId, targetDate: localDate }
   });
@@ -321,7 +317,6 @@ export async function rollGroupAssignmentForDate(groupId: string, localDate: Dat
   let finalPool = pool;
   let isVolunteer = false;
 
-  // Narrow the pool cleanly resolving eligible volunteers if any valid hits occur.
   if (volunteerIds.size > 0) {
     const eligibleVolunteers = pool.filter((m) => volunteerIds.has(m.userId));
     if (eligibleVolunteers.length > 0) {
@@ -497,7 +492,6 @@ export async function getOrCreateTodayAssignment(groupId: string) {
         canVolunteer = false;
         volunteerEligibilityReason = "Volunteer window closed at 7 AM.";
       } else if (hasVolunteered) {
-        // Can cancel a previously registered volunteer status
         canVolunteer = true;
       } else {
         const yesterdayDate = new Date(circadian.localDate);
@@ -599,30 +593,29 @@ export async function getOrCreateTodayAssignment(groupId: string) {
           }
         }
 
-        // Pre-sign all clip media URLs directly on the server to prevent heavy client-side request spam
         clip.videoUrl = clip.videoUrl.startsWith("http") || clip.videoUrl.startsWith("/") 
           ? clip.videoUrl 
-          : generateEdgeUrl("vlogs", clip.videoUrl);
+          : generateEdgeUrl("vlogs", clip.videoUrl, 3600, clip.storageTier);
 
         if (clip.hlsUrl) {
           clip.hlsUrl = clip.hlsUrl.startsWith("http") || clip.hlsUrl.startsWith("/") 
             ? clip.hlsUrl 
-            : generateEdgeUrl("vlogs", clip.hlsUrl);
+            : generateEdgeUrl("vlogs", clip.hlsUrl, 3600, clip.storageTier);
         }
 
         clip.thumbnailUrl = clip.thumbnailUrl.startsWith("http") || clip.thumbnailUrl.startsWith("/") 
           ? clip.thumbnailUrl 
-          : generateEdgeUrl("vlogs", clip.thumbnailUrl);
+          : generateEdgeUrl("vlogs", clip.thumbnailUrl, 3600, clip.storageTier);
 
         const thumbnailBlurTarget = clip.thumbnailBlurUrl || clip.thumbnailUrl;
         clip.thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
           ? thumbnailBlurTarget 
-          : generateEdgeUrl("vlogs", thumbnailBlurTarget);
+          : generateEdgeUrl("vlogs", thumbnailBlurTarget, 3600, clip.storageTier);
 
         if (clip.photoResponses) {
           for (const pr of clip.photoResponses) {
             if (!pr.imageUrl.startsWith("http") && !pr.imageUrl.startsWith("/")) {
-              pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl);
+              pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl, 3600, "HOT");
             }
           }
         }
@@ -644,31 +637,24 @@ export async function getOrCreateTodayAssignment(groupId: string) {
   }
 }
 
-/**
- * Retrieves the most recent finished, completed daily assignment compilation.
- * Excludes today's active business date to prevent premature recap popups.
- */
 export async function getLatestCompilation(groupId: string) {
   try {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    // 1. Fetch target group's timezone
     const group = await db.group.findUnique({
       where: { id: groupId },
       select: { timezone: true }
     });
     if (!group) return { error: "Group not found" };
 
-    // 2. Fetch current local business date boundary
     const circadian = getVlogCircadianState(group.timezone);
 
-    // 3. Retrieve only completed compilations strictly older than today's business date
     const assignment = await db.dailyAssignment.findFirst({
       where: { 
         groupId, 
         status: "completed",
-        date: { lt: circadian.businessDate } // Exclude today!
+        date: { lt: circadian.businessDate } 
       },
       orderBy: { date: "desc" },
       include: {
@@ -702,28 +688,28 @@ export async function getLatestCompilation(groupId: string) {
 
       const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
         ? activeClip.videoUrl 
-        : generateEdgeUrl("vlogs", activeClip.videoUrl);
+        : generateEdgeUrl("vlogs", activeClip.videoUrl, 3600, activeClip.storageTier);
 
       const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
         ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
             ? activeClip.hlsUrl 
-            : generateEdgeUrl("vlogs", activeClip.hlsUrl))
+            : generateEdgeUrl("vlogs", activeClip.hlsUrl, 3600, activeClip.storageTier))
         : null;
 
       const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
         ? activeClip.thumbnailUrl 
-        : generateEdgeUrl("vlogs", clip.thumbnailUrl);
+        : generateEdgeUrl("vlogs", clip.thumbnailUrl, 3600, activeClip.storageTier);
 
       const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
       const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
         ? thumbnailBlurTarget 
-        : generateEdgeUrl("vlogs", thumbnailBlurTarget);
+        : generateEdgeUrl("vlogs", thumbnailBlurTarget, 3600, activeClip.storageTier);
 
       if (activeClip.photoResponses) {
         for (const pr of activeClip.photoResponses) {
           pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
             ? pr.imageUrl
-            : generateEdgeUrl("vlogs", pr.imageUrl);
+            : generateEdgeUrl("vlogs", pr.imageUrl, 3600, "HOT");
         }
       }
 
@@ -760,7 +746,6 @@ export async function createClip(data: {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    // Rate Limit: Max 5 clips per minute per user to prevent upload endpoint abuse
     const rl = rateLimit(`create_clip_${session.user.id}`, 5, 60000);
     if (!rl.success) return { error: `You're posting too fast! Try again in ${rl.retryAfter}s.` };
 
@@ -785,6 +770,7 @@ export async function createClip(data: {
       thumbnailUrl: data.thumbnailUrl,
       location: data.location || "Earth",
       transcodeStatus: "PENDING",
+      storageTier: "HOT"
     };
 
     if (data.thumbnailBlurUrl) payload.thumbnailBlurUrl = data.thumbnailBlurUrl;
@@ -843,7 +829,6 @@ export async function createClip(data: {
       if (isNew) newlyUnlocked.push("zero-hour");
     }
 
-    // Voluntarily selected daily vloggers yield an explicit multiplier against base & bound XP combinations
     if (assignment.isVolunteer) {
       individualXpGain = Math.floor(individualXpGain * 1.5);
       groupXpGain = Math.floor(groupXpGain * 1.5);
@@ -960,7 +945,6 @@ export async function addPhotoResponse(clipId: string, path: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    // Rate Limit: Max 15 photo responses per minute
     const rlPhoto = rateLimit(`photo_res_${session.user.id}`, 15, 60000);
     if (!rlPhoto.success) return { error: `Please wait a moment before sending more photo responses.` };
 
@@ -1027,7 +1011,6 @@ export async function pokeVlogger(assignmentId: string) {
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    // Rate Limit: Max 20 overall pokes per minute to prevent global push notification spam
     const rlPoke = rateLimit(`poke_${session.user.id}`, 20, 60000);
     if (!rlPoke.success) return { error: "You are poking too often across the app!" };
 
@@ -1110,9 +1093,9 @@ export async function deleteComment(commentId: string) {
   }
 }
 
-export async function getSignedReadUrl(bucket: "vlogs" | "thumbnails" | "avatars", path: string) {
+export async function getSignedReadUrl(bucket: "vlogs" | "thumbnails" | "avatars", path: string, storageTier: string = "HOT") {
   try {
-    const url = generateEdgeUrl(bucket, path);
+    const url = generateEdgeUrl(bucket, path, 3600, storageTier);
     return { success: true, url };
   } catch (error: any) {
     return { error: error?.message || "Failed to generate read URL." };
@@ -1173,7 +1156,6 @@ export async function addComment(clipId: string, text: string, parentId?: string
     const session = await getAuthSession();
     if (!session?.user?.id) return { error: "Unauthorized" };
 
-    // Rate Limit: Max 15 comments per minute
     const rlComm = rateLimit(`comment_${session.user.id}`, 15, 60000);
     if (!rlComm.success) return { error: `You are commenting too fast. Slow down! Try again in ${rlComm.retryAfter}s.` };
 

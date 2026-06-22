@@ -12,11 +12,16 @@ function base64url(str: string | Buffer) {
 }
 
 /**
- * Mints an Edge Authorization Token and appends it to the Cloudflare Worker domain.
- * If the path belongs to a playlist (.m3u8), it authorizes the entire parent directory
- * to ensure all relative segment chunk requests are validated automatically via the cookie.
+ * Mints an Edge Authorization Token and appends it to the applicable CDN domain.
+ * Supports dynamic routing: if storage is 'COLD', transparently shifts base URL to the archive subdomain
+ * matching the current environment (e.g., media-dev -> archive-media-dev).
  */
-export function generateEdgeUrl(bucket: string, path: string, expiresInSeconds = 3600): string {
+export function generateEdgeUrl(
+  bucket: string, 
+  path: string, 
+  expiresInSeconds = 3600, 
+  storageTier: "HOT" | "COLD" | "MIGRATING" | string = "HOT"
+): string {
   const expiresAt = Math.floor(Date.now() / 1000) + expiresInSeconds;
   
   const cleanPath = path.startsWith("/") ? path.substring(1) : path;
@@ -36,6 +41,24 @@ export function generateEdgeUrl(bucket: string, path: string, expiresInSeconds =
     .digest("base64url");
     
   const token = `${encodedPayload}.${signature}`;
+
+  // Route to proper subdomain matching the environment configuration
+  let activeBaseUrl = MEDIA_URL;
+  if (storageTier === "COLD") {
+    try {
+      const urlObj = new URL(MEDIA_URL);
+      // Handles both "media-dev." -> "archive-media-dev." and "media." -> "archive-media." gracefully
+      if (urlObj.hostname.startsWith("media-")) {
+        urlObj.hostname = "archive-" + urlObj.hostname;
+      } else {
+        urlObj.hostname = "archive-" + urlObj.hostname; // e.g. archive-media.domain.com
+      }
+      activeBaseUrl = urlObj.toString().replace(/\/$/, "");
+    } catch {
+      // Fallback fallback if environment var isn't perfectly structured
+      activeBaseUrl = MEDIA_URL;
+    }
+  }
   
-  return `${MEDIA_URL}/${fullPath}?token=${token}`;
+  return `${activeBaseUrl}/${fullPath}?token=${token}`;
 }

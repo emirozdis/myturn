@@ -1,4 +1,6 @@
-// cloudflare-worker/src/worker.js
+// ./cloudflare-worker/src/worker.js
+
+import { AwsClient } from "./aws4fetch.js";
 
 function decodeBase64Url(str) {
   let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
@@ -14,9 +16,9 @@ function decodeBase64Url(str) {
 async function verifyToken(token, secret) {
   const parts = token.split(".");
   if (parts.length !== 2) return null;
-  
+
   const [encodedPayload, signature] = parts;
-  
+
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -25,19 +27,19 @@ async function verifyToken(token, secret) {
     false,
     ["verify", "sign"]
   );
-  
+
   const expectedSigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(encodedPayload));
   const expectedSigStr = btoa(String.fromCharCode(...new Uint8Array(expectedSigBuffer)))
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    
+
   if (signature !== expectedSigStr) return null;
-  
+
   try {
     const payloadStr = new TextDecoder().decode(decodeBase64Url(encodedPayload));
     const payload = JSON.parse(payloadStr);
-    
+
     if (payload.e < Math.floor(Date.now() / 1000)) return null;
-    
+
     return payload;
   } catch {
     return null;
@@ -48,8 +50,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
-    
-    const bucket = env.MY_BUCKET;
+
     const allowedOrigin = env.ALLOWED_ORIGIN;
 
     // 1. CORS Preflight Handling
@@ -89,64 +90,129 @@ export default {
       return new Response("Forbidden - Path Mismatch", { status: 403 });
     }
 
-    if (!bucket) {
-      return new Response("Internal Server Error - R2 Bucket Not Configured", { status: 500 });
-    }
+    // If the subdomain contains "archive-" (e.g. archive-media-dev.myturn...)
+    // we route the fetch via Backblaze B2 using AWS Signature V4.
+    const isColdStorage = url.hostname.includes("archive-");
 
-    // 5. HTTP Range Request Support (Essential for Safari video buffering)
-    const rangeHeader = request.headers.get("Range");
-    let object;
-    try {
-      if (rangeHeader) {
-        object = await bucket.get(cleanPath, {
-          range: request.headers,
-          onlyIf: request.headers,
-        });
-      } else {
-        object = await bucket.get(cleanPath, {
-          onlyIf: request.headers,
-        });
-      }
-    } catch (e) {
-      return new Response("Internal Server Error", { status: 500 });
-    }
-
-    if (object === null) {
-      return new Response("Not Modified", { status: 304 });
-    }
-    if (!object) {
-      return new Response("Not Found", { status: 404 });
-    }
-
-    // 6. Build Baseline Response Headers
+    // 5. Shared Response Headers setup
     const headers = new Headers();
-    object.writeHttpMetadata(headers);
-    headers.set("etag", object.httpEtag);
     headers.set("Access-Control-Allow-Origin", allowedOrigin || "*");
     headers.set("Access-Control-Allow-Credentials", "true");
     headers.set("Accept-Ranges", "bytes");
 
+    let body;
     let status = 200;
 
-    if (rangeHeader && object.range) {
-      status = 206;
-      headers.set("Content-Range", `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${object.size}`);
-      headers.set("Content-Length", object.range.length.toString());
+    if (isColdStorage) {
+      // ─── BACKBLAZE B2 FETCH ROUTE ──────────────────────────────────────────
+      // ADDED: Check for env.B2_BUCKET_NAME
+      if (!env.B2_ENDPOINT || !env.B2_ACCESS_KEY_ID || !env.B2_SECRET_ACCESS_KEY || !env.B2_BUCKET_NAME) {
+        return new Response("Internal Server Error - B2 Archive Configuration Missing", { status: 500 });
+      }
+
+      const b2Client = new AwsClient({
+        accessKeyId: env.B2_ACCESS_KEY_ID,
+        secretAccessKey: env.B2_SECRET_ACCESS_KEY,
+        service: "s3",
+        region: env.B2_REGION || "auto",
+        sessionToken: undefined,
+        cache: undefined,
+        retries: undefined,
+        initRetryMs: undefined,
+      });
+
+      // ADDED: Construct target URL using Path-Style S3 syntax 
+      // (e.g., https://s3.us-east-005.backblazeb2.com/<bucket-name>/vlogs/...)
+      const baseUrl = env.B2_ENDPOINT.endsWith("/") ? env.B2_ENDPOINT : env.B2_ENDPOINT + "/";
+      const b2TargetUrl = new URL(`${env.B2_BUCKET_NAME}/${cleanPath}`, baseUrl);
+
+      // Allowlist only the headers B2 actually needs.
+      const b2RequestHeaders = new Headers();
+
+      const range = request.headers.get("Range");
+      if (range) b2RequestHeaders.set("Range", range);
+
+      const ifNoneMatch = request.headers.get("If-None-Match");
+      if (ifNoneMatch) b2RequestHeaders.set("If-None-Match", ifNoneMatch);
+
+      const ifModifiedSince = request.headers.get("If-Modified-Since");
+      if (ifModifiedSince) b2RequestHeaders.set("If-Modified-Since", ifModifiedSince);
+
+      const b2Response = await b2Client.fetch(b2TargetUrl.toString(), {
+        method: request.method,
+        headers: b2RequestHeaders,
+      });
+
+      status = b2Response.status;
+      if (status === 404) return new Response("Not Found", { status: 404 });
+      if (status === 304) return new Response("Not Modified", { status: 304 });
+
+      body = b2Response.body;
+
+      // Passthrough crucial metadata mapped from B2
+      const b2Etag = b2Response.headers.get("etag");
+      if (b2Etag) headers.set("etag", b2Etag);
+
+      const b2Length = b2Response.headers.get("content-length");
+      if (b2Length) headers.set("Content-Length", b2Length);
+
+      const b2Range = b2Response.headers.get("content-range");
+      if (b2Range) headers.set("Content-Range", b2Range);
+
+      const b2Type = b2Response.headers.get("content-type");
+      if (b2Type) headers.set("Content-Type", b2Type);
+
     } else {
-      headers.set("Content-Length", object.size.toString());
+      // ─── CLOUDFLARE R2 BINDING ROUTE ───────────────────────────────────────
+      const bucket = env.MY_BUCKET;
+      if (!bucket) {
+        return new Response("Internal Server Error - R2 Bucket Not Configured", { status: 500 });
+      }
+
+      const rangeHeader = request.headers.get("Range");
+      let object;
+      try {
+        if (rangeHeader) {
+          object = await bucket.get(cleanPath, {
+            range: request.headers,
+            onlyIf: request.headers,
+          });
+        } else {
+          object = await bucket.get(cleanPath, {
+            onlyIf: request.headers,
+          });
+        }
+      } catch (e) {
+        return new Response("Internal Server Error", { status: 500 });
+      }
+
+      if (object === null) return new Response("Not Modified", { status: 304 });
+      if (!object) return new Response("Not Found", { status: 404 });
+
+      body = object.body;
+      object.writeHttpMetadata(headers);
+      headers.set("etag", object.httpEtag);
+
+      if (rangeHeader && object.range) {
+        status = 206;
+        headers.set("Content-Range", `bytes ${object.range.offset}-${object.range.offset + object.range.length - 1}/${object.size}`);
+        headers.set("Content-Length", object.range.length.toString());
+      } else {
+        headers.set("Content-Length", object.size.toString());
+      }
     }
 
-    // 7. Inject Scoped Fallback Cookie
+    // 6. Inject Scoped Fallback Cookie
     if (queryToken) {
       const cookiePath = payload.p.startsWith("/") ? payload.p : `/${payload.p}`;
       headers.append(
-        "Set-Cookie", 
+        "Set-Cookie",
         `media_session=${queryToken}; Path=${cookiePath}; HttpOnly; Secure; SameSite=None; Max-Age=3600`
       );
     }
-    
-    // Explicit Content-Type mappings
-    const ext = cleanPath.split('.').pop().toLowerCase();
+
+    // 7. Explicit Content-Type Fallback mapping
+    const ext = cleanPath.split(".").pop().toLowerCase();
     const contentTypeMap = {
       "m3u8": "application/vnd.apple.mpegurl",
       "ts": "video/MP2T",
@@ -154,22 +220,20 @@ export default {
       "webm": "video/webm",
       "jpg": "image/jpeg",
       "jpeg": "image/jpeg",
-      "png": "image/png"
+      "png": "image/png",
     };
 
-    if (contentTypeMap[ext]) {
+    if (contentTypeMap[ext] && !headers.has("Content-Type")) {
       headers.set("Content-Type", contentTypeMap[ext]);
     }
 
-    // 8. Dynamic Playlist Caching Constraints
+    // 8. Dynamic Caching Constraints
     if (cleanPath.endsWith(".m3u8")) {
-      // Small index files are re-fetched safely
       headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
     } else {
-      // Clean static segment .ts assets are cached aggressively by the browser
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
     }
 
-    return new Response(object.body, { status, headers });
-  }
+    return new Response(body, { status, headers });
+  },
 };

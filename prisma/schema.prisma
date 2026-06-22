@@ -1,4 +1,4 @@
-// ./prisma/schema.prisma
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -210,6 +210,11 @@ model Clip {
   hlsUrl            String?
   transcodeStatus   String   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, FAILED_PERMANENTLY
   transcodeAttempts Int      @default(0)
+  
+  // Archival & Storage Tiering Tracking
+  storageTier       String   @default("HOT") // HOT, MIGRATING, COLD, FAILED_MIGRATION
+  archivedAt        DateTime?
+
   location          String?
   metadata          String?  @db.Text
   recordedAt        DateTime @default(now())

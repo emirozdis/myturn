@@ -88,27 +88,27 @@ export async function getStreaksData(groupId: string) {
 
               const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
                 ? activeClip.videoUrl 
-                : generateEdgeUrl("vlogs", activeClip.videoUrl);
+                : generateEdgeUrl("vlogs", activeClip.videoUrl, 3600, activeClip.storageTier);
 
               const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
                 ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
                     ? activeClip.hlsUrl 
-                    : generateEdgeUrl("vlogs", activeClip.hlsUrl))
+                    : generateEdgeUrl("vlogs", activeClip.hlsUrl, 3600, activeClip.storageTier))
                 : null;
 
               const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
                 ? activeClip.thumbnailUrl 
-                : generateEdgeUrl("vlogs", activeClip.thumbnailUrl);
+                : generateEdgeUrl("vlogs", activeClip.thumbnailUrl, 3600, activeClip.storageTier);
 
               const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
               const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
                 ? thumbnailBlurTarget 
-                : generateEdgeUrl("vlogs", thumbnailBlurTarget);
+                : generateEdgeUrl("vlogs", thumbnailBlurTarget, 3600, activeClip.storageTier);
 
               if (activeClip.photoResponses) {
                 for (const pr of activeClip.photoResponses) {
                   if (!pr.imageUrl.startsWith("http") && !pr.imageUrl.startsWith("/")) {
-                    pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl);
+                    pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl, 3600, "HOT");
                   }
                 }
               }

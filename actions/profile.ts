@@ -1,3 +1,4 @@
+// ./actions/profile.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -38,7 +39,7 @@ export async function getUserPublicProfile(userId: string) {
 
     let avatarUrl = user.image;
     if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {
-      avatarUrl = generateEdgeUrl("avatars", user.image);
+      avatarUrl = generateEdgeUrl("avatars", user.image, 3600, "HOT");
     }
 
     return {
@@ -75,7 +76,7 @@ export async function uploadAvatar(base64Data: string) {
       data: { image: path },
     });
 
-    const imageUrl = generateEdgeUrl("avatars", path);
+    const imageUrl = generateEdgeUrl("avatars", path, 3600, "HOT");
 
     return { success: true, imagePath: path, imageUrl };
   } catch (error: any) {
@@ -150,28 +151,28 @@ export async function getProfileData() {
 
       const videoUrl = activeClip.videoUrl.startsWith("http") || activeClip.videoUrl.startsWith("/") 
         ? activeClip.videoUrl 
-        : generateEdgeUrl("vlogs", activeClip.videoUrl);
+        : generateEdgeUrl("vlogs", activeClip.videoUrl, 3600, activeClip.storageTier);
 
       const hlsUrl = activeClip.transcodeStatus === "COMPLETED" && activeClip.hlsUrl
         ? (activeClip.hlsUrl.startsWith("http") || activeClip.hlsUrl.startsWith("/") 
             ? activeClip.hlsUrl 
-            : generateEdgeUrl("vlogs", activeClip.hlsUrl))
+            : generateEdgeUrl("vlogs", activeClip.hlsUrl, 3600, activeClip.storageTier))
         : null;
 
       const thumbnailUrl = activeClip.thumbnailUrl.startsWith("http") || activeClip.thumbnailUrl.startsWith("/") 
         ? activeClip.thumbnailUrl 
-        : generateEdgeUrl("vlogs", activeClip.thumbnailUrl);
+        : generateEdgeUrl("vlogs", activeClip.thumbnailUrl, 3600, activeClip.storageTier);
 
       const thumbnailBlurTarget = activeClip.thumbnailBlurUrl || activeClip.thumbnailUrl;
       const thumbnailBlurUrl = thumbnailBlurTarget.startsWith("http") || thumbnailBlurTarget.startsWith("/") 
         ? thumbnailBlurTarget 
-        : generateEdgeUrl("vlogs", thumbnailBlurTarget);
+        : generateEdgeUrl("vlogs", thumbnailBlurTarget, 3600, activeClip.storageTier);
 
       if (activeClip.photoResponses) {
         for (const pr of activeClip.photoResponses) {
           pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
             ? pr.imageUrl
-            : generateEdgeUrl("vlogs", pr.imageUrl);
+            : generateEdgeUrl("vlogs", pr.imageUrl, 3600, "HOT");
         }
       }
 
@@ -186,7 +187,7 @@ export async function getProfileData() {
 
     let avatarUrl = user.image;
     if (user.image && !user.image.startsWith("http") && !user.image.startsWith("data:") && !user.image.startsWith("/")) {
-      avatarUrl = generateEdgeUrl("avatars", user.image);
+      avatarUrl = generateEdgeUrl("avatars", user.image, 3600, "HOT");
     }
 
     const highestMemberXp = await db.groupMember.findFirst({
