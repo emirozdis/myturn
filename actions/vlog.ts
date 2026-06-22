@@ -1,4 +1,3 @@
-// ./actions/vlog.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -42,16 +41,12 @@ function getVlogCircadianState(timezone: string) {
     second = now.getUTCSeconds();
   }
 
-  // Generate date boundary at midnight in the group's local timezone
   const localDate = new Date(`${year}-${month}-${day}T00:00:00Z`);
   const currentSeconds = hour * 3600 + minute * 60 + second;
-
-  // Sleep mode is active between 12:00 AM (00:00) and 9:00 AM (09:00)
   const isSleepMode = hour >= 0 && hour < 9;
 
   let businessDate = new Date(localDate);
   if (isSleepMode) {
-    // During sleep mode, the business date defaults back to yesterday's date
     businessDate.setDate(businessDate.getDate() - 1);
   }
 
@@ -615,7 +610,7 @@ export async function getOrCreateTodayAssignment(groupId: string) {
         if (clip.photoResponses) {
           for (const pr of clip.photoResponses) {
             if (!pr.imageUrl.startsWith("http") && !pr.imageUrl.startsWith("/")) {
-              pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl, 3600, "HOT");
+              pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl, 3600, clip.storageTier);
             }
           }
         }
@@ -709,7 +704,7 @@ export async function getLatestCompilation(groupId: string) {
         for (const pr of activeClip.photoResponses) {
           pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
             ? pr.imageUrl
-            : generateEdgeUrl("vlogs", pr.imageUrl, 3600, "HOT");
+            : generateEdgeUrl("vlogs", pr.imageUrl, 3600, activeClip.storageTier);
         }
       }
 

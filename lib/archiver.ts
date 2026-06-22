@@ -4,7 +4,11 @@ import { r2 } from "@/lib/r2";
 import { b2 } from "@/lib/b2";
 
 export async function archiveClip(clipId: string) {
-  const clip = await db.clip.findUnique({ where: { id: clipId } });
+  const clip = await db.clip.findUnique({ 
+    where: { id: clipId },
+    include: { photoResponses: true }
+  });
+  
   if (!clip || clip.transcodeStatus !== "COMPLETED" || !clip.hlsUrl) {
     throw new Error("Clip not ready for archival or missing HLS URL.");
   }
@@ -16,16 +20,20 @@ export async function archiveClip(clipId: string) {
   const m3u8Buffer = await r2.download("vlogs", output1Path);
   const m3u8Text = m3u8Buffer.toString("utf-8");
 
-  // Regex parse all active transport streams bound to this resolution
   const tsFiles = m3u8Text.match(/^output_1_\d+\.ts$/gm) || [];
 
-  console.log(`[Archiver] Streaming thumbnails...`);
+  console.log(`[Archiver] Streaming thumbnails and ${clip.photoResponses.length} photo responses...`);
   const thumbBuf = await r2.download("vlogs", clip.thumbnailUrl);
   await b2.upload("vlogs", clip.thumbnailUrl, thumbBuf, "image/jpeg");
 
   if (clip.thumbnailBlurUrl && clip.thumbnailBlurUrl !== clip.thumbnailUrl) {
     const blurBuf = await r2.download("vlogs", clip.thumbnailBlurUrl);
     await b2.upload("vlogs", clip.thumbnailBlurUrl, blurBuf, "image/jpeg");
+  }
+
+  for (const pr of clip.photoResponses) {
+    const prBuf = await r2.download("vlogs", pr.imageUrl);
+    await b2.upload("vlogs", pr.imageUrl, prBuf, "image/jpeg");
   }
 
   console.log(`[Archiver] Streaming 720p manifest & ${tsFiles.length} segments...`);
@@ -37,13 +45,17 @@ export async function archiveClip(clipId: string) {
   }
 
   console.log(`[Archiver] Generating pruned master manifest...`);
-  // This explicitly replaces the multi-resolution router manifest with a static 720p direct
   const newMaster = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=720x1280\noutput_1.m3u8\n`;
   await b2.upload("vlogs", clip.hlsUrl, Buffer.from(newMaster), "application/vnd.apple.mpegurl");
 
   console.log(`[Archiver] Verifying cryptographic integrity on B2...`);
   await b2.head("vlogs", clip.hlsUrl);
   await b2.head("vlogs", clip.thumbnailUrl);
+  
+  for (const pr of clip.photoResponses) {
+    await b2.head("vlogs", pr.imageUrl);
+  }
+
   if (tsFiles.length > 0) {
     await b2.head("vlogs", `${hlsDir}/${tsFiles[tsFiles.length - 1]}`);
   }
@@ -57,8 +69,12 @@ export async function archiveClip(clipId: string) {
   console.log(`[Archiver] Purging heavy data objects from Hot R2 storage for ${clipId}...`);
   const hlsKeys = await r2.listObjects("vlogs", `${hlsDir}/`);
   const toDelete = [clip.videoUrl, clip.thumbnailUrl];
+  
   if (clip.thumbnailBlurUrl && clip.thumbnailBlurUrl !== clip.thumbnailUrl) {
     toDelete.push(clip.thumbnailBlurUrl);
+  }
+  for (const pr of clip.photoResponses) {
+    toDelete.push(pr.imageUrl);
   }
   toDelete.push(...hlsKeys);
 
@@ -68,13 +84,11 @@ export async function archiveClip(clipId: string) {
 let isArchiving = false;
 
 export async function startArchiverWorker() {
-  // Guard preventing multiple overlapping instances during Fast Refresh
   if ((globalThis as any).__archiver_initialized) return;
   (globalThis as any).__archiver_initialized = true;
 
   console.log("[Archiver Queue] Initializing background tiering worker...");
   
-  // Failsafe recovery for interrupted node-crashes
   try {
     await db.clip.updateMany({
       where: { storageTier: "MIGRATING" },
@@ -84,22 +98,18 @@ export async function startArchiverWorker() {
     console.error("[Archiver Queue] Failed to reset stuck migrations:", err);
   }
 
-  // Check queue deeply every 15 minutes
   setInterval(async () => {
     if (isArchiving) return;
     try {
       isArchiving = true;
-      
-      // Keep track of any clip IDs that fail during this specific 15-minute run
       const failedThisRun = new Set<string>();
 
       while (true) {
-        // T+48 Hours Archival Window Rule Mapping
         const twoDaysAgo = new Date(Date.now() - 48 * 3600 * 1000);
         
         const targetClip = await db.clip.findFirst({
           where: {
-            id: { notIn: Array.from(failedThisRun) }, // Exclude clips that have already failed in this tick
+            id: { notIn: Array.from(failedThisRun) },
             storageTier: { in: ["HOT", "FAILED_MIGRATION"] },
             transcodeStatus: "COMPLETED",
             assignment: { date: { lte: twoDaysAgo } }
@@ -121,8 +131,6 @@ export async function startArchiverWorker() {
           console.log(`[Archiver Queue] Successfully mapped clip: ${targetClip.id} to COLD tier.`);
         } catch (err) {
           console.error(`[Archiver Queue] Failed to migrate clip: ${targetClip.id}`, err);
-          
-          // Add the clip to the temporary skip list to break infinite loops
           failedThisRun.add(targetClip.id);
           
           await db.clip.update({

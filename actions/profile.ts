@@ -1,4 +1,3 @@
-// ./actions/profile.ts
 "use server";
 
 import { db } from "@/lib/db";
@@ -172,7 +171,7 @@ export async function getProfileData() {
         for (const pr of activeClip.photoResponses) {
           pr.imageUrl = pr.imageUrl.startsWith("http") || pr.imageUrl.startsWith("/")
             ? pr.imageUrl
-            : generateEdgeUrl("vlogs", pr.imageUrl, 3600, "HOT");
+            : generateEdgeUrl("vlogs", pr.imageUrl, 3600, activeClip.storageTier);
         }
       }
 

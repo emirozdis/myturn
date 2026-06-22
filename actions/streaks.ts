@@ -108,7 +108,7 @@ export async function getStreaksData(groupId: string) {
               if (activeClip.photoResponses) {
                 for (const pr of activeClip.photoResponses) {
                   if (!pr.imageUrl.startsWith("http") && !pr.imageUrl.startsWith("/")) {
-                    pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl, 3600, "HOT");
+                    pr.imageUrl = generateEdgeUrl("vlogs", pr.imageUrl, 3600, activeClip.storageTier);
                   }
                 }
               }
