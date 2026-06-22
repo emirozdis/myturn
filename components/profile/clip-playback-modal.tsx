@@ -60,6 +60,20 @@ export function ClipPlaybackModal({ clip, deleting, onDelete, onClose }: ClipPla
             }
             const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
             if (!isNaN(progress)) setVideoProgress(progress);
+
+            // DYNAMIC SPEED MULTIPLIER PARSING FOR HISTORICAL PROFILE ARCHIVES
+            try {
+              const metadata = clip?.metadata ? JSON.parse(clip.metadata) : null;
+              const segs = metadata?.speedSegments;
+              if (segs && segs.length > 0) {
+                const ct = e.currentTarget.currentTime;
+                const activeSeg = [...segs].reverse().find((s: any) => ct >= s.start);
+                const targetSpeed = activeSeg ? activeSeg.speed : 1;
+                if (videoRef.current && videoRef.current.playbackRate !== targetSpeed) {
+                  videoRef.current.playbackRate = targetSpeed;
+                }
+              }
+            } catch (err) {}
           }}
           onEnded={(e) => {
             e.currentTarget.currentTime = 0;

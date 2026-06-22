@@ -185,7 +185,7 @@ export function CompilationReadyModal({
                   className="w-full h-full object-cover opacity-90 transition-transform duration-700 group-hover:scale-105"
                 />
               </div>
-              <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/10 to-black/85 pointer-events-none z-0" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/10 to-black/85 pointer-events-none z-0" />
               
               {/* Card Header (Z-Indexed over gradient) */}
               <div className="relative z-10 flex justify-between items-start w-full">
@@ -309,6 +309,21 @@ export function CompilationReadyModal({
                 }
                 const progress = (e.currentTarget.currentTime / e.currentTarget.duration) * 100;
                 if (!isNaN(progress)) setVideoProgress(progress);
+
+                // DYNAMIC SPEED MULTIPLIER PARSING FOR ARCHIVED CLIPS
+                try {
+                  const clip = compilationClips[currentClipIndex];
+                  const metadata = clip?.metadata ? JSON.parse(clip.metadata) : null;
+                  const segs = metadata?.speedSegments;
+                  if (segs && segs.length > 0) {
+                    const ct = e.currentTarget.currentTime;
+                    const activeSeg = [...segs].reverse().find((s: any) => ct >= s.start);
+                    const targetSpeed = activeSeg ? activeSeg.speed : 1;
+                    if (videoRef.current && videoRef.current.playbackRate !== targetSpeed) {
+                      videoRef.current.playbackRate = targetSpeed;
+                    }
+                  }
+                } catch (err) {}
               }}
               onEnded={() => {
                 if (currentClipIndex < compilationClips.length - 1) {
