@@ -38,6 +38,7 @@ export function CommentsSheet({
   const inputRef = useRef<HTMLInputElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+  const prevLength = useRef(commentList.length);
 
   // Derive contextual threaded grouping mapping out isolated child paths correctly
   const topLevel = commentList.filter((c) => !c.parentId);
@@ -49,14 +50,27 @@ export function CommentsSheet({
     return acc;
   }, {} as Record<string, any[]>);
 
-  // Automatically scroll to the bottom when sheet opens or a new comment is added
+  // Defer auto-scrolling to wait for the BottomSheet sliding animation to finish
+  // This completely eliminates the layout recalculation glitching on enter.
   useEffect(() => {
     if (isOpen && commentsEndRef.current) {
-      // Use setTimeout to ensure the DOM rendering cycle has finished before scrolling
-      setTimeout(() => {
-        commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 80);
+      const timer = setTimeout(() => {
+        requestAnimationFrame(() => {
+          commentsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+        });
+      }, 450); // Wait strictly for sheet spring animation to settle before scrolling content
+      return () => clearTimeout(timer);
     }
+  }, [isOpen]);
+
+  // Handle immediate smooth scrolling when a new comment is submitted while already open
+  useEffect(() => {
+    if (isOpen && commentList.length > prevLength.current) {
+      setTimeout(() => {
+        commentsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+      }, 100);
+    }
+    prevLength.current = commentList.length;
   }, [commentList.length, isOpen]);
 
   // Unified scroll sync using requestAnimationFrame to prevent visual lag
@@ -141,6 +155,31 @@ export function CommentsSheet({
     }
   };
 
+  const handleReplyClick = (c: any, isReply: boolean) => {
+    // If responding to a reply, target the root parent's ID so the thread remains flat
+    const rootId = isReply ? c.parentId : c.id;
+    setReplyToId(rootId);
+
+    if (isReply) {
+      // Auto-prefix the comment with an @mention referencing the sub-reply author
+      const mentionHandle = c.user?.handle || c.user?.name?.replace(/\s+/g, "");
+      if (mentionHandle) {
+        const mention = `@${mentionHandle} `;
+        if (!newComment.startsWith(mention)) {
+          onNewCommentChange(mention + newComment);
+        }
+      }
+    }
+    
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        const length = inputRef.current.value.length;
+        inputRef.current.setSelectionRange(length, length);
+      }
+    }, 50);
+  };
+
   const renderCommentText = (text: string) => {
     if (!text) return "";
     const parts = text.split(/(\s+)/);
@@ -220,21 +259,20 @@ export function CommentsSheet({
         </div>
         <div className="text-white/80 text-[12px] leading-relaxed break-words">{renderCommentText(c.text)}</div>
         
-        {!isReply && (
-          <button 
-            onClick={() => { setReplyToId(c.id); inputRef.current?.focus(); }} 
-            className="text-white/30 text-[10px] font-semibold hover:text-white mt-1.5 text-left w-max transition-colors flex items-center gap-1"
-          >
-            <CornerDownRight size={10} />
-            {t("today.reply")}
-          </button>
-        )}
+        {/* Reply button available for both top-level and nested replies */}
+        <button 
+          onClick={() => handleReplyClick(c, isReply)} 
+          className="text-white/30 text-[10px] font-semibold hover:text-white mt-1.5 text-left w-max transition-colors flex items-center gap-1"
+        >
+          <CornerDownRight size={10} />
+          {t("today.reply")}
+        </button>
       </div>
     </div>
   );
 
   return (
-    <BottomSheet isOpen={isOpen} onClose={onClose} zIndex={30} className="h-[65%] p-4 flex flex-col">
+    <BottomSheet isOpen={isOpen} onClose={onClose} zIndex={30} className="h-[92%] sm:h-[95%] p-4 flex flex-col">
       <div className="flex items-center justify-between pb-3 border-b border-white/5 flex-shrink-0">
         <span className="text-white text-[12px] font-bold tracking-wide">{t("today.comments", { count: commentList.length })}</span>
         <button
@@ -260,8 +298,8 @@ export function CommentsSheet({
             <span className="text-white/25 text-[9px] mt-0.5">{t("today.beFirstToReact")}</span>
           </div>
         )}
-        {/* Dummy div to anchor scroll location */}
-        <div ref={commentsEndRef} />
+        {/* Dummy div to anchor scroll location reliably */}
+        <div ref={commentsEndRef} className="h-2 w-full flex-shrink-0" />
       </div>
 
       <div className="relative pt-2 flex flex-col flex-shrink-0">

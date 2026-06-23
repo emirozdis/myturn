@@ -42,7 +42,7 @@ import { NoGroupsScreen } from "@/components/layout/no-groups-screen";
 import { GroupSheetContent } from "@/components/layout/group-sheets";
 import { LeaveGroupSheet } from "@/components/layout/leave-group-sheet";
 
-const APP_VERSION = "2.2.1";
+const APP_VERSION = "2.2.2";
 
 export interface GroupConfig {
   id: string;
