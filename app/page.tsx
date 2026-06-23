@@ -11,6 +11,7 @@ import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { useRouter } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
+import posthog from "posthog-js";
 import { signUpUser } from "@/actions/auth";
 import { joinGroup, createGroup } from "@/actions/group";
 import {
@@ -562,6 +563,8 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
           setError("Invalid email or password.");
         }
       } else {
+        posthog.identify(email.toLowerCase().trim(), { email: email.toLowerCase().trim() });
+        posthog.capture("user_signed_in", { method: "credentials" });
         router.push("/today");
       }
     } catch (err) {
@@ -616,12 +619,12 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
 
             <div className="flex items-center justify-center gap-4 mb-6 flex-shrink-0">
               {googleEnabled && (
-                <button onClick={() => signIn("google")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                <button onClick={() => { posthog.capture("user_signed_in", { method: "google" }); signIn("google"); }} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
                   <GoogleIcon />
                 </button>
               )}
               {appleEnabled && (
-                <button onClick={() => signIn("apple")} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
+                <button onClick={() => { posthog.capture("user_signed_in", { method: "apple" }); signIn("apple"); }} style={glassStyle(0.04, 20, 0.1)} className="w-14 h-14 rounded-full flex items-center justify-center transition-transform hover:scale-105 active:scale-95">
                   <AppleIcon />
                 </button>
               )}
@@ -687,6 +690,8 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
             setError("Account created, please proceed to sign in.");
           }
         } else {
+          posthog.identify(email.toLowerCase().trim(), { name, email: email.toLowerCase().trim() });
+          posthog.capture("user_signed_up", { method: "credentials" });
           onSignUpSuccess(name);
           onNavigate("permissions");
         }

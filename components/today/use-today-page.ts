@@ -12,6 +12,7 @@ import {
   addPhotoResponse,
   toggleVolunteer,
 } from "@/actions/vlog";
+import posthog from "posthog-js";
 import { getSlotForClip, getCachedToday } from "./utils";
 
 const VIEWED_CLIPS_KEY = "myturn_viewed_clips";
@@ -441,7 +442,10 @@ export function useTodayPage() {
     if (!res.success) {
       setLiked(prevLiked);
       setLikeCount(prev => prevLiked ? prev + 1 : prev - 1);
-    } else if (res.newlyUnlocked?.length) {
+    } else {
+      if (!prevLiked) posthog.capture("vlog_liked", { clip_id: activeClip.id });
+    }
+    if (res.newlyUnlocked?.length) {
       res.newlyUnlocked.forEach((id: string) => {
         window.dispatchEvent(new CustomEvent("show-achievement", { detail: id }));
       });

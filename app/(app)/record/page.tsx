@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Camera, ChevronRight } from "lucide-react";
+import posthog from "posthog-js";
 import { getOrCreateTodayAssignment, createClip } from "@/actions/vlog";
 import { getUserGroups } from "@/actions/group";
 import { CameraView } from "@/components/record/camera-view";
@@ -359,12 +360,17 @@ export default function RecordPage() {
     };
 
     mediaRecorderRef.current = mediaRecorder;
-    mediaRecorder.start(1000); 
+    mediaRecorder.start(1000);
 
     startTimeRef.current = Date.now();
     totalPausedTimeRef.current = 0;
     lastPauseTimeRef.current = 0;
-    
+
+    posthog.capture("vlog_recording_started", {
+      facing_mode: facingMode,
+      speed: currentSpeed,
+      group_id: selectedGroup?.id,
+    });
     setIsRecording(true);
     setIsPaused(false);
     isPausedRef.current = false;
@@ -514,6 +520,13 @@ export default function RecordPage() {
         }));
       }
 
+      posthog.capture("vlog_published", {
+        group_id: activeGroupId,
+        duration_seconds: finalDuration,
+        location: locationName,
+        has_caption: caption.trim().length > 0,
+        facing_mode: recordedFacingMode,
+      });
       clearInterval(progressInterval);
       setUploadProgress(100);
       setIsUploading(false);

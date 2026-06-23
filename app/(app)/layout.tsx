@@ -25,8 +25,9 @@ import {
   getVapidPublicKey,
   urlBase64ToUint8Array,
 } from "@/lib/push-client";
+import posthog from "posthog-js";
 import { saveSubscription, deleteSubscription } from "@/actions/push";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { LogoutConfirmSheet } from "@/components/profile/logout-confirm-sheet";
 import { BottomSheet } from "@/components/shared/bottom-sheet";
 
@@ -208,6 +209,18 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
 export default function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: session } = useSession();
+
+  // Identify returning authenticated users in PostHog
+  useEffect(() => {
+    if (session?.user?.id) {
+      posthog.identify(session.user.id, {
+        email: session.user.email ?? undefined,
+        name: session.user.name ?? undefined,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id]);
 
   // Handle immediate visual UI handoff for BottomNav router intercept
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
@@ -445,6 +458,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       const customEvent = e as CustomEvent<string>;
       const found = ACHIEVEMENT_MOCKS.find((a) => a.id === customEvent.detail);
       if (found) {
+        posthog.capture("achievement_unlocked", { achievement_id: found.id, achievement_title: found.topContent?.title });
         enqueueModal({ type: "achievement", config: found });
       }
     };
@@ -543,6 +557,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     const res = await addComment(sheetData.clipId, commentInput);
     setSubmittingComment(false);
     if (res.success && res.comment) {
+      posthog.capture("comment_posted", { clip_id: sheetData?.clipId, comment_length: commentInput.trim().length });
       setCommentsList((prev) => [...prev, res.comment]);
       setCommentInput("");
       setCreateError("");
@@ -605,6 +620,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       localStorage.clear();
       sessionStorage.clear();
     }
+    posthog.reset();
     signOut({ callbackUrl: "/" });
   };
 

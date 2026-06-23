@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import posthog from "posthog-js";
 import { getSocialData, sendFriendRequest, respondFriendRequest, cancelFriendRequest } from "@/actions/social";
 import { joinGroup, createGroup, getGroupDetails } from "@/actions/group";
 import { RefreshingBadge } from "@/components/shared/refreshing-badge";
@@ -91,6 +92,7 @@ export default function SocialPage() {
     if (res.error) {
       setEnrollMsg(res.error);
     } else {
+      posthog.capture("group_joined", { group_id: res.group?.id, group_name: res.group?.name });
       setEnrollMsg("Joined successfully! 🎉");
       setJoinCode("");
       loadSocial();
@@ -113,6 +115,7 @@ export default function SocialPage() {
     if (res.error) {
       setCreateError(res.error);
     } else if (res.group) {
+      posthog.capture("group_created", { group_id: res.group.id, group_name: newGroupName, timezone: newGroupTimezone });
       setCreatedGroupCode(res.group.inviteCode);
       triggerActiveGroupChange(res.group.id);
     }
@@ -179,6 +182,7 @@ export default function SocialPage() {
     });
     const res = await sendFriendRequest(userId);
     if (res.success) {
+      posthog.capture("friend_request_sent", { target_user_id: userId });
       showToast("Friend request sent!", "success");
       loadSocial();
     } else {
@@ -204,6 +208,7 @@ export default function SocialPage() {
 
     const res = await respondFriendRequest(requestId, accept);
     if (res.success) {
+      if (accept) posthog.capture("friend_request_accepted", { request_id: requestId });
       showToast(accept ? "Friend request accepted!" : "Friend request declined.", "success");
       loadSocial();
     } else {

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Camera, MapPin, Check, Loader2 } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { Avatar } from "@/components/shared/avatar";
+import posthog from "posthog-js";
 import { updateProfile } from "@/actions/profile";
 import { SlidePanel } from "./slide-panel";
 import { profileStyles as s } from "./styles";
@@ -36,6 +37,7 @@ export function EditProfilePanel({
     if (res.error) {
       setError(res.error);
     } else {
+      posthog.capture("profile_updated", { has_bio: bio.trim().length > 0, has_location: loc.trim().length > 0 });
       setSaved(true);
       setTimeout(() => {
         setSaved(false);
