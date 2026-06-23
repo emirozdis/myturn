@@ -1,14 +1,21 @@
+"use client";
+
 import { Avatar } from "@/components/shared/avatar";
 import { getVibeBadgeStyle } from "@/lib/vibe";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type LeaderboardCarouselProps = {
   friendsStreaks: any[];
 };
 
 export function LeaderboardCarousel({ friendsStreaks }: LeaderboardCarouselProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-col gap-3">
-      <span className="text-white/60 text-[11px] font-bold uppercase tracking-widest pl-1">Leaderboard</span>
+      <span className="text-white/60 text-[11px] font-bold uppercase tracking-widest pl-1">
+        {t("streaks.leaderboardTitle")}
+      </span>
       <div className="flex items-start gap-4 overflow-x-auto scrollbar-hide pb-2 -mx-2 px-2">
         {friendsStreaks.map((friend: any) => (
           <div key={friend.name} className="flex flex-col items-center gap-2 relative flex-shrink-0 w-[64px] mt-2">
@@ -53,7 +60,9 @@ export function LeaderboardCarousel({ friendsStreaks }: LeaderboardCarouselProps
               <span
                 className={`text-[10px] font-bold mt-1 ${friend.isMe ? "text-[#e07c30]" : "text-white/60"}`}
               >
-                {friend.streak} days
+                {friend.streak === 1 
+                  ? t("streaks.dayCountSingle", { count: friend.streak }) 
+                  : t("streaks.daysCount", { count: friend.streak })}
               </span>
             </div>
           </div>

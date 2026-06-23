@@ -1,7 +1,10 @@
+"use client";
+
 import { Camera, Pencil, MapPin, Calendar, Crown, Loader2 } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { Avatar } from "@/components/shared/avatar";
 import { getVibeBadgeStyle } from "@/lib/vibe";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type ProfileHeaderProps = {
   user: any;
@@ -11,11 +14,12 @@ type ProfileHeaderProps = {
 };
 
 export function ProfileHeader({ user, uploadingAvatar, onEditProfile, onAvatarClick }: ProfileHeaderProps) {
+  const { t } = useTranslation();
   const vibeStyle = getVibeBadgeStyle(user.archetype);
   const joinedYear = user.createdAt ? new Date(user.createdAt).getFullYear() : 2026;
 
   return (
-    <div style={{ marginTop: "12px", padding: "16px 16px 0", display: "flex", alignItems: "flex-start", gap: 16 }}>
+    <div style={{ marginTop: "12px", padding: "16px 16px 0", display: "flex", alignItems: "flex-start", gap: 16, position: "relative" }}>
       <div style={{ position: "relative", flexShrink: 0 }}>
         {uploadingAvatar && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 rounded-full">
@@ -51,7 +55,7 @@ export function ProfileHeader({ user, uploadingAvatar, onEditProfile, onAvatarCl
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: 500 }}>@{user.handle || "handle"}</span>
           <button type="button" onClick={onEditProfile} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.14)", borderRadius: 20, padding: "3px 10px", color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-            <Pencil size={11} /> Edit
+            <Pencil size={11} /> {t("profile.editProfile")}
           </button>
         </div>
         <p style={{ color: "rgba(255,255,255,0.70)", fontSize: 13, margin: "0 0 8px", lineHeight: 1.4 }}>{user.bio}</p>
@@ -61,7 +65,7 @@ export function ProfileHeader({ user, uploadingAvatar, onEditProfile, onAvatarCl
           </span>
           <span style={{ color: "rgba(255,255,255,0.20)", fontSize: 11 }}>•</span>
           <span style={{ display: "flex", alignItems: "center", gap: 4, color: "rgba(255,255,255,0.45)", fontSize: 11 }}>
-            <Calendar size={12} color="rgba(255,255,255,0.45)" /> Joined {joinedYear}
+            <Calendar size={12} color="rgba(255,255,255,0.45)" /> {t("profile.joined", { year: joinedYear })}
           </span>
         </div>
       </div>

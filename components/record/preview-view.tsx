@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, ChevronRight, Clock, MapPin, AlertCircle, Check, X 
 import { glassStyle } from "@/components/shared/glass-style";
 import { BottomSheet } from "@/components/shared/bottom-sheet";
 import { getCurrentTimePeriodLabel } from "./utils";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type GroupSelectorSheetProps = {
   isOpen: boolean;
@@ -15,11 +16,12 @@ type GroupSelectorSheetProps = {
 };
 
 export function GroupSelectorSheet({ isOpen, onClose, userGroups, selectedGroup, onSelectGroup }: GroupSelectorSheetProps) {
+  const { t } = useTranslation();
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} zIndex={30} className="p-6 max-h-[75%]">
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <h3 className="text-white text-sm font-bold">Choose a Group</h3>
-        <button onClick={onClose} className="text-xs text-white/50 hover:text-white">Cancel</button>
+        <h3 className="text-white text-sm font-bold">{t("record.chooseGroup")}</h3>
+        <button onClick={onClose} className="text-xs text-white/50 hover:text-white">{t("common.cancel")}</button>
       </div>
       <div className="flex-1 overflow-y-auto space-y-2.5 pr-0.5 scrollbar-hide pb-6">
         {userGroups.map((group) => {
@@ -38,7 +40,7 @@ export function GroupSelectorSheet({ isOpen, onClose, userGroups, selectedGroup,
                 <span className="text-lg">{group.emoji || "🏠"}</span>
                 <div className="flex flex-col gap-0.5">
                   <span className="text-white text-xs font-bold leading-tight">{group.name}</span>
-                  <span className="text-white/40 text-[9px] font-semibold">{group.memberCount} members</span>
+                  <span className="text-white/40 text-[9px] font-semibold">{t("social.members", { count: group.memberCount })}</span>
                 </div>
               </div>
               {isCurrent && <Check size={14} className="text-[#e07c30] stroke-[3]" />}
@@ -51,6 +53,7 @@ export function GroupSelectorSheet({ isOpen, onClose, userGroups, selectedGroup,
 }
 
 export function UploadSuccessOverlay() {
+  const { t } = useTranslation();
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -77,7 +80,7 @@ export function UploadSuccessOverlay() {
         transition={{ delay: 0.25, type: "spring", stiffness: 200 }}
         className="text-white text-lg font-extrabold tracking-tight"
       >
-        Vlog Shared Successfully!
+        {t("record.vlogShared")}
       </motion.span>
       <motion.span
         initial={{ y: 12, opacity: 0 }}
@@ -85,7 +88,7 @@ export function UploadSuccessOverlay() {
         transition={{ delay: 0.35, type: "spring", stiffness: 200 }}
         className="text-white/50 text-xs mt-2 max-w-[220px] leading-relaxed font-medium"
       >
-        Your daily update is live, and your friends have been notified.
+        {t("record.vlogSharedBody")}
       </motion.span>
     </motion.div>
   );
@@ -153,6 +156,8 @@ export function PreviewView(props: PreviewViewProps) {
     uploadSuccess,
   } = props;
 
+  const { t } = useTranslation();
+
   return (
     <motion.div
       key="preview-view"
@@ -181,9 +186,9 @@ export function PreviewView(props: PreviewViewProps) {
           className="flex items-center gap-1.5 text-white/60 hover:text-white transition-colors text-xs font-semibold"
         >
           <ArrowLeft size={16} />
-          <span>Retake</span>
+          <span>{t("record.retake")}</span>
         </button>
-        <span className="text-white text-sm font-extrabold tracking-tight">New Post</span>
+        <span className="text-white text-sm font-extrabold tracking-tight">{t("record.newPost")}</span>
         <div className="w-12 h-6" />
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-hide p-4 flex flex-col gap-6">
@@ -304,14 +309,14 @@ export function PreviewView(props: PreviewViewProps) {
               </motion.div>
             </div>
             <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mt-2 block text-center select-none">
-              Tap to preview
+              {t("record.tapToPreview")}
             </span>
           </div>
           <div className="flex-1 h-full min-w-0">
             <textarea
               value={caption}
               onChange={(e) => onCaptionChange(e.target.value)}
-              placeholder="Write a caption... (Will post as first comment)"
+              placeholder={t("record.captionPlaceholder")}
               rows={4}
               disabled={isUploading}
               className="w-full bg-transparent border-none text-white text-xs placeholder:text-white/30 outline-none resize-none h-full"
@@ -321,8 +326,8 @@ export function PreviewView(props: PreviewViewProps) {
         <hr className="border-t border-white/5" />
         <div className="flex flex-col gap-3">
           <div className="flex justify-between items-center px-1">
-            <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">Post Destination</span>
-            <span className="text-[10px] font-semibold text-[#e07c30]">Select Group</span>
+            <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest">{t("record.postDestination")}</span>
+            <span className="text-[10px] font-semibold text-[#e07c30]">{t("record.selectGroup")}</span>
           </div>
           <div
             onClick={() => { if (!isUploading) onOpenGroupSelector(); }}
@@ -335,10 +340,10 @@ export function PreviewView(props: PreviewViewProps) {
               </div>
               <div className="flex flex-col gap-0.5 min-w-0">
                 <span className="text-white text-xs font-bold truncate leading-tight">
-                  {selectedGroup?.name || "Choose target group"}
+                  {selectedGroup?.name || t("record.chooseTargetGroup")}
                 </span>
                 <span className="text-white/40 text-[9px] font-semibold">
-                  {selectedGroup?.memberCount || 0} members enrolled
+                  {t("record.membersEnrolled", { count: selectedGroup?.memberCount || 0 })}
                 </span>
               </div>
             </div>
@@ -346,7 +351,7 @@ export function PreviewView(props: PreviewViewProps) {
           </div>
         </div>
         <div className="flex flex-col gap-3">
-          <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">Vlogging Context</span>
+          <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">{t("record.vloggingContext")}</span>
           <div
             style={glassStyle(0.04, 16, 0.08)}
             className="rounded-2xl border border-white/5 p-4 flex flex-col gap-3.5 text-xs text-white"
@@ -354,7 +359,7 @@ export function PreviewView(props: PreviewViewProps) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-white/60">
                 <Clock size={13} className="text-[#e07c30]" />
-                <span>Active Period</span>
+                <span>{t("record.activePeriod")}</span>
               </div>
               <span className="font-semibold text-right">{getCurrentTimePeriodLabel()}</span>
             </div>
@@ -363,7 +368,7 @@ export function PreviewView(props: PreviewViewProps) {
         {checkingTurn ? (
           <div className="flex items-center gap-2 px-1 text-[10px] text-white/50 animate-pulse">
             <Loader2 size={12} className="animate-spin text-[#e07c30]" />
-            <span>Verifying turn access parameters...</span>
+            <span>{t("record.verifyingTurn")}</span>
           </div>
         ) : (
           error && (
@@ -371,7 +376,7 @@ export function PreviewView(props: PreviewViewProps) {
               <AlertCircle size={16} className="text-red-400 mt-0.5 flex-shrink-0" />
               <div className="flex flex-col gap-0.5">
                 <span className="text-red-400 text-xs font-bold leading-tight">
-                  {!isTurnAuthorized ? "Posting Blocked" : "Upload Error"}
+                  {!isTurnAuthorized ? t("record.postingBlocked") : t("record.uploadError")}
                 </span>
                 <span className="text-white/60 text-[10px] leading-snug">{error}</span>
               </div>
@@ -379,7 +384,7 @@ export function PreviewView(props: PreviewViewProps) {
           )
         )}
         <div className="flex flex-col gap-3">
-          <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">Location details</span>
+          <span className="text-[11px] font-bold text-white/40 uppercase tracking-widest px-1">{t("record.locationDetails")}</span>
           <div
             style={glassStyle(0.04, 16, 0.08)}
             className="flex items-center gap-3 p-3.5 rounded-2xl border border-white/5"
@@ -389,7 +394,7 @@ export function PreviewView(props: PreviewViewProps) {
               type="text"
               value={locationName}
               onChange={(e) => onLocationChange(e.target.value)}
-              placeholder="Search or add location..."
+              placeholder={t("record.locationPlaceholder")}
               disabled={isUploading}
               className="flex-1 bg-transparent border-none text-white text-xs placeholder:text-white/30 outline-none"
             />
@@ -405,10 +410,10 @@ export function PreviewView(props: PreviewViewProps) {
           {isUploading ? (
             <>
               <Loader2 size={14} className="animate-spin animate-fade-in" />
-              <span>Uploading Vlog ({uploadProgress}%)</span>
+              <span>{t("record.uploading", { progress: uploadProgress })}</span>
             </>
           ) : (
-            <span>Share to {selectedGroup?.name || "Group"}</span>
+            <span>{t("record.shareTo", { group: selectedGroup?.name || "Group" })}</span>
           )}
         </button>
       </div>

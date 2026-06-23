@@ -7,6 +7,7 @@ import { glassStyle } from "@/components/shared/glass-style";
 import { CountdownTimer } from "@/components/shared/countdown-timer";
 import { Avatar } from "@/components/shared/avatar";
 import { TimelineTracker } from "@/components/timeline-tracker";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type TodayBottomPanelProps = {
   isVideoExpanded: boolean;
@@ -31,10 +32,11 @@ export function TodayBottomPanel({
   onHourChange,
   isSleepMode,
 }: TodayBottomPanelProps) {
+  const { t } = useTranslation();
   const [localSleepMode, setLocalSleepMode] = useState(isSleepMode);
 
-  const vloggerLabel = localSleepMode ? "Yesterday's Vlogger" : "Today's Vlogger";
-  const countdownLabel = localSleepMode ? "until day starts" : "until day ends";
+  const vloggerLabel = localSleepMode ? t("today.yesterdaysVlogger") : t("today.todaysVlogger");
+  const countdownLabel = localSleepMode ? t("today.untilDayStarts") : t("today.untilDayEnds");
 
   return (
     <div
@@ -56,10 +58,10 @@ export function TodayBottomPanel({
             <div className="flex flex-col gap-0.5 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-white font-bold text-[14px] leading-tight truncate">
-                  {assignment?.user?.name || "Unassigned"}
+                  {assignment?.user?.name || t("today.unassigned")}
                 </span>
                 {assignment?.isVolunteer && (
-                  <span className="bg-gradient-to-b from-[#f05a7e] to-[#e84365] border-b-[2px] border-[#a01a35] text-white rounded-full px-1.5 py-0.5 flex items-center flex-shrink-0" title="Volunteered">
+                  <span className="bg-gradient-to-b from-[#f05a7e] to-[#e84365] border-b-[2px] border-[#a01a35] text-white rounded-full px-1.5 py-0.5 flex items-center flex-shrink-0" title={t("today.volunteered")}>
                     <HeartHandshake size={10} fill="white" />
                   </span>
                 )}
@@ -85,7 +87,7 @@ export function TodayBottomPanel({
               className="w-full py-1.5 bg-white/5 text-white border border-white/10 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1.5 transition hover:bg-white/10 active:scale-95"
             >
               <User size={10} />
-              View Profile
+              {t("today.viewProfile")}
             </button>
           </div>
         </div>
@@ -93,7 +95,7 @@ export function TodayBottomPanel({
         <div style={glassStyle(0.04, 16, 0.08)} className="p-3 rounded-[20px] min-h-[118px] flex flex-col justify-between overflow-hidden">
           <div className="flex items-center gap-1.5 text-white mb-3 flex-shrink-0">
             <Clock size={14} className="text-[#e07c30]" />
-            <span className="text-[11px] font-bold tracking-wide">Time Left</span>
+            <span className="text-[11px] font-bold tracking-wide">{t("today.timeLeft")}</span>
           </div>
           <div className="flex flex-col flex-1 justify-center items-center w-full min-w-0">
             <div className="w-full mb-1.5">

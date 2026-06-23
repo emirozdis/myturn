@@ -1,5 +1,8 @@
+"use client";
+
 import { glassStyle } from "@/components/shared/glass-style";
 import { Avatar } from "@/components/shared/avatar";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
@@ -10,14 +13,20 @@ type MemoryCalendarProps = {
 };
 
 export function MemoryCalendar({ calendarDays, startOffset, onDayClick }: MemoryCalendarProps) {
+  const { t } = useTranslation();
+
   return (
     <div
       style={glassStyle(0.04, 20, 0.08)}
       className="rounded-[24px] p-5 flex flex-col gap-4"
     >
       <div className="flex justify-between items-center">
-        <span className="text-white text-[14px] font-bold tracking-wide">Memory Calendar</span>
-        <span className="text-white/40 text-[10px]">Tap a highlighted day</span>
+        <span className="text-white text-[14px] font-bold tracking-wide">
+          {t("streaks.memoryCalendar")}
+        </span>
+        <span className="text-white/40 text-[10px]">
+          {t("streaks.tapHighlighted")}
+        </span>
       </div>
 
       <div className="grid grid-cols-7 gap-y-3.5 gap-x-1 text-center">

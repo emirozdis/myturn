@@ -14,6 +14,7 @@ import { glassStyle } from "../shared/glass-style";
 import { useHls } from "@/components/shared/use-hls";
 import { PhotoResponsesOverlay } from "@/components/shared/photo-responses-overlay";
 import { PhotoCaptureModal } from "./photo-capture-modal";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 // Isolated component used to cleanly mount `useHls` while hiding it securely from normal rendering boundaries.
 // `useHls` natively kicks off preload network requests simply by binding the src. 
@@ -141,6 +142,7 @@ export function VideoFeed({
   onToggleVolunteer,
 }: VideoFeedProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [isMuted, setIsMuted] = useState(true);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
   const [videoProgress, setVideoProgress] = useState(0);
@@ -279,7 +281,7 @@ export function VideoFeed({
         }
       } else {
         setGesture("paused");
-        setSeekIndicatorText("HOLD TO PAUSE");
+        setSeekIndicatorText(t("today.holdToPause"));
         setSeekProgress(null);
       }
     }
@@ -382,9 +384,9 @@ export function VideoFeed({
           </div>
 
           <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-6 text-center">
-            <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">MyTurn is Resting</h2>
+            <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">{t("today.restingTitle")}</h2>
             <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
-              Quiet hours are active. Pokes and rolls are paused. Next vlogger selection rolls at 9:00 AM local time.
+              {t("today.restingBody")}
             </p>
             <div className="flex flex-col gap-3.5 w-full mt-2">
               <button
@@ -392,7 +394,7 @@ export function VideoFeed({
                 style={glassStyle(0.08, 16, 0.12)}
                 className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center pointer-events-auto border border-white/10"
               >
-                Watch Last Completed Vlog
+                {t("today.watchLastVlog")}
               </button>
 
               <button
@@ -417,7 +419,7 @@ export function VideoFeed({
                       className="flex items-center gap-2"
                     >
                       <Loader2 size={16} className="animate-spin" />
-                      <span>Updating...</span>
+                      <span>{t("today.updating")}</span>
                     </motion.div>
                   ) : hasVolunteeredForTomorrow ? (
                     <motion.div
@@ -429,7 +431,7 @@ export function VideoFeed({
                       className="flex items-center gap-2"
                     >
                       <HeartHandshake size={16} />
-                      <span>Volunteered for Tomorrow</span>
+                      <span>{t("today.volunteeredForTomorrow")}</span>
                     </motion.div>
                   ) : !canVolunteer ? (
                     <motion.div
@@ -441,7 +443,7 @@ export function VideoFeed({
                       className="flex items-center gap-2"
                     >
                       <HeartHandshake size={16} className="opacity-50" />
-                      <span>{volunteerEligibilityReason || "Not Eligible to Volunteer"}</span>
+                      <span>{volunteerEligibilityReason || t("today.notEligibleVolunteer")}</span>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -453,7 +455,7 @@ export function VideoFeed({
                       className="flex items-center gap-2"
                     >
                       <HeartHandshake size={16} />
-                      <span>Volunteer for Tomorrow's Vlog</span>
+                      <span>{t("today.volunteerForTomorrow")}</span>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -591,27 +593,27 @@ export function VideoFeed({
           <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-4 text-center">
             {isCurrentUserVlogger ? (
               <>
-                <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">It&apos;s Your Turn Today</h2>
+                <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">{t("today.itsYourTurn")}</h2>
                 <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
-                  Your friends are waiting for your updates. Post your first clip of the day to keep the group streak alive!
+                  {t("today.itsYourTurnBody")}
                 </p>
                 <button
                   onClick={() => router.push("/record")}
                   style={{ background: ACCENT }}
                   className="w-full py-3.5 text-black font-extrabold rounded-2xl text-sm transition-all active:scale-[0.98]"
                 >
-                  Record Now
+                  {t("today.recordNow")}
                 </button>
               </>
             ) : (
               <>
                 <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">
-                  Waiting for {assignment?.user?.name || "Vlogger"}
+                  {t("today.waitingForVlogger", { name: assignment?.user?.name || "Vlogger" })}
                 </h2>
                 <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
                   {assignment?.clips?.length > 0
-                    ? "No clips have been shared in this time period yet. Send them a poke to let them know you're waiting!"
-                    : "No clips have been shared today yet. Send them a poke to let them know it's their turn!"}
+                    ? t("today.noClipsYet")
+                    : t("today.noClipsTodayYet")}
                 </p>
                 <button
                   onClick={onPoke}
@@ -620,13 +622,13 @@ export function VideoFeed({
                   className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50 pointer-events-auto"
                 >
                   {pokeCooldown > 0 ? (
-                    <span>Poke Cooldown ({Math.floor(pokeCooldown / 60)}:{(pokeCooldown % 60).toString().padStart(2, "0")})</span>
+                    <span>{t("today.pokeCooldown", { time: `${Math.floor(pokeCooldown / 60)}:${(pokeCooldown % 60).toString().padStart(2, "0")}` })}</span>
                   ) : hasPostedInCurrentSlot ? (
-                    <span>Vlogger already posted for this period</span>
+                    <span>{t("today.vloggerAlreadyPosted")}</span>
                   ) : poking ? (
-                    <span>Poking...</span>
+                    <span>{t("today.poking")}</span>
                   ) : (
-                    <span>Poke Vlogger</span>
+                    <span>{t("today.pokeVlogger")}</span>
                   )}
                 </button>
               </>
@@ -656,7 +658,7 @@ export function VideoFeed({
               {gesture === "fastforward" && <FastForward className="text-[#e07c30] fill-[#e07c30]" size={10} />}
 
               <span className="text-white font-extrabold text-[9px] tracking-wider uppercase leading-none">
-                {gesture === "paused" ? "Paused" : seekIndicatorText.replace("FF >> ", ">> ").replace("RW << ", "<< ")}
+                {gesture === "paused" ? t("record.paused") : seekIndicatorText.replace("FF >> ", ">> ").replace("RW << ", "<< ")}
               </span>
 
               {seekProgress !== null && (
@@ -694,7 +696,7 @@ export function VideoFeed({
           {activeClipUrl && (
             <div style={glassStyle(0.04, 16, 0.08)} className={`absolute ${activeSlotClips.length > 1 ? "top-6" : "top-3"} right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white text-[9px] font-semibold z-30 shadow-md max-w-[140px] pointer-events-auto`}>
               <MapPin size={10} className="text-white/60 flex-shrink-0" />
-              <span className="truncate">{activeClip?.location || "Live Vlog"}</span>
+              <span className="truncate">{activeClip?.location || t("today.liveVlog")}</span>
             </div>
           )}
 
@@ -712,12 +714,12 @@ export function VideoFeed({
                       </div>
                     ))}
                     {displayViews.length === 0 && (
-                      <span className="text-white/40 text-[9px] font-semibold pl-1">0 views</span>
+                      <span className="text-white/40 text-[9px] font-semibold pl-1">0 {t("today.views")}</span>
                     )}
                   </div>
                   {displayViews.length > 0 && (
                     <span className="text-white/65 text-[9px] font-bold tracking-tight pl-1.5">
-                      {displayViews.length} viewer{displayViews.length > 1 ? "s" : ""}
+                      {displayViews.length} {displayViews.length > 1 ? t("today.viewers") : t("today.viewer")}
                     </span>
                   )}
                 </div>

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, Sparkles, Copy, Check, Loader2, Globe, Smile, Keyboard, Sparkle } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type CreateGroupModalProps = {
   isOpen: boolean;
@@ -57,6 +58,7 @@ export function CreateGroupModal({
   onCreate,
   onCopyCode,
 }: CreateGroupModalProps) {
+  const { t } = useTranslation();
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const [shortcutHelper, setShortcutHelper] = useState("Use system emoji keyboard");
 
@@ -113,15 +115,15 @@ export function CreateGroupModal({
             >
               <ChevronLeft size={24} />
             </button>
-            <h2 className="text-white text-xl font-bold">Create a Group</h2>
+            <h2 className="text-white text-xl font-bold">{t("social.createGroupModalTitle")}</h2>
           </div>
 
           {createdGroupCode ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center px-4 py-6">
               <Sparkles size={48} className="text-[#e07c30] mb-4 animate-bounce" />
-              <h3 className="text-white text-2xl font-bold mb-2">Group Created! 🎉</h3>
+              <h3 className="text-white text-2xl font-bold mb-2">{t("social.groupCreated")}</h3>
               <p className="text-white/60 text-xs leading-relaxed max-w-[280px] mb-8">
-                Invite your friends to your group using this unique code. Once they join, you can start rolling daily vlog assignments!
+                {t("social.groupCreatedBody")}
               </p>
 
               <div
@@ -137,7 +139,7 @@ export function CreateGroupModal({
                 >
                   {newGroupEmoji}
                 </div>
-                <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest leading-none">Invite Code</span>
+                <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest leading-none">{t("social.inviteCode")}</span>
                 <span className="text-white font-mono text-3xl font-extrabold tracking-widest selection:bg-amber-500/30">
                   {createdGroupCode}
                 </span>
@@ -150,12 +152,12 @@ export function CreateGroupModal({
                   {copySuccess ? (
                     <>
                       <Check size={14} strokeWidth={3} />
-                      Copied!
+                      {t("common.copied")}
                     </>
                   ) : (
                     <>
                       <Copy size={14} />
-                      Copy Code
+                      {t("social.copyCode")}
                     </>
                   )}
                 </button>
@@ -169,7 +171,7 @@ export function CreateGroupModal({
                 }}
                 className="w-full max-w-[280px] py-3.5 rounded-xl text-white font-bold text-sm transition-transform active:scale-[0.98]"
               >
-                Finish Setup
+                {t("social.finishSetup")}
               </button>
             </div>
           ) : (
@@ -183,10 +185,10 @@ export function CreateGroupModal({
 
                 {/* 1. Group Name Input */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1">Group Name</label>
+                  <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1">{t("social.groupName")}</label>
                   <input
                     type="text"
-                    placeholder="e.g. Weekend Warriors"
+                    placeholder={t("social.groupNamePlaceholder")}
                     value={newGroupName}
                     onChange={(e) => onNameChange(e.target.value)}
                     style={glassStyle(0.04, 16, 0.08)}
@@ -199,7 +201,7 @@ export function CreateGroupModal({
                   <div className="flex justify-between items-center pl-1 pr-1">
                     <div className="flex items-center gap-1.5">
                       <Smile size={14} className="text-[#e07c30]" />
-                      <label className="text-white/70 text-[13px] font-semibold tracking-wide">Choose Group Emoji</label>
+                      <label className="text-white/70 text-[13px] font-semibold tracking-wide">{t("social.chooseEmoji")}</label>
                     </div>
                   </div>
 
@@ -210,7 +212,7 @@ export function CreateGroupModal({
                     className="rounded-2xl border border-white/5 p-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.05] active:scale-[0.99] transition-all"
                   >
                     <div className="flex flex-col gap-0.5">
-                      <span className="text-white text-[14px] font-extrabold tracking-tight">Open Native Emoji Menu</span>
+                      <span className="text-white text-[14px] font-extrabold tracking-tight">{t("social.openEmojiMenu")}</span>
                       <span className="text-white/40 text-[10px] font-bold uppercase tracking-wider">{shortcutHelper}</span>
                     </div>
 
@@ -245,7 +247,7 @@ export function CreateGroupModal({
 
                   {/* Curated Presets row with high-contrast, pure-white highlight styles */}
                   <div className="flex flex-col gap-1.5 mt-1">
-                    <span className="text-white/40 text-[9px] font-bold uppercase tracking-wider pl-1.5">Or choose a preset</span>
+                    <span className="text-white/40 text-[9px] font-bold uppercase tracking-wider pl-1.5">{t("social.orChoosePreset")}</span>
                     <div className="flex justify-between items-center gap-2 p-2 rounded-2xl bg-white/[0.01] border border-white/5">
                       {PRESET_EMOJIS.map((emoji) => {
                         const isSelected = emoji === newGroupEmoji;
@@ -274,7 +276,7 @@ export function CreateGroupModal({
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-1.5 pl-1">
                     <Globe size={14} className="text-[#e07c30]" />
-                    <label className="text-white/70 text-[13px] font-semibold tracking-wide">Group Timezone</label>
+                    <label className="text-white/70 text-[13px] font-semibold tracking-wide">{t("social.groupTimezone")}</label>
                   </div>
                   <div className="relative">
                     <select
@@ -305,7 +307,7 @@ export function CreateGroupModal({
                 style={{ background: ACCENT }}
               >
                 {creating && <Loader2 size={18} className="animate-spin" />}
-                {creating ? "Creating..." : "Create Group"}
+                {creating ? t("social.creating") : t("social.createGroup")}
               </button>
             </div>
           )}

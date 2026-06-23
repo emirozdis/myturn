@@ -17,6 +17,7 @@ import {
   X
 } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type CameraViewProps = {
   setVideoRef: (el: HTMLVideoElement | null) => void;
@@ -74,6 +75,7 @@ export function CameraView({
   onResumeRecording,
   onStopRecording,
 }: CameraViewProps) {
+  const { t } = useTranslation();
   const [activeBars, setActiveBars] = useState(0);
   const [availableZooms, setAvailableZooms] = useState<string[]>(["1x"]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -275,7 +277,7 @@ export function CameraView({
                   title="Expand Tools"
                 >
                   <Sliders size={13} />
-                  <span className="text-[10px] font-black uppercase tracking-wider">Tools</span>
+                  <span className="text-[10px] font-black uppercase tracking-wider">{t("record.tools")}</span>
                 </button>
                 {/* Active state badges — siblings of the button so pill layout detects width change */}
                 <AnimatePresence>
@@ -322,7 +324,7 @@ export function CameraView({
                   title="Flip Camera Mode"
                 >
                   <RefreshCw size={12} />
-                  <span className="text-[9px] font-black uppercase tracking-wider">Flip</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider">{t("record.flip")}</span>
                 </motion.button>
 
                 {/* Flash Toggle */}
@@ -338,7 +340,7 @@ export function CameraView({
                   ) : (
                     <ZapOff size={12} className="text-white/60" />
                   )}
-                  <span className="text-[9px] font-black uppercase tracking-wider">Flash</span>
+                  <span className="text-[9px] font-black uppercase tracking-wider">{t("record.flash")}</span>
                 </motion.button>
 
                 {/* Speed */}
@@ -443,7 +445,7 @@ export function CameraView({
         <div className="relative flex items-center justify-center">
           {isRecording && recordTime >= 105 && (
             <span className="absolute -top-12 left-1/2 -translate-x-1/2 text-white font-bold text-[10px] tracking-wide whitespace-nowrap bg-red-600/90 px-3 py-1 rounded-full backdrop-blur-md border border-red-500/50 shadow-md animate-pulse">
-              {120 - recordTime}s remaining
+              {t("record.remaining", { sec: 120 - recordTime })}
             </span>
           )}
 

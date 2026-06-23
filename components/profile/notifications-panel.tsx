@@ -7,8 +7,10 @@ import { glassStyle } from "@/components/shared/glass-style";
 import { registerPushServiceWorker, subscribeToPush, getVapidPublicKey, urlBase64ToUint8Array } from "@/lib/push-client";
 import { saveSubscription } from "@/actions/push";
 import { SlidePanel } from "./slide-panel";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export function NotificationsPanel({ onBack }: { onBack: () => void }) {
+  const { t } = useTranslation();
   const [permission, setPermission] = useState<NotificationPermission>("default");
   const [subscribing, setSubscribing] = useState(false);
   const [error, setError] = useState("");
@@ -26,7 +28,7 @@ export function NotificationsPanel({ onBack }: { onBack: () => void }) {
     setError("");
     setSuccess(false);
     if (!isSupported) {
-      setError("Push notifications are not supported on this browser/device.");
+      setError(t("profile.pushUnsupportedDevice"));
       return;
     }
 
@@ -48,12 +50,12 @@ export function NotificationsPanel({ onBack }: { onBack: () => void }) {
           setSuccess(true);
         }
       } else if (result === "denied") {
-        setError("Notifications permission was denied. Please enable permission in your device/browser settings.");
+        setError(t("profile.notifDenied"));
       }
     } catch (err: any) {
-      let msg = err?.message || "Failed to configure push alerts.";
+      let msg = err?.message || t("profile.notifFailed");
       if (msg.includes("Registration failed - push service error") || msg.includes("push service error")) {
-        msg = "Push service error. If you are using Brave Browser, please enable 'Use Google services for push messaging' in brave://settings/privacy and reload.";
+        msg = t("profile.pushServiceError");
       }
       setError(msg);
     } finally {
@@ -62,7 +64,7 @@ export function NotificationsPanel({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <SlidePanel title="Push Notifications" onBack={onBack}>
+    <SlidePanel title={t("profile.notifTitle")} onBack={onBack}>
       <div style={{ display: "flex", flexDirection: "column" as const, gap: 24 }}>
         <div style={{ padding: "0 16px" }}>
           <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, padding: "20px", display: "flex", flexDirection: "column" as const, alignItems: "center", gap: 14 }}>
@@ -70,9 +72,9 @@ export function NotificationsPanel({ onBack }: { onBack: () => void }) {
               <Bell size={24} color={ACCENT} className={subscribing ? "animate-bounce" : ""} />
             </div>
             <div style={{ textAlign: "center" }}>
-              <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Stay updated in real-time</h3>
+              <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 16, marginBottom: 6 }}>{t("profile.notifDescription")}</h3>
               <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 12, lineHeight: 1.5 }}>
-                Activate push alerts so you never miss your turn to vlog, and stay updated when friends post or interact with your updates.
+                {t("profile.notifBody")}
               </p>
             </div>
           </div>
@@ -86,29 +88,29 @@ export function NotificationsPanel({ onBack }: { onBack: () => void }) {
 
         {success && (
           <div className="mx-4 text-emerald-500 text-sm font-semibold text-center bg-emerald-500/10 py-2.5 px-4 rounded-xl border border-emerald-500/20">
-            Push notifications activated successfully! 🎉
+            {t("profile.notifSuccessful")}
           </div>
         )}
 
         <div style={{ padding: "0 16px" }}>
           <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, padding: "16px", display: "flex", flexDirection: "column" as const, gap: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 600 }}>Permission Status</span>
+              <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 600 }}>{t("profile.permissionStatus")}</span>
               <span style={{
                 color: !isSupported ? "#ef4444" : permission === "granted" ? "#22c55e" : permission === "denied" ? "#ef4444" : ACCENT,
                 fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginLeft: "auto",
               }}>
-                {!isSupported ? "UNSUPPORTED" : permission}
+                {!isSupported ? t("profile.unsupported") : permission === "granted" ? t("profile.permissionGranted") : permission === "denied" ? t("profile.permissionDenied") : t("profile.permissionDefault")}
               </span>
             </div>
             <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>Notification Channels</span>
+              <span style={{ color: "#fff", fontSize: 13, fontWeight: 700 }}>{t("profile.notificationChannels")}</span>
               <ul style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, paddingLeft: "16px", listStyleType: "disc", display: "flex", flexDirection: "column", gap: 6 }}>
-                <li>Daily turn assignment reveals</li>
-                <li>Your personal vlogging reminders</li>
-                <li>New updates posted by friends</li>
-                <li>Likes and comments on your vlogs</li>
+                <li>{t("profile.channel1")}</li>
+                <li>{t("profile.channel2")}</li>
+                <li>{t("profile.channel3")}</li>
+                <li>{t("profile.channel4")}</li>
               </ul>
             </div>
           </div>
@@ -138,9 +140,9 @@ export function NotificationsPanel({ onBack }: { onBack: () => void }) {
             {subscribing ? (
               <Loader2 size={16} className="animate-spin" />
             ) : isSupported ? (
-              "Enable Push Alerts"
+              t("profile.enablePushAlerts")
             ) : (
-              "Push Unsupported on this Browser"
+              t("profile.pushUnsupported")
             )}
           </button>
         </div>

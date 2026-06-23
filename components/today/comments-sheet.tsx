@@ -5,6 +5,7 @@ import { MessageCircle, Send, Trash2, X, CornerDownRight, AtSign, Loader2 } from
 import { Avatar } from "@/components/shared/avatar";
 import { BottomSheet } from "@/components/shared/bottom-sheet";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type CommentsSheetProps = {
   isOpen: boolean;
@@ -29,6 +30,7 @@ export function CommentsSheet({
   onDeleteComment,
   currentUserId,
 }: CommentsSheetProps) {
+  const { t } = useTranslation();
   const [replyToId, setReplyToId] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [cursorPos, setCursorPos] = useState(0);
@@ -224,7 +226,7 @@ export function CommentsSheet({
             className="text-white/30 text-[10px] font-semibold hover:text-white mt-1.5 text-left w-max transition-colors flex items-center gap-1"
           >
             <CornerDownRight size={10} />
-            Reply
+            {t("today.reply")}
           </button>
         )}
       </div>
@@ -234,7 +236,7 @@ export function CommentsSheet({
   return (
     <BottomSheet isOpen={isOpen} onClose={onClose} zIndex={30} className="h-[65%] p-4 flex flex-col">
       <div className="flex items-center justify-between pb-3 border-b border-white/5 flex-shrink-0">
-        <span className="text-white text-[12px] font-bold tracking-wide">Comments ({commentList.length})</span>
+        <span className="text-white text-[12px] font-bold tracking-wide">{t("today.comments", { count: commentList.length })}</span>
         <button
           onClick={onClose}
           className="p-1.5 rounded-full bg-white/5 hover:bg-white/10 text-white/60 transition-colors"
@@ -254,8 +256,8 @@ export function CommentsSheet({
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-center p-4">
             <MessageCircle size={24} className="text-white/20 mb-1.5" />
-            <span className="text-white/40 text-[11px] font-semibold">No comments yet.</span>
-            <span className="text-white/25 text-[9px] mt-0.5">Be the first to react to today&apos;s turn!</span>
+            <span className="text-white/40 text-[11px] font-semibold">{t("today.noCommentsYet")}</span>
+            <span className="text-white/25 text-[9px] mt-0.5">{t("today.beFirstToReact")}</span>
           </div>
         )}
         {/* Dummy div to anchor scroll location */}
@@ -281,7 +283,7 @@ export function CommentsSheet({
                 {/* Fixed Header */}
                 <div className="px-4 py-2.5 flex items-center gap-1.5 bg-white/[0.02] border-b border-white/5 flex-shrink-0 z-20">
                   <AtSign size={11} className="text-white/40" />
-                  <span className="text-white/40 text-[10px] font-bold uppercase tracking-wider">Mention User</span>
+                  <span className="text-white/40 text-[10px] font-bold uppercase tracking-wider">{t("today.mentionUser")}</span>
                 </div>
 
                 {/* Scrollable List Area */}
@@ -308,7 +310,7 @@ export function CommentsSheet({
         {replyToId && (
           <div className="flex items-center justify-between bg-white/5 px-3 py-1.5 rounded-t-xl text-[10px] text-white/50 border border-white/10 border-b-0">
             <span className="font-semibold text-white/60">
-              Replying to @{commentList.find(c => c.id === replyToId)?.user?.handle || "User"}
+              {t("today.replyingTo", { handle: commentList.find(c => c.id === replyToId)?.user?.handle || "User" })}
             </span>
             <button type="button" onClick={() => setReplyToId(null)} className="hover:text-white transition-colors">
               <X size={12}/>
@@ -329,7 +331,7 @@ export function CommentsSheet({
               onChange={handleInputChange}
               onSelect={handleInputSelect}
               onScroll={handleScroll}
-              placeholder={replyToId ? "Write a reply..." : "Add a comment..."}
+              placeholder={replyToId ? t("today.writeReply") : t("today.addComment")}
               className={`w-full bg-white/[0.06] border border-white/10 h-10 py-2.5 px-4 text-transparent caret-white text-[12px] font-sans leading-normal outline-none placeholder:text-white/30 focus:border-[#e07c30]/50 select-text relative z-10 ${
                 replyToId ? "rounded-b-xl rounded-tr-xl" : "rounded-full"
               }`}

@@ -15,9 +15,11 @@ import { GroupsTab } from "@/components/social/groups-tab";
 import { RequestsTab } from "@/components/social/requests-tab";
 import { DiscoverTab } from "@/components/social/discover-tab";
 import { CreateGroupModal } from "@/components/social/create-group-modal";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export default function SocialPage() {
-  const [activeTab, setActiveTab] = useState("Friends");
+  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState("friends");
   const [joinCode, setJoinCode] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoad, setInitialLoad] = useState(true);
@@ -93,7 +95,7 @@ export default function SocialPage() {
       setEnrollMsg(res.error);
     } else {
       posthog.capture("group_joined", { group_id: res.group?.id, group_name: res.group?.name });
-      setEnrollMsg("Joined successfully! 🎉");
+      setEnrollMsg(t("social.joinedSuccess"));
       setJoinCode("");
       loadSocial();
       if (res.group) triggerActiveGroupChange(res.group.id);
@@ -104,7 +106,7 @@ export default function SocialPage() {
   const handleCreateGroup = async () => {
     setCreateError("");
     if (!newGroupName.trim()) {
-      setCreateError("Please enter a group name.");
+      setCreateError(t("social.enterGroupNameError"));
       return;
     }
 
@@ -155,7 +157,7 @@ export default function SocialPage() {
   const copyExistingCode = (e: React.MouseEvent, code: string) => {
     e.stopPropagation();
     navigator.clipboard.writeText(code);
-    showToast(`Code "${code}" copied to clipboard!`);
+    showToast(t("social.codeCopied", { code }));
   };
 
   const closeCreateFlow = () => {
@@ -183,10 +185,10 @@ export default function SocialPage() {
     const res = await sendFriendRequest(userId);
     if (res.success) {
       posthog.capture("friend_request_sent", { target_user_id: userId });
-      showToast("Friend request sent!", "success");
+      showToast(t("social.friendRequestSent"), "success");
       loadSocial();
     } else {
-      showToast(res.error || "Failed to send request.", "error");
+      showToast(res.error || t("social.friendRequestFailed"), "error");
       setSocialData((prev: any) => {
         if (!prev) return prev;
         return {
@@ -209,10 +211,10 @@ export default function SocialPage() {
     const res = await respondFriendRequest(requestId, accept);
     if (res.success) {
       if (accept) posthog.capture("friend_request_accepted", { request_id: requestId });
-      showToast(accept ? "Friend request accepted!" : "Friend request declined.", "success");
+      showToast(accept ? t("social.friendRequestAccepted") : t("social.friendRequestDeclined"), "success");
       loadSocial();
     } else {
-      showToast(res.error || "Failed to respond.", "error");
+      showToast(res.error || t("social.respondFailed"), "error");
       loadSocial();
     }
   };
@@ -228,10 +230,10 @@ export default function SocialPage() {
 
     const res = await cancelFriendRequest(requestId);
     if (res.success) {
-      showToast("Friend request withdrawn.", "success");
+      showToast(t("social.requestWithdrawn"), "success");
       loadSocial();
     } else {
-      showToast(res.error || "Failed to withdraw request.", "error");
+      showToast(res.error || t("social.withdrawFailed"), "error");
       loadSocial();
     }
   };
@@ -244,16 +246,16 @@ export default function SocialPage() {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case "Friends":
+      case "friends":
         return (
           <FriendsTab
             friends={friends}
             suggestions={suggestions}
-            onFindFriends={() => setActiveTab("Discover")}
+            onFindFriends={() => setActiveTab("discover")}
             onSendRequest={handleSendRequest}
           />
         );
-      case "Groups":
+      case "groups":
         return (
           <GroupsTab
             joinCode={joinCode}
@@ -268,7 +270,7 @@ export default function SocialPage() {
             onCopyCode={copyExistingCode}
           />
         );
-      case "Requests":
+      case "requests":
         return (
           <RequestsTab
             pendingRequests={pendingRequests}
@@ -277,7 +279,7 @@ export default function SocialPage() {
             onCancelRequest={handleCancelRequest}
           />
         );
-      case "Discover":
+      case "discover":
         return <DiscoverTab trending={trending} />;
       default:
         return null;

@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Users, ArrowRight, Flame, Loader2, Copy } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type GroupsTabProps = {
   joinCode: string;
@@ -30,6 +31,8 @@ export function GroupsTab({
   onViewGroup,
   onCopyCode,
 }: GroupsTabProps) {
+  const { t } = useTranslation();
+
   return (
     <motion.div
       key="groups"
@@ -47,12 +50,12 @@ export function GroupsTab({
         >
           <div>
             <div className="flex justify-between items-start mb-2">
-              <h3 className="text-white text-[15px] font-bold leading-tight tracking-tight">Create a Group</h3>
+              <h3 className="text-white text-[15px] font-bold leading-tight tracking-tight">{t("social.createGroupTitle")}</h3>
               <div className="w-8 h-8 rounded-full bg-[#e07c30]/15 flex items-center justify-center border border-[#e07c30]/30 shadow-sm group-hover:scale-110 transition-transform">
                 <Users size={15} className="text-[#e07c30]" />
               </div>
             </div>
-            <p className="text-white/50 text-[11px] font-medium leading-relaxed pr-2">Start a new group and invite your friends</p>
+            <p className="text-white/50 text-[11px] font-medium leading-relaxed pr-2">{t("social.createGroupBody")}</p>
           </div>
           <button
             className="w-full mt-4 py-2 rounded-full text-[12px] font-bold transition-all group-hover:bg-[#e07c30]/20"
@@ -62,7 +65,7 @@ export function GroupsTab({
               color: ACCENT,
             }}
           >
-            Create Group
+            {t("social.createGroup")}
           </button>
         </div>
 
@@ -71,15 +74,15 @@ export function GroupsTab({
           style={glassStyle(0.04, 20, 0.08)}
         >
           <div>
-            <h3 className="text-white text-[15px] font-bold leading-tight tracking-tight mb-2">Join with Code</h3>
-            <p className="text-white/50 text-[11px] font-medium leading-relaxed">Got an invite code? Join a group</p>
+            <h3 className="text-white text-[15px] font-bold leading-tight tracking-tight mb-2">{t("social.joinWithCode")}</h3>
+            <p className="text-white/50 text-[11px] font-medium leading-relaxed">{t("social.joinWithCodeBody")}</p>
           </div>
           <div className="relative mt-4">
             <input
               type="text"
               value={joinCode}
               onChange={(e) => onJoinCodeChange(e.target.value)}
-              placeholder="Enter code"
+              placeholder={t("social.enterCode")}
               className="w-full rounded-full py-2 pl-3.5 pr-10 text-[12px] text-white outline-none placeholder:text-white/30 transition-colors shadow-inner"
               style={{
                 background: "rgba(0,0,0,0.3)",
@@ -108,7 +111,7 @@ export function GroupsTab({
 
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-white text-[17px] font-bold tracking-tight">Your Groups ({groups.length})</h2>
+          <h2 className="text-white text-[17px] font-bold tracking-tight">{t("social.yourGroups", { count: groups.length })}</h2>
         </div>
         <div className="flex flex-col gap-3">
           {groups.map((group: any) => (
@@ -126,11 +129,11 @@ export function GroupsTab({
                   <div className="text-white text-[15px] font-bold truncate tracking-tight">{group.name}</div>
                   <div className="text-white/60 text-[11px] font-medium flex items-center gap-1.5 mt-0.5">
                     <Users size={12} className="opacity-80" />
-                    <span>{group.members} members</span>
+                    <span>{t("social.members", { count: group.members })}</span>
                   </div>
                   <div className="text-white/40 text-[10px] font-medium mt-1.5 tracking-wide flex items-center gap-1">
                     <Flame size={10} className="text-[#e07c30]" />
-                    <span>Code: {group.inviteCode}</span>
+                    <span>{t("social.codeLabel", { code: group.inviteCode })}</span>
                   </div>
                 </div>
               </div>
@@ -145,7 +148,7 @@ export function GroupsTab({
                     border: "1px solid rgba(255,255,255,0.12)",
                   }}
                   className="p-2.5 rounded-full text-white/70 hover:text-white transition-colors"
-                  title="Copy invite code"
+                  title={t("social.copyInviteCode")}
                 >
                   <Copy size={14} />
                 </button>

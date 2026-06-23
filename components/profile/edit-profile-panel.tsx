@@ -8,6 +8,7 @@ import posthog from "posthog-js";
 import { updateProfile } from "@/actions/profile";
 import { SlidePanel } from "./slide-panel";
 import { profileStyles as s } from "./styles";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type EditProfilePanelProps = {
   user: any;
@@ -24,6 +25,7 @@ export function EditProfilePanel({
   uploadingAvatar,
   triggerAvatarSelection,
 }: EditProfilePanelProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState(user.name || "");
   const [handle, setHandle] = useState(user.handle || "");
   const [bio, setBio] = useState(user.bio || "");
@@ -48,7 +50,7 @@ export function EditProfilePanel({
   }
 
   return (
-    <SlidePanel title="Edit Profile" onBack={onBack}>
+    <SlidePanel title={t("profile.editProfileTitle")} onBack={onBack}>
       <div style={{ display: "flex", flexDirection: "column" as const, gap: 24 }}>
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 4 }}>
           <div style={{ position: "relative", margin: "0 auto" }}>
@@ -76,33 +78,33 @@ export function EditProfilePanel({
 
         <div style={{ display: "flex", flexDirection: "column" as const, gap: 12, padding: "0 16px" }}>
           <div>
-            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Display Name</p>
-            <input value={name} onChange={e => setName(e.target.value)} style={s.input as any} placeholder="Your name" />
+            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>{t("profile.displayName")}</p>
+            <input value={name} onChange={e => setName(e.target.value)} style={s.input as any} placeholder={t("profile.yourNamePlaceholder")} />
           </div>
           <div>
-            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Username</p>
+            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>{t("profile.username")}</p>
             <div style={{ position: "relative" }}>
               <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "rgba(255,255,255,0.40)", fontSize: 14 }}>@</span>
-              <input value={handle} onChange={e => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} style={{ ...s.input, paddingLeft: 28 } as any} placeholder="handle" />
+              <input value={handle} onChange={e => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} style={{ ...s.input, paddingLeft: 28 } as any} placeholder={t("profile.handlePlaceholder")} />
             </div>
           </div>
           <div>
-            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Bio</p>
+            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>{t("profile.bioLabel")}</p>
             <textarea value={bio} onChange={e => setBio(e.target.value)} rows={3}
-              style={{ ...s.input, resize: "none", lineHeight: 1.5 } as any} placeholder="Tell your story…" />
+              style={{ ...s.input, resize: "none", lineHeight: 1.5 } as any} placeholder={t("profile.bioPlaceholder")} />
           </div>
           <div>
-            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>Location</p>
+            <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, fontWeight: 600, marginBottom: 6, letterSpacing: "0.06em", textTransform: "uppercase" }}>{t("profile.location")}</p>
             <div style={{ position: "relative" }}>
               <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}><MapPin size={14} color="rgba(255,255,255,0.40)" /></span>
-              <input value={loc} onChange={e => setLoc(e.target.value)} style={{ ...s.input, paddingLeft: 34 } as any} placeholder="City, Country" />
+              <input value={loc} onChange={e => setLoc(e.target.value)} style={{ ...s.input, paddingLeft: 34 } as any} placeholder={t("profile.locationPlaceholder")} />
             </div>
           </div>
         </div>
 
         <div style={{ padding: "0 16px" }}>
           <button type="button" onClick={save} style={{ width: "100%", background: saved ? "#22c55e" : ACCENT, border: "none", borderRadius: 14, color: "#000", fontWeight: 700, fontSize: 15, padding: "13px 0", cursor: "pointer", display: "flex", alignItems: "center" as const, justifyContent: "center" as const, gap: 8, transition: "background 0.2s" }}>
-            {saved ? <><Check size={16} /> Saved!</> : "Save Changes"}
+            {saved ? <><Check size={16} /> {t("profile.saved")}</> : t("profile.saveChanges")}
           </button>
         </div>
       </div>

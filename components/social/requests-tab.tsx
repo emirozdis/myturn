@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Check, X, ArrowUpRight } from "lucide-react";
 import { glassStyle } from "@/components/shared/glass-style";
 import { Avatar } from "@/components/shared/avatar";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type RequestsTabProps = {
   pendingRequests: any[];
@@ -13,6 +14,7 @@ type RequestsTabProps = {
 };
 
 export function RequestsTab({ pendingRequests, sentRequests, onRespond, onCancelRequest }: RequestsTabProps) {
+  const { t } = useTranslation();
   const hasIncoming = pendingRequests && pendingRequests.length > 0;
   const hasOutgoing = sentRequests && sentRequests.length > 0;
 
@@ -22,8 +24,8 @@ export function RequestsTab({ pendingRequests, sentRequests, onRespond, onCancel
         <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
           <Check size={24} className="text-white/30" />
         </div>
-        <p className="text-white/70 font-semibold text-[14px]">You&apos;re all caught up!</p>
-        <p className="text-white/40 text-[12px] mt-1">No pending invitations or outgoing requests.</p>
+        <p className="text-white/70 font-semibold text-[14px]">{t("social.allCaughtUp")}</p>
+        <p className="text-white/40 text-[12px] mt-1">{t("social.noPendingRequestsExtended")}</p>
       </div>
     );
   }
@@ -41,7 +43,7 @@ export function RequestsTab({ pendingRequests, sentRequests, onRespond, onCancel
       {hasIncoming && (
         <div>
           <div className="flex items-center justify-between mb-4 pl-1">
-            <h2 className="text-white text-[15px] font-extrabold tracking-tight uppercase text-white/60">Received Requests ({pendingRequests.length})</h2>
+            <h2 className="text-white text-[15px] font-extrabold tracking-tight uppercase text-white/60">{t("social.receivedRequests", { count: pendingRequests.length })}</h2>
           </div>
           <div className="flex flex-col gap-3">
             {pendingRequests.map((req: any) => (
@@ -69,13 +71,13 @@ export function RequestsTab({ pendingRequests, sentRequests, onRespond, onCancel
                     onClick={() => onRespond(req.id, true)}
                     className="px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95 bg-[#e07c30] text-black"
                   >
-                    Accept
+                    {t("social.accept")}
                   </button>
                   <button
                     onClick={() => onRespond(req.id, false)}
                     className="px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95 bg-white/10 text-white/70 hover:bg-red-500/20 hover:text-red-400"
                   >
-                    Decline
+                    {t("social.decline")}
                   </button>
                 </div>
               </div>
@@ -88,7 +90,7 @@ export function RequestsTab({ pendingRequests, sentRequests, onRespond, onCancel
       {hasOutgoing && (
         <div>
           <div className="flex items-center justify-between mb-4 pl-1">
-            <h2 className="text-white text-[15px] font-extrabold tracking-tight uppercase text-white/60">Sent Requests ({sentRequests.length})</h2>
+            <h2 className="text-white text-[15px] font-extrabold tracking-tight uppercase text-white/60">{t("social.sentRequests", { count: sentRequests.length })}</h2>
           </div>
           <div className="flex flex-col gap-3">
             {sentRequests.map((req: any) => (
@@ -116,7 +118,7 @@ export function RequestsTab({ pendingRequests, sentRequests, onRespond, onCancel
                     onClick={() => onCancelRequest(req.id)}
                     className="px-3.5 py-1.5 rounded-full text-[11px] font-bold transition-all active:scale-95 bg-white/10 text-white/70 hover:bg-red-500/20 hover:text-red-400"
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                 </div>
               </div>

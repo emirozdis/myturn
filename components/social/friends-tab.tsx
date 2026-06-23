@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { Avatar } from "@/components/shared/avatar";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type FriendsTabProps = {
   friends: any[];
@@ -14,6 +15,8 @@ type FriendsTabProps = {
 };
 
 export function FriendsTab({ friends, suggestions, onFindFriends, onSendRequest }: FriendsTabProps) {
+  const { t } = useTranslation();
+
   return (
     <motion.div
       key="friends"
@@ -41,23 +44,23 @@ export function FriendsTab({ friends, suggestions, onFindFriends, onSendRequest 
           <img src="/assets/images/vlogging.jpg" alt="Friends" className="w-full h-full object-cover opacity-75" />
         </div>
         <div className="relative z-20 p-5 w-[70%]">
-          <p className="text-white/70 text-[11px] font-bold uppercase tracking-wider mb-1.5">Grow your circle</p>
-          <h3 className="text-white text-[20px] font-bold leading-[1.15] mb-4 tracking-tight drop-shadow-md">
-            Add friends to<br />join the fun
+          <p className="text-white/70 text-[11px] font-bold uppercase tracking-wider mb-1.5">{t("social.growYourCircle")}</p>
+          <h3 className="text-white text-[20px] font-bold leading-[1.15] mb-4 tracking-tight drop-shadow-md whitespace-pre-line">
+            {t("social.addFriendsTitle")}
           </h3>
           <button
             onClick={onFindFriends}
             className="text-black px-5 py-2 rounded-full text-[12px] font-bold transition-all active:scale-95"
             style={{ background: ACCENT }}
           >
-            Find Friends
+            {t("social.findFriends")}
           </button>
         </div>
       </div>
 
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-white text-[17px] font-bold tracking-tight">Your Friends ({friends.length})</h2>
+          <h2 className="text-white text-[17px] font-bold tracking-tight">{t("social.yourFriends", { count: friends.length })}</h2>
         </div>
         {friends.length > 0 ? (
           <div
@@ -97,14 +100,14 @@ export function FriendsTab({ friends, suggestions, onFindFriends, onSendRequest 
             ))}
           </div>
         ) : (
-          <p className="text-white/30 text-xs">No connections found. Send some friend requests!</p>
+          <p className="text-white/30 text-xs">{t("social.noFriends")}</p>
         )}
       </div>
 
       {suggestions && suggestions.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-white text-[17px] font-bold tracking-tight">Suggested Connections</h2>
+            <h2 className="text-white text-[17px] font-bold tracking-tight">{t("social.suggestedConnections")}</h2>
           </div>
           <div className="flex flex-col gap-3">
             {suggestions.map((user: any) => (
@@ -119,7 +122,7 @@ export function FriendsTab({ friends, suggestions, onFindFriends, onSendRequest 
                     <div className="text-white text-[14px] font-bold truncate leading-tight tracking-tight">
                       {user.name}
                     </div>
-                    <div className="text-white/50 text-[11px] font-medium mt-0.5">{user.mutual} mutual groups</div>
+                    <div className="text-white/50 text-[11px] font-medium mt-0.5">{t("social.mutualGroups", { count: user.mutual })}</div>
                   </div>
                 </div>
                 <button
@@ -133,7 +136,7 @@ export function FriendsTab({ friends, suggestions, onFindFriends, onSendRequest 
                     boxShadow: "inset 0 1px 2px rgba(255,255,255,0.1)",
                   }}
                 >
-                  {user.requested ? "Requested" : "Connect"}
+                  {user.requested ? t("social.requested") : t("social.connect")}
                 </button>
               </div>
             ))}

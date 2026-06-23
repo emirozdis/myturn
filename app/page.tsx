@@ -23,6 +23,8 @@ import {
 import { saveSubscription } from "@/actions/push";
 import { updateProfile, uploadAvatar } from "@/actions/profile";
 import { listenForInstallPrompt, promptPwaInstall, BeforeInstallPromptEvent, isStandaloneMode } from "@/lib/pwa-install";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { LanguageToggle } from "@/components/shared/language-toggle";
 
 type Step = "intro1" | "intro2" | "intro3" | "installPwa" | "signin" | "signup" | "permissions" | "customizeProfile" | "join";
 
@@ -99,6 +101,7 @@ function InputField({ label, type = "text", placeholder, icon: Icon, isPassword,
 }
 
 function Intro1() {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col justify-center min-h-0 pb-[130px]">
       <div className="flex-1 flex items-center justify-center min-h-0 pt-4">
@@ -121,13 +124,11 @@ function Intro1() {
         </div>
       </div>
       <div className="flex-shrink-0 mt-4">
-        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight">
-          One camera.<br />
-          One day.<br />
-          <span style={{ color: ACCENT }}>Your story.</span>
+        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight" style={{ whiteSpace: "pre-line" }}>
+          {t("onboarding.intro1Title")}<span style={{ color: ACCENT }}>{t("onboarding.intro1TitleAccent")}</span>
         </h1>
         <p className="text-white/60 text-[15px] sm:text-base leading-relaxed max-w-sm">
-          Every day, someone from your group vlogs their life. Randomly picked. Authentically yours.
+          {t("onboarding.intro1Body")}
         </p>
       </div>
     </div>
@@ -135,6 +136,7 @@ function Intro1() {
 }
 
 function Intro2() {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col justify-center min-h-0 pb-[130px]">
       <div className="flex-1 relative flex items-center justify-center w-full min-h-0 pt-4">
@@ -165,12 +167,11 @@ function Intro2() {
         </div>
       </div>
       <div className="flex-shrink-0 mt-8">
-        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight">
-          Random. Fun.<br />
-          <span style={{ color: ACCENT }}>Real.</span>
+        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight" style={{ whiteSpace: "pre-line" }}>
+          {t("onboarding.intro2Title")}<span style={{ color: ACCENT }}>{t("onboarding.intro2TitleAccent")}</span>
         </h1>
         <p className="text-white/60 text-[15px] sm:text-base leading-relaxed max-w-sm">
-          A new vlogger is picked randomly each day. It could be you!
+          {t("onboarding.intro2Body")}
         </p>
       </div>
     </div>
@@ -178,6 +179,7 @@ function Intro2() {
 }
 
 function Intro3() {
+  const { t } = useTranslation();
   return (
     <div className="flex-1 flex flex-col justify-center min-h-0 pb-[130px]">
       <div className="flex-1 relative flex items-center justify-center w-full min-h-0 pt-4">
@@ -203,7 +205,7 @@ function Intro3() {
                 <img src="/profile.jpg" className="w-6 h-6 rounded-full object-cover flex-shrink-0" alt="" />
                 <div className="flex flex-col min-w-0">
                   <span className="text-white text-[10px] font-bold truncate">Emir</span>
-                  <span className="text-[#e07c30] text-[8px] truncate">3 day streak</span>
+                  <span className="text-[#e07c30] text-[8px] truncate">3 {t("onboarding.dayStreakLabel")}</span>
                 </div>
               </div>
               <div className="flex-1 rounded-[14px] p-2 flex flex-col justify-center items-center" style={glassStyle(0.04, 10, 0.1)}>
@@ -214,12 +216,11 @@ function Intro3() {
         </div>
       </div>
       <div className="flex-shrink-0 mt-8">
-        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight">
-          Watch. React.<br />
-          <span style={{ color: ACCENT }}>Stay connected.</span>
+        <h1 className="text-white text-4xl sm:text-[38px] font-bold leading-[1.15] mb-4 tracking-tight" style={{ whiteSpace: "pre-line" }}>
+          {t("onboarding.intro3Title")}<span style={{ color: ACCENT }}>{t("onboarding.intro3TitleAccent")}</span>
         </h1>
         <p className="text-white/60 text-[15px] sm:text-base leading-relaxed max-w-sm">
-          Watch their day unfold, react, and keep your friendship stronger.
+          {t("onboarding.intro3Body")}
         </p>
       </div>
     </div>
@@ -227,6 +228,7 @@ function Intro3() {
 }
 
 function InstallEnforcerScreen() {
+  const { t } = useTranslation();
   const [deviceInfo, setDeviceInfo] = useState<{
     os: "ios" | "android" | "desktop" | "unknown";
     browser: "safari" | "chrome" | "samsung" | "other";
@@ -319,9 +321,12 @@ function InstallEnforcerScreen() {
               <img src={browserIcon} className="w-28 h-28 object-contain relative z-10 drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]" alt={recommendedBrowser} />
             </div>
 
-            <h2 className="text-white text-[28px] font-bold mb-3 tracking-tight">Open in {recommendedBrowser}</h2>
+            <h2 className="text-white text-[28px] font-bold mb-3 tracking-tight">{t("onboarding.openInBrowser", { browser: recommendedBrowser })}</h2>
             <p className="text-white/60 text-[15px] leading-relaxed mb-8">
-              We recommend using <strong>{recommendedBrowser}</strong> to ensure camera and notification features work flawlessly.
+              {t("onboarding.openInBrowserBody", { browser: `<strong>${recommendedBrowser}</strong>` }).split(`<strong>${recommendedBrowser}</strong>`).reduce((acc: any[], part, i) => {
+                if (i === 0) return [<span key={i}>{part}</span>];
+                return [...acc, <strong key={`b${i}`}>{recommendedBrowser}</strong>, <span key={i}>{part}</span>];
+              }, [])}
             </p>
 
             <button
@@ -330,14 +335,14 @@ function InstallEnforcerScreen() {
               className="w-full py-4 rounded-[20px] text-white font-bold text-[16px] active:scale-[0.98] transition-all flex items-center justify-center gap-2 border border-white/10 hover:bg-white/5 shadow-lg"
             >
               <Copy size={18} className={copied ? "text-emerald-400" : "text-white/70"} />
-              {copied ? "Link Copied!" : "Copy App Link"}
+              {copied ? t("common.copied") : t("onboarding.copyAppLink")}
             </button>
 
             <button
               onClick={() => setDismissedWarning(true)}
               className="mt-8 text-white/30 hover:text-white/60 text-[13px] font-medium underline underline-offset-4 transition-colors cursor-pointer text-center pb-2"
             >
-              Continue in current browser anyway
+              {t("onboarding.continueAnyway")}
             </button>
           </motion.div>
         </div>
@@ -385,9 +390,9 @@ function InstallEnforcerScreen() {
               <img src="/logo.png" className="w-28 h-28 object-contain relative z-10 drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)]" alt="Logo" />
             </div>
 
-            <h2 className="text-white text-[28px] font-bold mb-3 tracking-tight text-center">Install App</h2>
+            <h2 className="text-white text-[28px] font-bold mb-3 tracking-tight text-center">{t("onboarding.installTitle")}</h2>
             <p className="text-white/60 text-[15px] leading-relaxed mb-6 text-center">
-              MyTurn is a PWA app. Install it to your home screen to use it.
+              {t("onboarding.installBody")}
             </p>
 
             {promptEvent ? (
@@ -397,7 +402,7 @@ function InstallEnforcerScreen() {
                 className="w-full py-4 rounded-[20px] text-black font-bold text-[16px] shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2"
               >
                 <MonitorDown size={20} />
-                Install MyTurn
+                {t("onboarding.installButton")}
               </button>
             ) : (
               <div className="flex flex-col gap-3 w-full">
@@ -429,7 +434,7 @@ function InstallEnforcerScreen() {
                 <div className="mt-4 text-center bg-[#e07c30]/10 border border-[#e07c30]/20 py-3 rounded-2xl shadow-inner">
                   <span className="text-[#e07c30] text-[13px] font-semibold flex items-center justify-center gap-2">
                     <Sparkles size={15} />
-                    Launch from home screen to continue!
+                    {t("onboarding.launchFromHomeScreen")}
                   </span>
                 </div>
               </div>
@@ -439,7 +444,7 @@ function InstallEnforcerScreen() {
               onClick={() => setShowStoreModal(true)}
               className="mt-6 text-white/40 hover:text-white/60 text-[13px] font-semibold underline underline-offset-4 transition-colors cursor-pointer text-center"
             >
-              Why isn't MyTurn in the {storeName}?
+              {t("onboarding.whyNotInStore", { store: storeName })}
             </button>
           </motion.div>
         </div>
@@ -462,7 +467,7 @@ function InstallEnforcerScreen() {
               <div className="absolute -inset-1 bg-[#e07c30]/25 rounded-2xl blur-md animate-pulse" />
               <div className="relative bg-[#e07c30] text-black px-4 py-2.5 rounded-2xl font-black text-xs shadow-[0_12px_24px_rgba(224,124,48,0.5)] flex items-center gap-2 border border-[#f49b56]">
                 <Share size={15} strokeWidth={3} className="animate-pulse text-black" />
-                <span className="tracking-wide uppercase font-extrabold">TAP SHARE BELOW TO START</span>
+                <span className="tracking-wide uppercase font-extrabold">{t("onboarding.tapShareToStart")}</span>
               </div>
               <div className="w-3.5 h-3.5 bg-[#e07c30] rotate-45 -mt-1.5 border-r border-b border-[#f49b56] shadow-[0_12px_24px_rgba(224,124,48,0.5)]" />
             </div>
@@ -490,24 +495,24 @@ function InstallEnforcerScreen() {
             >
               <div className="flex items-center gap-3 mb-5 flex-shrink-0">
                 <Info size={22} className="text-[#e07c30]" />
-                <h3 className="text-white text-xl font-bold tracking-tight">Why No {storeName}?</h3>
+                <h3 className="text-white text-xl font-bold tracking-tight">{t("onboarding.storeModalTitle", { store: storeName })}</h3>
               </div>
 
               <div className="flex-1 space-y-4 text-[13px] leading-relaxed text-white/70 overflow-y-auto scrollbar-hide mb-6">
                 <div>
-                  <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-1 text-[#e07c30]/90">Store Costs & Barriers</h4>
-                  <p>Publishing on the Apple App Store and Google Play Store requires yearly paid developer accounts ($99/year for Apple, plus substantial setup hurdles). These ongoing platform fees artificially inflate development and operation costs, which are typically passed down to you through mandatory subscriptions.</p>
+                  <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-1 text-[#e07c30]/90">{t("onboarding.storeCostsTitle")}</h4>
+                  <p>{t("onboarding.storeCostsBody")}</p>
                 </div>
                 <div>
-                  <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-1 text-[#e07c30]/90">Solo Developer Mission</h4>
-                  <p>As a solo developer, my mission is simple: keep the core features of MyTurn accessible to as many close friends and family circles as possible, completely free of charge. Cutting out corporate store fees keeps operating costs zero-paywall sustainable.</p>
+                  <h4 className="text-white font-bold text-xs uppercase tracking-wider mb-1 text-[#e07c30]/90">{t("onboarding.soloDevTitle")}</h4>
+                  <p>{t("onboarding.soloDevBody")}</p>
                 </div>
                 <div className="pt-3 border-t border-white/5">
                   <div className="flex items-center gap-2 mb-1.5">
                     <ShieldCheck size={16} className="text-emerald-400" />
-                    <h4 className="text-white font-bold text-xs uppercase tracking-wider text-emerald-400">Is it safe?</h4>
+                    <h4 className="text-white font-bold text-xs uppercase tracking-wider text-emerald-400">{t("onboarding.isSafeTitle")}</h4>
                   </div>
-                  <p>Absolutely. Progressive Web Apps (PWAs) use native, sandboxed web browsers. It runs securely via HTTPS, cannot access your private system files, and includes no background trackers. It is 100% compliant with standard privacy and device security rules.</p>
+                  <p>{t("onboarding.isSafeBody")}</p>
                 </div>
               </div>
 
@@ -516,7 +521,7 @@ function InstallEnforcerScreen() {
                 style={{ background: ACCENT }}
                 className="w-full py-3.5 rounded-[18px] text-black font-extrabold text-sm active:scale-[0.98] transition-all hover:opacity-95 shadow-md flex items-center justify-center flex-shrink-0"
               >
-                Understood
+                {t("common.understood")}
               </button>
             </motion.div>
           </motion.div>
@@ -528,6 +533,7 @@ function InstallEnforcerScreen() {
 
 function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -543,7 +549,7 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
   const handleSignIn = async () => {
     setError("");
     if (!email || !password) {
-      setError("Please fill in all fields.");
+      setError(t("onboarding.errorFillAll"));
       return;
     }
 
@@ -558,9 +564,9 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
       setLoading(false);
       if (res?.error) {
         if (res.status === 429 || res.error.includes("Too many login attempts")) {
-          setError("Too many login attempts. Please try again later.");
+          setError(t("onboarding.errorTooManyAttempts"));
         } else {
-          setError("Invalid email or password.");
+          setError(t("onboarding.errorInvalidCredentials"));
         }
       } else {
         posthog.identify(email.toLowerCase().trim(), { email: email.toLowerCase().trim() });
@@ -569,7 +575,7 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
       }
     } catch (err) {
       setLoading(false);
-      setError("An unexpected error occurred. Please try again.");
+      setError(t("onboarding.errorUnexpected"));
       console.error("Sign in failed:", err);
     }
   };
@@ -581,8 +587,8 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
       </button>
 
       <div className="mb-6 flex-shrink-0">
-        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Welcome back!</h1>
-        <p className="text-white/60 text-[15px] sm:text-base">Sign in to continue your journey</p>
+        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">{t("onboarding.welcomeBack")}</h1>
+        <p className="text-white/60 text-[15px] sm:text-base">{t("onboarding.signInSubtitle")}</p>
       </div>
 
       <div className="flex-1 flex flex-col overflow-y-auto scrollbar-hide pb-8">
@@ -592,11 +598,11 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
           </div>
         )}
 
-        <InputField label="Email" placeholder="you@example.com" value={email} onChange={(e: any) => setEmail(e.target.value)} />
-        <InputField label="Password" placeholder="Enter your password" isPassword value={password} onChange={(e: any) => setPassword(e.target.value)} />
+        <InputField label={t("onboarding.emailLabel")} placeholder={t("onboarding.emailPlaceholder")} value={email} onChange={(e: any) => setEmail(e.target.value)} />
+        <InputField label={t("onboarding.passwordLabel")} placeholder={t("onboarding.passwordPlaceholder")} isPassword value={password} onChange={(e: any) => setPassword(e.target.value)} />
 
         <div className="flex justify-start mb-6 mt-1">
-          <button onClick={() => alert("Password reset instructions sent to your email!")} className="text-[#e07c30] text-[13px] font-semibold hover:underline">Forgot password?</button>
+          <button onClick={() => alert("Password reset instructions sent to your email!")} className="text-[#e07c30] text-[13px] font-semibold hover:underline">{t("onboarding.forgotPassword")}</button>
         </div>
 
         <button
@@ -606,14 +612,14 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
           style={{ background: ACCENT }}
         >
           {loading && <Loader2 size={18} className="animate-spin" />}
-          {loading ? "Signing In..." : "Sign In"}
+          {loading ? t("onboarding.signingIn") : t("onboarding.signInButton")}
         </button>
 
         {allowSocial && (googleEnabled || appleEnabled || facebookEnabled) && (
           <>
             <div className="flex items-center gap-4 mb-8 flex-shrink-0">
               <div className="flex-1 h-[1px] bg-white/10" />
-              <span className="text-white/40 text-[13px]">or continue with</span>
+              <span className="text-white/40 text-[13px]">{t("onboarding.orContinueWith")}</span>
               <div className="flex-1 h-[1px] bg-white/10" />
             </div>
 
@@ -639,8 +645,8 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
 
         {allowRegistration && (
           <div className="text-center mt-auto flex-shrink-0 pt-4">
-            <span className="text-white/50 text-[14px]">Don't have an account? </span>
-            <button onClick={() => onNavigate("signup")} className="text-[#e07c30] text-[14px] font-bold hover:underline">Sign Up</button>
+            <span className="text-white/50 text-[14px]">{t("onboarding.noAccount")}</span>
+            <button onClick={() => onNavigate("signup")} className="text-[#e07c30] text-[14px] font-bold hover:underline">{t("onboarding.signUpLink")}</button>
           </div>
         )}
       </div>
@@ -649,6 +655,7 @@ function SignIn({ onNavigate }: { onNavigate: (step: Step) => void }) {
 }
 
 function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => void; onSignUpSuccess: (name: string) => void }) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -665,7 +672,7 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
   const handleSignUp = async () => {
     setError("");
     if (!name || !email || !password) {
-      setError("Please fill in all fields.");
+      setError(t("onboarding.errorFillAll"));
       return;
     }
 
@@ -685,9 +692,9 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
         setLoading(false);
         if (loginRes?.error) {
           if (loginRes.status === 429 || loginRes.error.includes("Too many login attempts")) {
-            setError("Too many login attempts. Please try again later.");
+            setError(t("onboarding.errorTooManyAttempts"));
           } else {
-            setError("Account created, please proceed to sign in.");
+            setError(t("onboarding.accountCreatedSignIn"));
           }
         } else {
           posthog.identify(email.toLowerCase().trim(), { name, email: email.toLowerCase().trim() });
@@ -698,7 +705,7 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
       }
     } catch (err) {
       setLoading(false);
-      setError("An unexpected error occurred. Please try again.");
+      setError(t("onboarding.errorUnexpected"));
       console.error("Sign up failed:", err);
     }
   };
@@ -710,16 +717,16 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
         <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
           <User className="text-white/30" size={24} />
         </div>
-        <h1 className="text-white text-2xl font-bold tracking-tight mb-2">Registration Closed</h1>
+        <h1 className="text-white text-2xl font-bold tracking-tight mb-2">{t("onboarding.registrationClosed")}</h1>
         <p className="text-white/60 text-xs sm:text-sm max-w-xs mb-6 leading-relaxed">
-          User registrations are currently disabled on this platform. If you already have an account, please log in.
+          {t("onboarding.registrationClosedBody")}
         </p>
         <button
           onClick={() => onNavigate("signin")}
           style={{ background: ACCENT }}
           className="w-full max-w-xs py-3.5 rounded-full text-black font-bold text-sm transition-transform active:scale-[0.98]"
         >
-          Go to Sign In
+          {t("onboarding.goToSignIn")}
         </button>
       </div>
     );
@@ -732,8 +739,8 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
       </button>
 
       <div className="mb-6 flex-shrink-0">
-        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Create your account</h1>
-        <p className="text-white/60 text-[15px] sm:text-base">Join your group and start vlogging</p>
+        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">{t("onboarding.createAccount")}</h1>
+        <p className="text-white/60 text-[15px] sm:text-base">{t("onboarding.signUpSubtitle")}</p>
       </div>
 
       <div className="flex-1 flex flex-col overflow-y-auto scrollbar-hide pb-8">
@@ -743,9 +750,9 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
           </div>
         )}
 
-        <InputField label="Full Name" placeholder="Enter your name" value={name} onChange={(e: any) => setName(e.target.value)} />
-        <InputField label="Email" placeholder="you@example.com" value={email} onChange={(e: any) => setEmail(e.target.value)} />
-        <InputField label="Password" placeholder="Create a password" isPassword value={password} onChange={(e: any) => setPassword(e.target.value)} />
+        <InputField label={t("onboarding.fullNameLabel")} placeholder={t("onboarding.fullNamePlaceholder")} value={name} onChange={(e: any) => setName(e.target.value)} />
+        <InputField label={t("onboarding.emailLabel")} placeholder={t("onboarding.emailPlaceholder")} value={email} onChange={(e: any) => setEmail(e.target.value)} />
+        <InputField label={t("onboarding.passwordLabel")} placeholder={t("onboarding.createPasswordPlaceholder")} isPassword value={password} onChange={(e: any) => setPassword(e.target.value)} />
 
         <button
           onClick={handleSignUp}
@@ -754,14 +761,14 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
           style={{ background: ACCENT }}
         >
           {loading && <Loader2 size={18} className="animate-spin" />}
-          {loading ? "Creating Account..." : "Sign Up"}
+          {loading ? t("onboarding.creatingAccount") : t("onboarding.signUpButton")}
         </button>
 
         {allowSocial && (googleEnabled || appleEnabled || facebookEnabled) && (
           <>
             <div className="flex items-center gap-4 mb-8 flex-shrink-0">
               <div className="flex-1 h-[1px] bg-white/10" />
-              <span className="text-white/40 text-[13px]">or continue with</span>
+              <span className="text-white/40 text-[13px]">{t("onboarding.orContinueWith")}</span>
               <div className="flex-1 h-[1px] bg-white/10" />
             </div>
 
@@ -786,8 +793,8 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
         )}
 
         <div className="text-center mt-auto flex-shrink-0 pt-4">
-          <span className="text-white/50 text-[14px]">Already have an account? </span>
-          <button onClick={() => onNavigate("signin")} className="text-[#e07c30] text-[14px] font-bold hover:underline">Sign In</button>
+          <span className="text-white/50 text-[14px]">{t("onboarding.alreadyHaveAccount")}</span>
+          <button onClick={() => onNavigate("signin")} className="text-[#e07c30] text-[14px] font-bold hover:underline">{t("onboarding.signInLink")}</button>
         </div>
       </div>
     </div>
@@ -795,6 +802,7 @@ function SignUp({ onNavigate, onSignUpSuccess }: { onNavigate: (step: Step) => v
 }
 
 function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void }) {
+  const { t } = useTranslation();
   const [cameraGranted, setCameraGranted] = useState(false);
   const [notificationGranted, setNotificationGranted] = useState(false);
   const [loadingCamera, setLoadingCamera] = useState(false);
@@ -822,7 +830,7 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
       setCameraGranted(true);
     } catch (err) {
       console.warn("Camera/Mic request failed:", err);
-      setCameraError("Camera and microphone permission was denied or unavailable.");
+      setCameraError(t("onboarding.cameraError"));
     } finally {
       setLoadingCamera(false);
     }
@@ -832,7 +840,7 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
     setLoadingNotify(true);
     setNotifyError("");
     if (typeof window === "undefined" || !("Notification" in window)) {
-      setNotifyError("Notifications not supported on this browser.");
+      setNotifyError(t("onboarding.notifyError_unsupported"));
       setLoadingNotify(false);
       return;
     }
@@ -848,13 +856,13 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
         const subscription = await subscribeToPush(registration, convertedKey);
         await saveSubscription(subscription.toJSON() as any);
       } else if (permission === "denied") {
-        setNotifyError("Notification permission was denied.");
+        setNotifyError(t("onboarding.notifyError_denied"));
       }
     } catch (err: any) {
       console.warn("Notification request failed:", err);
-      let msg = err?.message || "Failed to configure push alerts.";
+      let msg = err?.message || t("onboarding.notifyError_failed");
       if (msg.includes("Registration failed - push service error") || msg.includes("push service error")) {
-        msg = "Push service error. If you are using Brave Browser, please enable 'Use Google services for push messaging' in brave://settings/privacy and reload. Otherwise, ensure your browser has a connection to Google push servers.";
+        msg = t("onboarding.notifyError_pushService");
       }
       setNotifyError(msg);
     } finally {
@@ -881,9 +889,9 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
           }}
           className="w-28 h-28 object-contain relative z-10 drop-shadow-2xl"
         />
-        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Enable Permissions</h1>
+        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">{t("onboarding.enablePermissions")}</h1>
         <p className="text-white/60 text-[13px] leading-relaxed">
-          MyTurn needs access to your camera and notifications to let you record vlogs and receive daily alerts.
+          {t("onboarding.permissionsBody")}
         </p>
       </div>
 
@@ -908,8 +916,8 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
                 <Camera size={20} className={cameraGranted ? "text-emerald-400" : "text-white/60"} />
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="text-white font-bold text-[14px]">Camera & Microphone</h4>
-                <p className="text-white/40 text-[11px] leading-tight mt-0.5">Required to record and upload daily moments.</p>
+                <h4 className="text-white font-bold text-[14px]">{t("onboarding.cameraMicTitle")}</h4>
+                <p className="text-white/40 text-[11px] leading-tight mt-0.5">{t("onboarding.cameraMicBody")}</p>
               </div>
             </div>
             {cameraError && <p className="text-red-500 text-[11px] font-semibold">{cameraError}</p>}
@@ -928,10 +936,10 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
               ) : cameraGranted ? (
                 <>
                   <Check size={14} strokeWidth={3} />
-                  <span>Access Granted</span>
+                  <span>{t("onboarding.accessGranted")}</span>
                 </>
               ) : (
-                "Grant Camera & Mic Access"
+                t("onboarding.grantCameraAccess")
               )}
             </button>
           </div>
@@ -948,8 +956,8 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
                 <Bell size={20} className={notificationGranted ? "text-emerald-400" : "text-white/60"} />
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="text-white font-bold text-[14px]">Push Notifications</h4>
-                <p className="text-white/40 text-[11px] leading-tight mt-0.5">Alerts when it is your turn or friends upload.</p>
+                <h4 className="text-white font-bold text-[14px]">{t("onboarding.pushNotificationsTitle")}</h4>
+                <p className="text-white/40 text-[11px] leading-tight mt-0.5">{t("onboarding.pushNotificationsBody")}</p>
               </div>
             </div>
             {notifyError && <p className="text-red-500 text-[11px] font-semibold leading-relaxed whitespace-pre-line">{notifyError}</p>}
@@ -968,10 +976,10 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
               ) : notificationGranted ? (
                 <>
                   <Check size={14} strokeWidth={3} />
-                  <span>Alerts Activated</span>
+                  <span>{t("onboarding.alertsActivated")}</span>
                 </>
               ) : (
-                "Enable Daily Notifications"
+                t("onboarding.enableDailyNotifications")
               )}
             </button>
           </div>
@@ -982,7 +990,7 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
           style={{ background: ACCENT }}
           className="w-full py-4 rounded-full text-black font-bold text-[16px] transition-transform active:scale-[0.98] shadow-lg flex items-center justify-center gap-2 mt-auto flex-shrink-0"
         >
-          <span>Continue</span>
+          <span>{t("common.continue")}</span>
         </button>
       </div>
     </div>
@@ -990,6 +998,7 @@ function PermissionsScreen({ onNavigate }: { onNavigate: (step: Step) => void })
 }
 
 function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step: Step) => void; signUpName: string }) {
+  const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(signUpName || "");
   const [handle, setHandle] = useState("");
@@ -1040,7 +1049,7 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
   const handleSaveProfile = async () => {
     setError("");
     if (!name.trim() || !handle.trim()) {
-      setError("Name and username are required.");
+      setError(t("onboarding.nameUsernameRequired"));
       return;
     }
 
@@ -1050,7 +1059,7 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
       if (avatarBase64) {
         const avatarRes = await uploadAvatar(avatarBase64);
         if (avatarRes.error) {
-          setError(`Avatar upload failed: ${avatarRes.error}`);
+          setError(t("onboarding.avatarUploadFailed", { error: avatarRes.error }));
           setLoading(false);
           return;
         }
@@ -1059,7 +1068,7 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
       const profileRes = await updateProfile({
         name: name.trim(),
         handle: handle.toLowerCase().trim().replace(/\s+/g, ""),
-        bio: bio.trim() || "Vlogging our days, making our memories ✨",
+        bio: bio.trim() || t("onboarding.defaultBio"),
         location: location.trim() || "Phuket, Thailand",
       });
 
@@ -1072,7 +1081,7 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
         onNavigate("join");
       }
     } catch (err: any) {
-      setError(err?.message || "An unexpected error occurred.");
+      setError(err?.message || t("common.error"));
     } finally {
       setLoading(false);
     }
@@ -1081,8 +1090,8 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
   return (
     <div className="flex-1 flex flex-col pt-4 min-h-0">
       <div className="mb-4 flex-shrink-0">
-        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Create Your Profile</h1>
-        <p className="text-white/60 text-xs sm:text-sm">Let your friends know who you are</p>
+        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">{t("onboarding.createProfile")}</h1>
+        <p className="text-white/60 text-xs sm:text-sm">{t("onboarding.createProfileSubtitle")}</p>
       </div>
 
       <div className="flex-1 flex flex-col overflow-y-auto scrollbar-hide pb-8">
@@ -1119,35 +1128,35 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
               className="hidden"
             />
           </div>
-          <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Select Profile Photo</span>
+          <span className="text-white/40 text-[10px] font-bold uppercase tracking-widest">{t("onboarding.selectProfilePhoto")}</span>
         </div>
 
         <div className="flex flex-col gap-1">
           <InputField
-            label="Display Name"
-            placeholder="Your Name"
+            label={t("onboarding.displayNameLabel")}
+            placeholder={t("onboarding.displayNamePlaceholder")}
             value={name}
             onChange={(e: any) => setName(e.target.value)}
           />
           <InputField
-            label="Username / Handle"
-            placeholder="handle"
+            label={t("onboarding.usernameLabel")}
+            placeholder={t("onboarding.usernamePlaceholder")}
             value={handle}
             onChange={(e: any) => setHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
           />
           <InputField
-            label="Location"
-            placeholder="City, Country"
+            label={t("onboarding.locationLabel")}
+            placeholder={t("onboarding.locationPlaceholder")}
             value={location}
             onChange={(e: any) => setLocation(e.target.value)}
           />
 
           <div className="flex flex-col gap-1.5 mb-6">
-            <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1">Bio</label>
+            <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1">{t("onboarding.bioLabel")}</label>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              placeholder="Tell your story..."
+              placeholder={t("onboarding.bioPlaceholder")}
               rows={3}
               style={glassStyle(0.04, 16, 0.08)}
               className="w-full rounded-[18px] py-3.5 px-4 text-white text-[15px] outline-none transition-colors focus:border-[#e07c30]/50 placeholder:text-white/30 resize-none leading-relaxed"
@@ -1162,7 +1171,7 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
           className="w-full py-4 rounded-full text-black font-bold text-[16px] transition-transform active:scale-[0.98] shadow-lg flex items-center justify-center gap-2 mt-auto flex-shrink-0 disabled:opacity-50"
         >
           {loading && <Loader2 size={18} className="animate-spin text-black" />}
-          <span>{loading ? "Saving Profile..." : "Save & Continue"}</span>
+          <span>{loading ? t("onboarding.savingProfile") : t("onboarding.saveContinue")}</span>
         </button>
       </div>
     </div>
@@ -1171,6 +1180,7 @@ function CustomizeProfileScreen({ onNavigate, signUpName }: { onNavigate: (step:
 
 function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [code, setCode] = useState("");
   const [groupName, setGroupName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1179,7 +1189,7 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
   const handleJoin = async () => {
     setError("");
     if (!code) {
-      setError("Please enter an invite code.");
+      setError(t("onboarding.enterInviteCodeError"));
       return;
     }
 
@@ -1197,7 +1207,7 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
   const handleCreateGroup = async () => {
     setError("");
     if (!groupName) {
-      setError("Please enter a name for your group.");
+      setError(t("onboarding.enterGroupNameError"));
       return;
     }
 
@@ -1219,8 +1229,8 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
       </button>
 
       <div className="mb-6 flex-shrink-0">
-        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Join your group</h1>
-        <p className="text-white/60 text-[15px] sm:text-base">Enter the invite code from your friends</p>
+        <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">{t("onboarding.joinGroup")}</h1>
+        <p className="text-white/60 text-[15px] sm:text-base">{t("onboarding.joinGroupSubtitle")}</p>
       </div>
 
       <div className="flex-1 flex flex-col overflow-y-auto scrollbar-hide pb-8">
@@ -1266,12 +1276,12 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
         </div>
 
         <div className="w-full flex-shrink-0 mt-auto">
-          <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1 block mb-1.5">Enter invite code</label>
+          <label className="text-white/70 text-[13px] font-semibold tracking-wide pl-1 block mb-1.5">{t("onboarding.enterInviteCode")}</label>
           <input
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="e.g. A1B2-C3"
+            placeholder={t("onboarding.inviteCodePlaceholder")}
             style={glassStyle(0.04, 16, 0.08)}
             className="w-full rounded-[18px] py-3.5 px-4 text-white text-[15px] outline-none transition-colors focus:border-[#e07c30]/50 placeholder:text-white/30 text-center uppercase tracking-widest font-mono mb-4"
           />
@@ -1285,16 +1295,16 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
               }`}
           >
             {loading && <Loader2 size={18} className="animate-spin" />}
-            {loading ? "Joining..." : "Join Group"}
+            {loading ? t("onboarding.joiningGroup") : t("onboarding.joinGroupButton")}
           </button>
 
           <div className="flex items-center gap-4 mb-4">
             <div className="flex-1 h-[1px] bg-white/10" />
-            <span className="text-white/40 text-[13px]">or create instead</span>
+            <span className="text-white/40 text-[13px]">{t("onboarding.orCreateInstead")}</span>
             <div className="flex-1 h-[1px] bg-white/10" />
           </div>
 
-          <InputField label="Group Name" placeholder="e.g. The Apartment" value={groupName} onChange={(e: any) => setGroupName(e.target.value)} />
+          <InputField label={t("onboarding.groupNameLabel")} placeholder={t("onboarding.groupNamePlaceholderJoin")} value={groupName} onChange={(e: any) => setGroupName(e.target.value)} />
 
           <button
             onClick={handleCreateGroup}
@@ -1303,7 +1313,7 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
             className="w-full py-4 rounded-[18px] font-bold text-[16px] transition-transform active:scale-[0.98] border border-[#e07c30]/50 text-[#e07c30] hover:bg-[#e07c30]/10 flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {loading && <Loader2 size={18} className="animate-spin" />}
-            Create a New Group
+            {t("onboarding.createNewGroup")}
           </button>
         </div>
       </div>
@@ -1313,6 +1323,7 @@ function JoinGroup({ onNavigate }: { onNavigate: (step: Step) => void }) {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { data: session, status } = useSession();
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<Step>("intro1");
@@ -1420,6 +1431,9 @@ export default function OnboardingPage() {
         }}
       >
         <div className="flex-1 relative flex flex-col overflow-hidden h-full">
+          <div className="absolute top-4 right-4 z-20">
+            <LanguageToggle />
+          </div>
           <AnimatePresence initial={false} custom={direction} mode="popLayout">
             <motion.div
               key={step}
@@ -1452,7 +1466,7 @@ export default function OnboardingPage() {
                     onClick={() => navigate("signin")}
                     className="text-white/60 text-[14px] font-bold tracking-tight hover:text-white transition-colors"
                   >
-                    Log In
+                    {t("onboarding.logIn")}
                   </button>
                 </div>
                 <button
@@ -1464,7 +1478,7 @@ export default function OnboardingPage() {
                   className="w-full mt-8 py-4 rounded-full text-black font-bold text-[16px] transition-transform active:scale-[0.98] shadow-lg pointer-events-auto"
                   style={{ background: ACCENT }}
                 >
-                  {step === "intro3" ? (allowRegistration ? "Get Started" : "Log In") : "Next"}
+                  {step === "intro3" ? (allowRegistration ? t("onboarding.getStarted") : t("onboarding.logIn")) : t("common.next")}
                 </button>
               </motion.div>
             )}

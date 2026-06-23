@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { SOCIAL_TABS } from "./constants";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type SocialTabBarProps = {
   activeTab: string;
@@ -11,6 +12,7 @@ type SocialTabBarProps = {
 };
 
 export function SocialTabBar({ activeTab, onTabChange }: SocialTabBarProps) {
+  const { t } = useTranslation();
   const activeIndex = SOCIAL_TABS.indexOf(activeTab as typeof SOCIAL_TABS[number]);
 
   return (
@@ -39,7 +41,7 @@ export function SocialTabBar({ activeTab, onTabChange }: SocialTabBarProps) {
             color: activeTab === tab ? "#111" : "rgba(255,255,255,0.5)",
           }}
         >
-          {tab}
+          {t(`social.${tab}`)}
         </button>
       ))}
     </div>

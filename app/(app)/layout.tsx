@@ -9,13 +9,13 @@ import { AppHeader } from "@/components/app-header";
 import { GroupSwipePager } from "@/components/group-swipe-pager";
 import { BottomNavRouter } from "@/components/bottom-nav-router";
 import { getUserGroups, leaveGroup } from "@/actions/group";
-import { Loader2, Plus, Users, Copy, Check, Info, LogOut, Settings, Bell, Camera, MapPin } from "lucide-react";
+import { Loader2, Plus, Users, Copy, Check, Info, LogOut, Settings, Bell, Camera } from "lucide-react";
 import { addComment, getOrCreateTodayAssignment, getLatestCompilation } from "@/actions/vlog";
 import { glassStyle } from "@/components/shared/glass-style";
 import { ACCENT } from "@/lib/theme";
 import { Avatar } from "@/components/shared/avatar";
 import { VloggerRevealModal } from "@/components/vlogger-reveal-modal";
-import { AchievementOverlay, AchievementConfig } from "@/components/achievements/achievement-overlay";
+import { AchievementOverlay } from "@/components/achievements/achievement-overlay";
 import { CompilationReadyModal } from "@/components/compilation-ready-modal";
 import { ACHIEVEMENT_MOCKS } from "@/components/achievements/achievement-data";
 import { UserProfileSheetContent } from "@/components/profile/user-profile-sheet-content";
@@ -30,6 +30,7 @@ import { saveSubscription, deleteSubscription } from "@/actions/push";
 import { signOut, useSession } from "next-auth/react";
 import { LogoutConfirmSheet } from "@/components/profile/logout-confirm-sheet";
 import { BottomSheet } from "@/components/shared/bottom-sheet";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 // Imports for Optimistic Tab rendering
 import { TodaySkeleton } from "@/components/today/today-skeleton";
@@ -88,6 +89,7 @@ const getAssignmentDateStr = (asg: any) => {
 };
 
 function NotificationEnforcer({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   // Initialize states with a default optimistic assumptions to allow immediate first-paint SSR and avoid spinners
   const [permission, setPermission] = useState<PermissionState | "default">("granted");
   const [isSupported, setIsSupported] = useState(true);
@@ -121,12 +123,12 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
         const subscription = await subscribeToPush(registration, convertedKey);
         await saveSubscription(subscription.toJSON() as any);
       } else if (result === "denied") {
-        setNotificationsError("Blocked. Please manually enable notifications in your browser's site settings.");
+        setNotificationsError(t("enforcer.blockedError"));
       }
     } catch (err: any) {
-      let msg = err?.message || "Failed to configure push alerts.";
+      let msg = err?.message || t("onboarding.notifyError_failed");
       if (msg.includes("Registration failed - push service error") || msg.includes("push service error")) {
-        msg = "Push service error. Please enable 'Use Google services for push messaging' if on Brave.";
+        msg = t("onboarding.notifyError_pushService");
       }
       setNotificationsError(msg);
     } finally {
@@ -150,9 +152,9 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
               className="w-28 h-28 object-contain relative z-10 drop-shadow-2xl mb-4"
             />
           </div>
-          <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">Enable Notifications</h1>
+          <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">{t("enforcer.title")}</h1>
           <p className="text-white/60 text-[13px] leading-relaxed max-w-[280px] mx-auto">
-            MyTurn requires notifications to alert you when it's your turn, friends post, and when daily recaps are ready.
+            {t("enforcer.body")}
           </p>
         </div>
 
@@ -169,9 +171,9 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
                 <Bell size={20} className={isNotificationsGranted ? "text-emerald-400" : "text-white/60"} />
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="text-white font-bold text-[14px]">Push Notifications</h4>
+                <h4 className="text-white font-bold text-[14px]">{t("enforcer.channelTitle")}</h4>
                 <p className="text-white/40 text-[10.5px] leading-tight mt-0.5">
-                  Alerts you when it's your turn, friends post, and when recaps are ready.
+                  {t("enforcer.channelBody")}
                 </p>
               </div>
             </div>
@@ -191,10 +193,10 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
               ) : isNotificationsGranted ? (
                 <>
                   <Check size={14} strokeWidth={3} />
-                  <span>Alerts Activated</span>
+                  <span>{t("enforcer.activated")}</span>
                 </>
               ) : (
-                "Enable Notifications"
+                t("enforcer.enableBtn")
               )}
             </button>
           </div>
@@ -207,6 +209,7 @@ function NotificationEnforcer({ children }: { children: ReactNode }) {
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
@@ -471,22 +474,22 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         id: `level-up-${Date.now()}`,
         particles: "confetti" as const,
         topContent: {
-          title: isIndiv ? "New Tier Unlocked! 👑" : "Group Level Up! 🌟",
-          highlight: isIndiv ? "Unlocked!" : "Level Up!",
+          title: isIndiv ? t("levelUp.indivTitle") : t("levelUp.groupTitle"),
+          highlight: isIndiv ? t("levelUp.unlocked") : t("levelUp.levelUp"),
         },
         image: {
           src: isIndiv ? "/assets/icons/crown.png" : "/assets/icons/fire.png",
           value: isIndiv ? String(detail.to).charAt(0) : String(detail.to),
         },
         mainContent: {
-          title: isIndiv ? String(detail.to) : `Level ${detail.to} Reached`,
-          subtitle: isIndiv ? "Rank Promoted" : `Group: ${detail.name}`,
+          title: isIndiv ? String(detail.to) : t("levelUp.levelReached", { to: detail.to }),
+          subtitle: isIndiv ? t("levelUp.rankPromoted") : `Group: ${detail.name}`,
           description: isIndiv
-            ? `You ascended from ${detail.from} to ${detail.to} in your group context! Keep up the amazing contribution!`
-            : `Your co-op group has reached Level ${detail.to}! Continue building those daily streaks together.`,
+            ? t("levelUp.indivDesc", { from: detail.from, to: detail.to })
+            : t("levelUp.groupDesc", { to: detail.to }),
         },
         primaryAction: {
-          label: "Claim Rank Glory",
+          label: t("levelUp.claimGlory"),
         },
       };
       enqueueModal({ type: "levelUp", config: activeLevelUpConfig });
@@ -511,7 +514,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       window.removeEventListener("show-level-up" as any, handleShowLevelUp);
       window.removeEventListener("open-logout-confirm", handleOpenLogout);
     };
-  }, [loadGroups, enqueueModal]);
+  }, [loadGroups, enqueueModal, t]);
 
   const handleCloseNewFeatures = () => {
     if (typeof window !== "undefined") {
@@ -550,7 +553,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const postNewComment = async () => {
     if (!commentInput.trim() || !sheetData?.clipId) return;
     if (commentInput.length > 30) {
-      setCreateError("Maximum 30 characters.");
+      setCreateError(t("sheets.maxChars"));
       return;
     }
     setSubmittingComment(true);
@@ -747,18 +750,18 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     </div>
 
                     <h3 className="text-white font-extrabold text-xl tracking-tight mb-2">
-                      Create or Join a Group
+                      {t("noGroups.title")}
                     </h3>
                     
                     <p className="text-white/50 text-[13px] leading-relaxed max-w-[250px] mb-6">
-                      MyTurn is built for close friends. Share raw, daily moments and grow your streaks!
+                      {t("noGroups.subtitle")}
                     </p>
 
                     <div className="w-full flex flex-col gap-3 text-left mb-6">
                       {[
-                        { step: "1", title: "Join with Invite Code", desc: "Use a shared code from your friends or create your own." },
-                        { step: "2", title: "Wait for Your Turn", desc: "A random daily vlogger is automatically rolled each morning." },
-                        { step: "3", title: "Vlog Your Day", desc: "Upload raw snippets of your day to keep the group streak alive." }
+                        { step: "1", title: t("noGroups.step1Title"), desc: t("noGroups.step1Desc") },
+                        { step: "2", title: t("noGroups.step2Title"), desc: t("noGroups.step2Desc") },
+                        { step: "3", title: t("noGroups.step3Title"), desc: t("noGroups.step3Desc") }
                       ].map((item, idx) => (
                         <div key={idx} className="flex gap-3.5 items-start p-3 rounded-2xl bg-white/[0.02] border border-white/5 shadow-inner">
                           <div 
@@ -783,7 +786,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                       }}
                       className="w-full py-4 rounded-2xl text-black font-extrabold text-sm active:scale-[0.98] transition-all hover:opacity-95 flex items-center justify-center gap-2"
                     >
-                      <span>Get Started</span>
+                      <span>{t("noGroups.getStarted")}</span>
                       <Plus size={16} strokeWidth={2.5} />
                     </button>
                   </div>
@@ -902,7 +905,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     <div className="flex items-center gap-2 mb-2 flex-shrink-0">
                       <Info size={16} className="text-[#e07c30]" />
                       <h3 className="text-white text-base font-bold">
-                        Seen by ({sheetData?.views?.length || 0})
+                        {t("sheets.seenBy", { count: sheetData?.views?.length || 0 })}
                       </h3>
                     </div>
                     {sheetData?.views && sheetData.views.length > 0 ? (
@@ -920,7 +923,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         ))}
                       </div>
                     ) : (
-                      <p className="text-white/40 text-xs">No views registered yet.</p>
+                      <p className="text-white/40 text-xs">{t("sheets.noViews")}</p>
                     )}
                   </div>
                 )}
@@ -929,7 +932,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   <div className="flex-1 flex flex-col justify-between gap-4">
                     <div className="flex flex-col gap-3">
                       <h3 className="text-white text-base font-bold flex-shrink-0">
-                        Comments ({commentsList.length})
+                        {t("sheets.comments", { count: commentsList.length })}
                       </h3>
                       <div className="flex flex-col gap-2 max-h-[280px] overflow-y-auto pr-1">
                         {commentsList.map((comm: any, idx: number) => (
@@ -963,12 +966,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                           onChange={(e) => {
                             setCommentInput(e.target.value);
                             if (e.target.value.length > 30) {
-                              setCreateError("Maximum 30 characters.");
+                              setCreateError(t("sheets.maxChars"));
                             } else {
                               setCreateError("");
                             }
                           }}
-                          placeholder="Write a comment... (Max 30 chars)"
+                          placeholder={t("sheets.commentPlaceholder")}
                           className="w-full rounded-full py-3.5 pl-4 pr-12 text-white text-xs outline-none bg-white/5 border border-white/10 focus:border-[#e07c30]/50 placeholder:text-white/30"
                         />
                         <button
@@ -993,7 +996,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     <div className="flex flex-col gap-1">
                       <h3 className="text-white text-lg font-bold">{sheetData?.groupName}</h3>
                       <span className="text-white/45 text-xs font-medium">
-                        Group Details Inspector
+                        {t("sheets.groupDetails")}
                       </span>
                     </div>
 
@@ -1003,7 +1006,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     >
                       <div className="flex flex-col">
                         <span className="text-white/40 text-[9px] font-bold uppercase tracking-wider mb-1">
-                          Invite Code
+                          {t("sheets.inviteCode")}
                         </span>
                         <span className="text-white font-mono text-xl font-extrabold tracking-widest">
                           {sheetData?.inviteCode}
@@ -1015,13 +1018,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         className="px-4 py-2 rounded-xl text-black text-xs font-bold flex items-center gap-1.5 transition-colors"
                       >
                         {copySuccess ? <Check size={12} strokeWidth={3} /> : <Copy size={12} />}
-                        {copySuccess ? "Copy Code" : "Copy Code"}
+                        {t("sheets.copyCode")}
                       </button>
                     </div>
 
                     <div className="flex flex-col gap-3">
                       <h4 className="text-white/50 text-[10px] font-bold uppercase tracking-widest mb-1">
-                        Group Directory ({sheetData?.members?.length || 0})
+                        {t("sheets.groupDirectory", { count: sheetData?.members?.length || 0 })}
                       </h4>
                       <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto">
                         {sheetData?.members?.map((member: any) => (
@@ -1053,7 +1056,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                       className="w-full mt-4 py-3.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition hover:bg-red-500/20 active:scale-95"
                     >
                       <LogOut size={16} />
-                      Leave Group
+                      {t("sheets.leaveGroup")}
                     </button>
                   </div>
                 )}
@@ -1078,9 +1081,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   <LogOut size={24} className="text-red-500" />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <h3 className="text-white text-lg font-bold">Leave Group?</h3>
+                  <h3 className="text-white text-lg font-bold">{t("sheets.leaveGroupQuestion")}</h3>
                   <p className="text-white/50 text-xs leading-relaxed max-w-[280px]">
-                    You will lose access to all its content and your streaks will be reset.
+                    {t("sheets.leaveWarning")}
                   </p>
                 </div>
                 <div className="w-full flex gap-3 mt-4">
@@ -1089,7 +1092,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     onClick={() => setShowLeaveConfirm(false)}
                     className="flex-1 py-3.5 rounded-xl text-white font-black text-sm bg-white/[0.06] border border-white/10 border-b-[4px] border-white/5 hover:bg-white/[0.1] active:translate-y-[2px] active:border-b-[2px] transition-all"
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                   <button
                     type="button"
@@ -1097,7 +1100,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     disabled={leavingGroup}
                     className="flex-1 py-3.5 rounded-xl text-white font-black text-sm bg-gradient-to-b from-red-500 to-red-600 border-b-[4px] border-red-800 hover:brightness-110 active:translate-y-[2px] active:border-b-[2px] active:brightness-100 transition-all flex justify-center items-center gap-2 shadow-[0_4px_12px_rgba(239,68,68,0.2)] disabled:opacity-50 disabled:translate-y-0 disabled:border-b-[4px]"
                   >
-                    {leavingGroup ? <Loader2 size={16} className="animate-spin" /> : "Leave"}
+                    {leavingGroup ? <Loader2 size={16} className="animate-spin" /> : t("sheets.leaveBtn")}
                   </button>
                 </div>
               </div>

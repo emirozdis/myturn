@@ -3,11 +3,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Play, Sparkles, Clock, Calendar, Clapperboard, Film, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Play, Sparkles, Clock, Calendar, Film } from "lucide-react";
 import { ParticleEffect } from "@/components/achievements/particle-effect";
 import { glassStyle } from "@/components/shared/glass-style";
 import { useHls } from "@/components/shared/use-hls";
 import { PhotoResponsesOverlay } from "@/components/shared/photo-responses-overlay";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export function CompilationReadyModal({ 
   assignment, 
@@ -18,6 +19,7 @@ export function CompilationReadyModal({
   onClose: () => void;
   isArchive?: boolean;
 }) {
+  const { t, locale } = useTranslation();
   const [isPlayingCompilation, setIsPlayingCompilation] = useState(false);
   const [playbackMode, setPlaybackMode] = useState<"full" | "highlights">("full");
   const [currentClipIndex, setCurrentClipIndex] = useState(0);
@@ -101,23 +103,32 @@ export function CompilationReadyModal({
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     totalLengthStr = `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-    firstClipTime = new Date(compilationClips[0].recordedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    firstClipTime = new Date(compilationClips[0].recordedAt).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
   }
 
-  // Determine title and subtitle based on entry context
+  // Sentence-structured dynamic titles supporting different language adjectives
   const titleLine = isArchive ? (
-    <>
-      Relive the <span className="text-[#e07c30] font-black">Day!</span>
-    </>
+    locale === "tr" ? (
+      <>
+        {t("compilation.reliveDay")}{" "}
+        <span className="text-[#e07c30] font-black">{t("compilation.dayAccent")}</span>
+      </>
+    ) : (
+      <>
+        {t("compilation.reliveDay")}{" "}
+        <span className="text-[#e07c30] font-black">{t("compilation.dayAccent")}</span>
+      </>
+    )
   ) : (
     <>
-      Recap is <span className="text-[#e07c30] font-black">Ready!</span>
+      {t("compilation.recapReady")}{" "}
+      <span className="text-[#e07c30] font-black">{t("compilation.readyAccent")}</span>
     </>
   );
 
   const subtitleText = isArchive 
-    ? "This compiled vlog is safely preserved in your group archives." 
-    : "Yesterday's daily moments have been compiled into a single vlog.";
+    ? t("compilation.archiveSubtitle")
+    : t("compilation.recapSubtitle");
 
   return (
     <motion.div
@@ -157,7 +168,9 @@ export function CompilationReadyModal({
             <div className="flex justify-center mb-3">
               <div className="px-3 py-1 bg-[#e07c30]/10 border border-[#e07c30]/20 rounded-full flex items-center gap-1.5">
                 <Sparkles size={11} className="text-[#e07c30]" />
-                <span className="text-[#e07c30] text-[10px] font-black uppercase tracking-wider">Group Compilation</span>
+                <span className="text-[#e07c30] text-[10px] font-black uppercase tracking-wider">
+                  {t("compilation.groupCompilation")}
+                </span>
               </div>
             </div>
 
@@ -190,8 +203,12 @@ export function CompilationReadyModal({
               {/* Card Header (Z-Indexed over gradient) */}
               <div className="relative z-10 flex justify-between items-start w-full">
                 <div className="flex flex-col min-w-0">
-                  <span className="text-white/60 text-[9px] font-black uppercase tracking-wider mb-0.5">Vlogger</span>
-                  <span className="text-white text-xs font-black truncate drop-shadow-md">{assignment.user?.name || "User"}</span>
+                  <span className="text-white/60 text-[9px] font-black uppercase tracking-wider mb-0.5">
+                    {t("compilation.vlogger")}
+                  </span>
+                  <span className="text-white text-xs font-black truncate drop-shadow-md">
+                    {assignment.user?.name || t("onboarding.displayNamePlaceholder")}
+                  </span>
                 </div>
                 <span className="text-white/95 text-[10px] font-mono font-bold drop-shadow-md bg-black/35 px-2 py-0.5 rounded-md border border-white/5">
                   {firstClipTime}
@@ -219,7 +236,7 @@ export function CompilationReadyModal({
               <div className="flex items-center gap-2.5 px-1">
                 <Calendar size={14} className="text-[#e07c30]" />
                 <span className="text-white/80 text-xs font-bold">
-                  {new Date(assignment.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  {new Date(assignment.date).toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
                 </span>
               </div>
               
@@ -233,7 +250,9 @@ export function CompilationReadyModal({
                   </div>
                   <div className="flex flex-col min-w-0">
                     <span className="text-white text-sm font-black leading-none mb-0.5">{compilationClips.length}</span>
-                    <span className="text-white/40 text-[9px] font-bold uppercase tracking-wider truncate">Moments</span>
+                    <span className="text-white/40 text-[9px] font-bold uppercase tracking-wider truncate">
+                      {t("compilation.moments")}
+                    </span>
                   </div>
                 </div>
                 <div 
@@ -245,7 +264,9 @@ export function CompilationReadyModal({
                   </div>
                   <div className="flex flex-col min-w-0">
                     <span className="text-white text-sm font-black leading-none mb-0.5 font-mono">{totalLengthStr}</span>
-                    <span className="text-white/40 text-[9px] font-bold uppercase tracking-wider truncate">Total Duration</span>
+                    <span className="text-white/40 text-[9px] font-bold uppercase tracking-wider truncate">
+                      {t("compilation.totalDuration")}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -258,7 +279,7 @@ export function CompilationReadyModal({
                 className="w-full py-3.5 rounded-[20px] bg-[#e07c30] text-black font-extrabold text-[15px] flex items-center justify-center gap-2 active:scale-[0.98] transition-all hover:opacity-95 shadow-lg cursor-pointer"
               >
                 <Play size={16} className="fill-black" />
-                Watch Full Vlog
+                {t("compilation.watchFullVlog")}
               </button>
 
               <button
@@ -267,7 +288,7 @@ export function CompilationReadyModal({
                 className="w-full py-3 rounded-[20px] border border-[#e07c30]/30 text-[#e07c30] font-bold text-xs flex items-center justify-center gap-1.5 active:scale-[0.98] transition-all hover:bg-[#e07c30]/10 cursor-pointer"
               >
                 <Sparkles size={13} />
-                Quick Highlights
+                {t("compilation.quickHighlights")}
               </button>
             </div>
           </div>
@@ -341,7 +362,7 @@ export function CompilationReadyModal({
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
                   src={compilationClips[currentClipIndex].thumbnailBlurUrl}
-                  alt="Loading clip..."
+                  alt={t("compilation.loadingClip")}
                   className={`absolute inset-0 w-full h-full object-cover z-10 blur-xl scale-[1.06] pointer-events-none ${isFrontFacing ? "-scale-x-100" : ""}`}
                 />
               )}
@@ -362,16 +383,20 @@ export function CompilationReadyModal({
           >
             <div className="flex flex-col">
               <span className="text-white text-sm font-bold tracking-tight drop-shadow-md">
-                {new Date(compilationClips[currentClipIndex].recordedAt).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                {new Date(compilationClips[currentClipIndex].recordedAt).toLocaleDateString(locale, { weekday: 'long', month: 'short', day: 'numeric' })}
               </span>
-              <span className="text-white/60 text-xs font-semibold mt-0.5">{compilationClips[currentClipIndex].location || "Earth"}</span>
+              <span className="text-white/60 text-xs font-semibold mt-0.5">
+                {compilationClips[currentClipIndex].location || t("compilation.earth")}
+              </span>
             </div>
             
             <div className="flex gap-2">
               {playbackMode === "highlights" && (
                 <div className="px-3 py-1.5 bg-[#e07c30]/20 border border-[#e07c30]/30 rounded-full flex items-center gap-1.5 mr-1 backdrop-blur-sm">
                   <Sparkles size={11} className="text-[#e07c30]" />
-                  <span className="text-[#e07c30] text-[10px] font-black uppercase tracking-widest">Highlights</span>
+                  <span className="text-[#e07c30] text-[10px] font-black uppercase tracking-widest">
+                    {t("compilation.highlights")}
+                  </span>
                 </div>
               )}
               <button 
@@ -401,7 +426,9 @@ export function CompilationReadyModal({
                 ))}
              </div>
             <span className="text-white/50 text-[10px] font-black tracking-widest uppercase">
-              {playbackMode === "highlights" ? "Fast Recap" : "Archive Playback"}
+              {playbackMode === "highlights" 
+                ? t("compilation.fastRecap") 
+                : t("compilation.archivePlayback")}
             </span>
           </div>
         </motion.div>

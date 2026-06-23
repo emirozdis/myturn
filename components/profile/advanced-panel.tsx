@@ -6,12 +6,14 @@ import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { SlidePanel } from "./slide-panel";
 import { signOut } from "next-auth/react";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 type AdvancedPanelProps = {
   onBack: () => void;
 };
 
 export function AdvancedPanel({ onBack }: AdvancedPanelProps) {
+  const { t } = useTranslation();
   const [disableAbr, setDisableAbr] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
   const [cacheCleared, setCacheCleared] = useState(false);
@@ -50,9 +52,7 @@ export function AdvancedPanel({ onBack }: AdvancedPanelProps) {
   };
 
   const handleClearAllData = async () => {
-    const confirmClear = window.confirm(
-      "Are you sure you want to clear all data? This will delete all local files, cached vlogs, preferences, and log you out."
-    );
+    const confirmClear = window.confirm(t("profile.confirmFactoryReset"));
     if (!confirmClear) return;
 
     setClearingAll(true);
@@ -73,15 +73,15 @@ export function AdvancedPanel({ onBack }: AdvancedPanelProps) {
   };
 
   return (
-    <SlidePanel title="Advanced Settings" onBack={onBack}>
+    <SlidePanel title={t("profile.advancedTitle")} onBack={onBack}>
       <div className="flex flex-col gap-6 px-4">
         {/* Toggle ABR Card */}
         <div style={glassStyle(0.04, 20, 0.08)} className="rounded-[18px] p-5 flex flex-col gap-4 border border-white/5">
           <div className="flex justify-between items-center">
             <div className="flex flex-col gap-0.5">
-              <span className="text-white text-[15px] font-bold">Adaptive Bitrate (ABR)</span>
+              <span className="text-white text-[15px] font-bold">{t("profile.abrTitle")}</span>
               <span className="text-white/45 text-[11px] leading-snug max-w-[200px]">
-                Streams multi-quality video dynamically based on network speed. Turn off to enforce original raw files.
+                {t("profile.abrBody")}
               </span>
             </div>
             
@@ -111,9 +111,9 @@ export function AdvancedPanel({ onBack }: AdvancedPanelProps) {
               <RefreshCcw size={18} className="text-[#e07c30]" />
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-white text-[14px] font-bold">Clear Video Cache</span>
+              <span className="text-white text-[14px] font-bold">{t("profile.clearCacheTitle")}</span>
               <span className="text-white/45 text-[11px] leading-snug">
-                Evicts all locally cached HLS streams and segments from your browser storage. Releases disk space.
+                {t("profile.clearCacheBody")}
               </span>
             </div>
           </div>
@@ -131,10 +131,10 @@ export function AdvancedPanel({ onBack }: AdvancedPanelProps) {
             ) : cacheCleared ? (
               <>
                 <Check size={14} strokeWidth={3} />
-                <span>Cache Evicted!</span>
+                <span>{t("profile.cacheEvicted")}</span>
               </>
             ) : (
-              "Evict Cache Storage"
+              t("profile.evictCache")
             )}
           </button>
         </div>
@@ -146,9 +146,9 @@ export function AdvancedPanel({ onBack }: AdvancedPanelProps) {
               <Trash2 size={18} className="text-red-400" />
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-white text-[14px] font-bold">Factory Reset App</span>
+              <span className="text-white text-[14px] font-bold">{t("profile.factoryResetTitle")}</span>
               <span className="text-white/45 text-[11px] leading-snug">
-                Nukes all browser caches, localized variables, preferences, and cookie tokens. Forces a complete clean reboot.
+                {t("profile.factoryResetBody")}
               </span>
             </div>
           </div>
@@ -160,7 +160,7 @@ export function AdvancedPanel({ onBack }: AdvancedPanelProps) {
             {clearingAll ? (
               <Loader2 size={14} className="animate-spin text-red-400" />
             ) : (
-              "Reset & Log Out"
+              t("profile.resetLogOut")
             )}
           </button>
         </div>

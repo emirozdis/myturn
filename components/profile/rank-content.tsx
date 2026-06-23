@@ -5,8 +5,10 @@ import { Crown } from "lucide-react";
 import { ACCENT } from "@/lib/theme";
 import { glassStyle } from "@/components/shared/glass-style";
 import { getVibeBadgeStyle } from "@/lib/vibe";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 export function RankContent({ user, calendarDays }: { user: any; vlogsCount: number; calendarDays: any[] }) {
+  const { t } = useTranslation();
   const xp = user.xp || 0;
   let nextRankGoal = 100;
   let prevRankGoal = 0;
@@ -38,20 +40,20 @@ export function RankContent({ user, calendarDays }: { user: any; vlogsCount: num
               <Crown size={22} color={vibeStyle.color} />
             </div>
             <div>
-              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>Current Level</p>
+              <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>{t("profile.currentLevel")}</p>
               <p style={{ color: vibeStyle.color, fontSize: 18, fontWeight: 800, margin: 0, lineHeight: 1 }}>{user.archetype}</p>
             </div>
           </div>
           <div style={{ textAlign: "right", marginLeft: "auto" }}>
-            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>Dynamic XP</p>
+            <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", margin: "0 0 2px" }}>{t("profile.dynamicXp")}</p>
             <p style={{ color: "#fff", fontSize: 20, fontWeight: 800, margin: 0, lineHeight: 1 }}>{user.xp}</p>
           </div>
         </div>
 
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 600 }}>Progress to next tier</span>
-            <span style={{ color: vibeStyle.color, fontSize: 11, fontWeight: 700 }}>{user.xp} / {nextRankGoal} XP</span>
+            <span style={{ color: "rgba(255,255,255,0.5)", fontSize: 11, fontWeight: 600 }}>{t("profile.progressToNext")}</span>
+            <span style={{ color: vibeStyle.color, fontSize: 11, fontWeight: 700 }}>{t("profile.xpGained", { xp: user.xp })} / {nextRankGoal} XP</span>
           </div>
           <div style={{ height: 8, background: "rgba(0,0,0,0.3)", borderRadius: 4, overflow: "hidden", border: "1px solid rgba(255,255,255,0.05)" }}>
             <motion.div
@@ -66,7 +68,7 @@ export function RankContent({ user, calendarDays }: { user: any; vlogsCount: num
 
       <div style={{ ...glassStyle(0.04, 20, 0.08), borderRadius: 18, padding: "16px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>Vlogging History</span>
+          <span style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{t("profile.vloggingHistory")}</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px 4px", textAlign: "center" as const }}>
           {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
@@ -90,3 +92,4 @@ export function RankContent({ user, calendarDays }: { user: any; vlogsCount: num
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+// ./components/vlogger-reveal-modal.tsx
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
@@ -7,6 +8,7 @@ import { getGroupDetails } from "@/actions/group";
 import { Avatar } from "@/components/shared/avatar";
 import { glassStyle } from "@/components/shared/glass-style";
 import { ACCENT } from "@/lib/theme";
+import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 interface VloggerRevealModalProps {
   groupId: string;
@@ -17,7 +19,6 @@ interface VloggerRevealModalProps {
 type Phase = "idle" | "spinning" | "syncing" | "converging" | "revealed";
 
 const ORBIT_RADIUS = 160;
-
 const CARD_OVERLAP = 28;
 
 export function VloggerRevealModal({
@@ -25,6 +26,7 @@ export function VloggerRevealModal({
   assignment,
   onClose,
 }: VloggerRevealModalProps) {
+  const { t, locale: activeLocale } = useTranslation();
   const [members, setMembers] = useState<any[]>([]);
   const [groupName, setGroupName] = useState<string>("");
   const [animationPhase, setPhase] = useState<Phase>("idle");
@@ -370,7 +372,7 @@ export function VloggerRevealModal({
         }}
       />
 
-      {/* Floating Header Controls (Always at Native Scale for Optimal Touch Targets) */}
+      {/* Floating Header Controls */}
       <AnimatePresence>
         {animationPhase === "revealed" && (
           <motion.div
@@ -394,26 +396,29 @@ export function VloggerRevealModal({
               <div className="flex items-center gap-1 mt-1 leading-none">
                 <span className="w-1.5 h-1.5 bg-[#30D158] rounded-full" />
                 <span className="text-white/50 text-[10px] font-medium">
-                  {finalMembers.length} members
+                  {finalMembers.length} {t("reveal.members")}
                 </span>
               </div>
             </div>
 
             <button
               onClick={() => {
+                const textMessage = t("reveal.shareMessage", {
+                  name: assignment.user?.name || t("onboarding.displayNamePlaceholder"),
+                  group: groupName || t("reveal.ourGroup")
+                });
+
                 if (navigator.share) {
                   navigator
                     .share({
                       title: "MyTurn Vlog Reveal",
-                      text: `${assignment.user?.name} is today's vlogger in ${
-                        groupName || "our group"
-                      }!`,
+                      text: textMessage,
                       url: window.location.href,
                     })
                     .catch(() => {});
                 } else {
                   navigator.clipboard.writeText(window.location.href);
-                  alert("Link copied!");
+                  alert(t("reveal.linkCopied"));
                 }
               }}
               style={glassStyle(0.04, 16, 0.08)}
@@ -480,13 +485,13 @@ export function VloggerRevealModal({
                   </div>
                   <div className="flex flex-col items-center gap-2">
                     <h1 className="font-bold text-[30px] sm:text-[34px] tracking-tight leading-tight flex items-center gap-2">
-                      <span className="text-white">Who's vlogging</span>
-                      <span className="text-[#e07c30]">today?</span>
+                      <span className="text-white">{t("reveal.whosVlogging")}</span>
+                      <span className="text-[#e07c30]">{t("reveal.todayAccent")}</span>
                     </h1>
                     <p className="text-white/50 text-[14px] sm:text-[15px] font-medium leading-relaxed">
-                      We pick one person at random each day.
+                      {t("reveal.wheelSubtitle").split("\n")[0]}
                       <br />
-                      Let's find out...
+                      {t("reveal.wheelSubtitle").split("\n")[1]}
                     </p>
                   </div>
                 </motion.div>
@@ -503,7 +508,7 @@ export function VloggerRevealModal({
                       style={glassStyle(0.04, 16, 0.08)}
                       className="px-4 py-1.5 rounded-full text-white text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 backdrop-blur-md"
                     >
-                      🔥 TODAY'S VLOGGER
+                      🔥 {t("reveal.todaysVlogger")}
                     </span>
                     {assignment.isVolunteer && (
                       <motion.span
@@ -512,7 +517,7 @@ export function VloggerRevealModal({
                         transition={{ delay: 0.3 }}
                         className="px-3 py-1 bg-gradient-to-b from-[#f05a7e] to-[#e84365] border-b-[2px] border-[#a01a35] rounded-full text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-[0_2px_8px_rgba(232,67,101,0.25)]"
                       >
-                        <HeartHandshake size={12} fill="white" /> Volunteered
+                        <HeartHandshake size={12} fill="white" /> {t("reveal.volunteered")}
                       </motion.span>
                     )}
                   </div>
@@ -650,17 +655,17 @@ export function VloggerRevealModal({
                 >
                   <div className="text-3xl mb-2 mt-6">🎉</div>
                   <h2 className="text-white text-[20px] font-bold mb-1.5 tracking-tight leading-none">
-                    Ready for action!
+                    {t("reveal.readyForAction")}
                   </h2>
                   <p className="text-white/50 text-[13px] leading-relaxed max-w-[260px] mb-5">
-                    Check back throughout the day to see all their captured moments.
+                    {t("reveal.checkBack")}
                   </p>
                   <button
                     onClick={handleClose}
                     style={{ background: `${ACCENT}` }}
                     className="w-full py-3.5 rounded-[20px] text-black font-black text-[16px] active:scale-[0.98] transition-all flex items-center justify-center"
                   >
-                    Awesome!
+                    {t("reveal.awesome")}
                   </button>
                 </motion.div>
               )}
@@ -694,13 +699,13 @@ export function VloggerRevealModal({
               let rawX: number, rawY: number, currentScale: number, currentOpacity: number;
 
               if (isSpinning) {
-                const a =
+                const angle =
                   (i * angleStep + 90) * (Math.PI / 180) +
                   (orbitAngle * Math.PI) / 180;
                 const isHi = highlightedIndex === i;
                 const spd = Math.min(speedRef.current / 16, 1);
-                rawX = Math.cos(a) * ORBIT_RADIUS;
-                rawY = Math.sin(a) * ORBIT_RADIUS;
+                rawX = Math.cos(angle) * ORBIT_RADIUS;
+                rawY = Math.sin(angle) * ORBIT_RADIUS;
                 currentScale = isHi ? 1.15 : 1.0;
                 currentOpacity = isHi ? 1 : 0.6 + (1 - spd) * 0.4;
                 zIndexValue = isHi ? 15 : zIndexValue;
