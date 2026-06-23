@@ -3,22 +3,17 @@
 
 import { useState, useCallback, useEffect, ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { NEUTRAL_PAGE_BG } from "../../lib/theme";
 import { AppHeader } from "@/components/app-header";
 import { GroupSwipePager } from "@/components/group-swipe-pager";
 import { BottomNavRouter } from "@/components/bottom-nav-router";
 import { getUserGroups, leaveGroup } from "@/actions/group";
-import { Loader2, Plus, Users, Copy, Check, Info, LogOut, Settings, Bell, Camera } from "lucide-react";
 import { addComment, getOrCreateTodayAssignment, getLatestCompilation } from "@/actions/vlog";
-import { glassStyle } from "@/components/shared/glass-style";
-import { ACCENT } from "@/lib/theme";
-import { Avatar } from "@/components/shared/avatar";
 import { VloggerRevealModal } from "@/components/vlogger-reveal-modal";
 import { AchievementOverlay } from "@/components/achievements/achievement-overlay";
 import { CompilationReadyModal } from "@/components/compilation-ready-modal";
 import { ACHIEVEMENT_MOCKS } from "@/components/achievements/achievement-data";
-import { UserProfileSheetContent } from "@/components/profile/user-profile-sheet-content";
 import {
   registerPushServiceWorker,
   subscribeToPush,
@@ -29,7 +24,6 @@ import posthog from "posthog-js";
 import { saveSubscription, deleteSubscription } from "@/actions/push";
 import { signOut, useSession } from "next-auth/react";
 import { LogoutConfirmSheet } from "@/components/profile/logout-confirm-sheet";
-import { BottomSheet } from "@/components/shared/bottom-sheet";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
 
 // Imports for Optimistic Tab rendering
@@ -41,6 +35,12 @@ import { RecordLoadingState } from "@/components/record/record-loading-state";
 
 // Custom Changelog release overlay
 import { NewFeaturesModal } from "@/components/new-features-modal";
+
+// Extracted layout components
+import { NotificationEnforcer } from "@/components/layout/notification-enforcer";
+import { NoGroupsScreen } from "@/components/layout/no-groups-screen";
+import { GroupSheetContent } from "@/components/layout/group-sheets";
+import { LeaveGroupSheet } from "@/components/layout/leave-group-sheet";
 
 const APP_VERSION = "2.2.1";
 
@@ -87,126 +87,6 @@ const getAssignmentDateStr = (asg: any) => {
     return "";
   }
 };
-
-function NotificationEnforcer({ children }: { children: ReactNode }) {
-  const { t } = useTranslation();
-  // Initialize states with a default optimistic assumptions to allow immediate first-paint SSR and avoid spinners
-  const [permission, setPermission] = useState<PermissionState | "default">("granted");
-  const [isSupported, setIsSupported] = useState(true);
-  const [initialized, setInitialized] = useState(false);
-
-  const [subscribingNotifications, setSubscribingNotifications] = useState(false);
-  const [notificationsError, setNotificationsError] = useState("");
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if (!("Notification" in window)) {
-        setIsSupported(false);
-      } else {
-        setPermission(window.Notification.permission);
-      }
-      setInitialized(true);
-    }
-  }, []);
-
-  const handleRequestNotifications = async () => {
-    setSubscribingNotifications(true);
-    setNotificationsError("");
-    try {
-      const result = await window.Notification.requestPermission();
-      setPermission(result);
-
-      if (result === "granted") {
-        const registration = await registerPushServiceWorker();
-        const key = getVapidPublicKey();
-        const convertedKey = urlBase64ToUint8Array(key);
-        const subscription = await subscribeToPush(registration, convertedKey);
-        await saveSubscription(subscription.toJSON() as any);
-      } else if (result === "denied") {
-        setNotificationsError(t("enforcer.blockedError"));
-      }
-    } catch (err: any) {
-      let msg = err?.message || t("onboarding.notifyError_failed");
-      if (msg.includes("Registration failed - push service error") || msg.includes("push service error")) {
-        msg = t("onboarding.notifyError_pushService");
-      }
-      setNotificationsError(msg);
-    } finally {
-      setSubscribingNotifications(false);
-    }
-  };
-
-  const isNotificationsGranted = permission === "granted";
-
-  if (initialized && isSupported && !isNotificationsGranted) {
-    return (
-      <div className="absolute inset-0 z-[100] flex flex-col pt-8 min-h-0 px-6 pb-6 bg-[#161618] sm:rounded-[40px] animate-fade-in select-none">
-        <div className="mb-4 flex-shrink-0 mt-4 text-center">
-          <div className="flex justify-center mb-6">
-            <motion.img
-              initial={{ scale: 0.8, rotate: -5 }}
-              animate={{ scale: [0.95, 1.05, 0.95], rotate: [-2, 2, -2] }}
-              transition={{ repeat: Infinity, duration: 6, ease: "easeInOut" }}
-              src="/assets/icons/notification.png"
-              alt="Notifications Required"
-              className="w-28 h-28 object-contain relative z-10 drop-shadow-2xl mb-4"
-            />
-          </div>
-          <h1 className="text-white text-3xl sm:text-[32px] font-bold tracking-tight mb-2">{t("enforcer.title")}</h1>
-          <p className="text-white/60 text-[13px] leading-relaxed max-w-[280px] mx-auto">
-            {t("enforcer.body")}
-          </p>
-        </div>
-
-        <div className="flex-1 flex flex-col justify-start max-w-sm mx-auto w-full gap-4">
-          <div
-            style={glassStyle(0.04, 16, 0.08)}
-            className="p-4 rounded-[22px] border border-white/5 flex flex-col gap-3"
-          >
-            <div className="flex items-center gap-3.5">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center border border-white/10"
-                style={{ background: isNotificationsGranted ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.03)" }}
-              >
-                <Bell size={20} className={isNotificationsGranted ? "text-emerald-400" : "text-white/60"} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <h4 className="text-white font-bold text-[14px]">{t("enforcer.channelTitle")}</h4>
-                <p className="text-white/40 text-[10.5px] leading-tight mt-0.5">
-                  {t("enforcer.channelBody")}
-                </p>
-              </div>
-            </div>
-            {notificationsError && <p className="text-red-500 text-[10.5px] font-semibold leading-relaxed whitespace-pre-line">{notificationsError}</p>}
-            <button
-              onClick={handleRequestNotifications}
-              disabled={isNotificationsGranted || subscribingNotifications}
-              style={{
-                background: isNotificationsGranted ? "rgba(34,197,94,0.15)" : ACCENT,
-                color: isNotificationsGranted ? "#22c55e" : "#000",
-                border: isNotificationsGranted ? "1px solid rgba(34,197,94,0.3)" : "none"
-              }}
-              className="w-full py-2.5 rounded-xl font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              {subscribingNotifications ? (
-                <Loader2 size={14} className="animate-spin text-black" />
-              ) : isNotificationsGranted ? (
-                <>
-                  <Check size={14} strokeWidth={3} />
-                  <span>{t("enforcer.activated")}</span>
-                </>
-              ) : (
-                t("enforcer.enableBtn")
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return <>{children}</>;
-}
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -727,70 +607,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
             <div className="relative z-10 flex-1 flex flex-col h-full justify-between overflow-hidden">
               {showNoGroupsScreen ? (
-                <div className="flex-1 flex flex-col justify-center px-6 py-8 relative overflow-hidden animate-fade-in">
-                  <div 
-                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full pointer-events-none filter blur-[90px] opacity-20"
-                    style={{ background: `radial-gradient(circle, ${ACCENT} 0%, transparent 70%)` }}
-                  />
-
-                  <div 
-                    style={glassStyle(0.04, 24, 0.08)}
-                    className="relative z-10 w-full rounded-[36px] border border-white/5 p-6 flex flex-col items-center text-center shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
-                  >
-                    <div className="relative mb-6">
-                      <div 
-                        className="absolute inset-0 rounded-full blur-xl scale-125 opacity-30"
-                        style={{ background: ACCENT }}
-                      />
-                      <div 
-                        className="w-16 h-16 rounded-2xl flex items-center justify-center border border-white/10 shadow-lg relative z-10 bg-white/[0.03] backdrop-blur-md"
-                      >
-                        <Users size={32} style={{ color: ACCENT }} className="animate-pulse" />
-                      </div>
-                    </div>
-
-                    <h3 className="text-white font-extrabold text-xl tracking-tight mb-2">
-                      {t("noGroups.title")}
-                    </h3>
-                    
-                    <p className="text-white/50 text-[13px] leading-relaxed max-w-[250px] mb-6">
-                      {t("noGroups.subtitle")}
-                    </p>
-
-                    <div className="w-full flex flex-col gap-3 text-left mb-6">
-                      {[
-                        { step: "1", title: t("noGroups.step1Title"), desc: t("noGroups.step1Desc") },
-                        { step: "2", title: t("noGroups.step2Title"), desc: t("noGroups.step2Desc") },
-                        { step: "3", title: t("noGroups.step3Title"), desc: t("noGroups.step3Desc") }
-                      ].map((item, idx) => (
-                        <div key={idx} className="flex gap-3.5 items-start p-3 rounded-2xl bg-white/[0.02] border border-white/5 shadow-inner">
-                          <div 
-                            className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-black flex-shrink-0"
-                            style={{ background: `${ACCENT}15`, color: ACCENT }}
-                          >
-                            {item.step}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-white font-bold text-xs leading-none mb-1">{item.title}</h4>
-                            <p className="text-white/40 text-[10px] leading-normal">{item.desc}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <button
-                      onClick={() => handleNav("social", "/social")}
-                      style={{ 
-                        background: `linear-gradient(135deg, ${ACCENT}, #ff9a44)`,
-                        boxShadow: "0 6px 24px rgba(224,124,48,0.3)"
-                      }}
-                      className="w-full py-4 rounded-2xl text-black font-extrabold text-sm active:scale-[0.98] transition-all hover:opacity-95 flex items-center justify-center gap-2"
-                    >
-                      <span>{t("noGroups.getStarted")}</span>
-                      <Plus size={16} strokeWidth={2.5} />
-                    </button>
-                  </div>
-                </div>
+                <NoGroupsScreen onNavigate={handleNav} />
               ) : (
                 <>
                   {showGroupHeader && (
@@ -889,222 +706,38 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               </div>
             </div>
 
-            <BottomSheet
-              isOpen={activeSheet !== null}
-              onClose={() => {
+            <GroupSheetContent
+              activeSheet={activeSheet}
+              sheetData={sheetData}
+              commentsList={commentsList}
+              commentInput={commentInput}
+              commentError={commentError}
+              submittingComment={submittingComment}
+              copySuccess={copySuccess}
+              onCommentInputChange={(value) => {
+                setCommentInput(value);
+                if (value.length > 30) {
+                  setCreateError(t("sheets.maxChars"));
+                } else {
+                  setCreateError("");
+                }
+              }}
+              onSubmitComment={postNewComment}
+              onCopyInviteCode={copyInviteCode}
+              onLeaveGroup={handleLeaveGroup}
+              onCloseSheet={() => {
                 setActiveSheet(null);
                 setCommentInput("");
                 setCreateError("");
               }}
-              zIndex={40}
-              className="p-6 max-h-[80%]"
-            >
-              <div className="flex-1 overflow-y-auto pr-0.5 scrollbar-hide flex flex-col gap-4">
-                {activeSheet === "views" && (
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center gap-2 mb-2 flex-shrink-0">
-                      <Info size={16} className="text-[#e07c30]" />
-                      <h3 className="text-white text-base font-bold">
-                        {t("sheets.seenBy", { count: sheetData?.views?.length || 0 })}
-                      </h3>
-                    </div>
-                    {sheetData?.views && sheetData.views.length > 0 ? (
-                      <div className="flex flex-col gap-2">
-                        {sheetData.views.map((view: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5"
-                          >
-                            <Avatar src={view.user?.image} name={view.user?.name} size={40} />
-                            <span className="text-white text-sm font-bold">
-                              {view.user?.name || "Group Friend"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-white/40 text-xs">{t("sheets.noViews")}</p>
-                    )}
-                  </div>
-                )}
+            />
 
-                {activeSheet === "comments" && (
-                  <div className="flex-1 flex flex-col justify-between gap-4">
-                    <div className="flex flex-col gap-3">
-                      <h3 className="text-white text-base font-bold flex-shrink-0">
-                        {t("sheets.comments", { count: commentsList.length })}
-                      </h3>
-                      <div className="flex flex-col gap-2 max-h-[280px] overflow-y-auto pr-1">
-                        {commentsList.map((comm: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="flex items-start gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5"
-                          >
-                            <Avatar src={comm.user?.image} name={comm.user?.name} size={32} />
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                              <span className="text-white text-xs font-bold">
-                                {comm.user?.name || "Friend"}
-                              </span>
-                              <span className="text-white/70 text-[11px] font-medium truncate w-full mt-0.5">
-                                {comm.text}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-auto flex flex-col gap-2 flex-shrink-0">
-                      {commentError && (
-                        <p className="text-red-500 text-[10px] font-semibold">{commentError}</p>
-                      )}
-                      <div className="relative flex items-center">
-                        <input
-                          type="text"
-                          maxLength={30}
-                          value={commentInput}
-                          onChange={(e) => {
-                            setCommentInput(e.target.value);
-                            if (e.target.value.length > 30) {
-                              setCreateError(t("sheets.maxChars"));
-                            } else {
-                              setCreateError("");
-                            }
-                          }}
-                          placeholder={t("sheets.commentPlaceholder")}
-                          className="w-full rounded-full py-3.5 pl-4 pr-12 text-white text-xs outline-none bg-white/5 border border-white/10 focus:border-[#e07c30]/50 placeholder:text-white/30"
-                        />
-                        <button
-                          onClick={postNewComment}
-                          disabled={submittingComment || !commentInput.trim()}
-                          style={{ background: ACCENT }}
-                          className="absolute right-1.5 w-8 h-8 rounded-full flex items-center justify-center text-black font-bold disabled:opacity-50"
-                        >
-                          {submittingComment ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <Plus size={14} />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeSheet === "group-info" && (
-                  <div className="flex flex-col gap-6">
-                    <div className="flex flex-col gap-1">
-                      <h3 className="text-white text-lg font-bold">{sheetData?.groupName}</h3>
-                      <span className="text-white/45 text-xs font-medium">
-                        {t("sheets.groupDetails")}
-                      </span>
-                    </div>
-
-                    <div
-                      style={glassStyle(0.04, 16, 0.08)}
-                      className="rounded-2xl p-4 flex justify-between items-center"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-white/40 text-[9px] font-bold uppercase tracking-wider mb-1">
-                          {t("sheets.inviteCode")}
-                        </span>
-                        <span className="text-white font-mono text-xl font-extrabold tracking-widest">
-                          {sheetData?.inviteCode}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => copyInviteCode(sheetData?.inviteCode)}
-                        style={{ background: copySuccess ? "#22c55e" : ACCENT }}
-                        className="px-4 py-2 rounded-xl text-black text-xs font-bold flex items-center gap-1.5 transition-colors"
-                      >
-                        {copySuccess ? <Check size={12} strokeWidth={3} /> : <Copy size={12} />}
-                        {t("sheets.copyCode")}
-                      </button>
-                    </div>
-
-                    <div className="flex flex-col gap-3">
-                      <h4 className="text-white/50 text-[10px] font-bold uppercase tracking-widest mb-1">
-                        {t("sheets.groupDirectory", { count: sheetData?.members?.length || 0 })}
-                      </h4>
-                      <div className="flex flex-col gap-2 max-h-[180px] overflow-y-auto">
-                        {sheetData?.members?.map((member: any) => (
-                          <div
-                            key={member.user.id}
-                            className="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.03] border border-white/5"
-                          >
-                            <Avatar
-                              src={member.user.image}
-                              name={member.user.name}
-                              size={40}
-                            />
-                            <div className="flex flex-col">
-                              <span className="text-white text-sm font-bold">
-                                {member.user.name}
-                              </span>
-                              <span className="text-white/45 text-xs">
-                                @{member.user.handle}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={handleLeaveGroup}
-                      style={glassStyle(0.04, 24, 0.08)}
-                      className="w-full mt-4 py-3.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl flex items-center justify-center gap-2 font-bold text-sm transition hover:bg-red-500/20 active:scale-95"
-                    >
-                      <LogOut size={16} />
-                      {t("sheets.leaveGroup")}
-                    </button>
-                  </div>
-                )}
-
-                {activeSheet === "user-profile" && (
-                  <UserProfileSheetContent userId={sheetData?.userId} />
-                )}
-              </div>
-            </BottomSheet>
-
-            <BottomSheet
+            <LeaveGroupSheet
               isOpen={showLeaveConfirm}
               onClose={() => setShowLeaveConfirm(false)}
-              zIndex={60}
-              className="p-6"
-            >
-              <div className="flex flex-col items-center text-center gap-4">
-                <div
-                  className="w-14 h-14 rounded-full flex items-center justify-center border border-red-500/20 shadow-sm"
-                  style={{ background: `rgba(239,68,68,0.15)` }}
-                >
-                  <LogOut size={24} className="text-red-500" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <h3 className="text-white text-lg font-bold">{t("sheets.leaveGroupQuestion")}</h3>
-                  <p className="text-white/50 text-xs leading-relaxed max-w-[280px]">
-                    {t("sheets.leaveWarning")}
-                  </p>
-                </div>
-                <div className="w-full flex gap-3 mt-4">
-                  <button
-                    type="button"
-                    onClick={() => setShowLeaveConfirm(false)}
-                    className="flex-1 py-3.5 rounded-xl text-white font-black text-sm bg-white/[0.06] border border-white/10 border-b-[4px] border-white/5 hover:bg-white/[0.1] active:translate-y-[2px] active:border-b-[2px] transition-all"
-                  >
-                    {t("common.cancel")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmLeaveGroup}
-                    disabled={leavingGroup}
-                    className="flex-1 py-3.5 rounded-xl text-white font-black text-sm bg-gradient-to-b from-red-500 to-red-600 border-b-[4px] border-red-800 hover:brightness-110 active:translate-y-[2px] active:border-b-[2px] active:brightness-100 transition-all flex justify-center items-center gap-2 shadow-[0_4px_12px_rgba(239,68,68,0.2)] disabled:opacity-50 disabled:translate-y-0 disabled:border-b-[4px]"
-                  >
-                    {leavingGroup ? <Loader2 size={16} className="animate-spin" /> : t("sheets.leaveBtn")}
-                  </button>
-                </div>
-              </div>
-            </BottomSheet>
+              onConfirm={confirmLeaveGroup}
+              leavingGroup={leavingGroup}
+            />
 
             <LogoutConfirmSheet
               isOpen={showLogoutConfirm}

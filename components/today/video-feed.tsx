@@ -1,13 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { ACCENT } from "@/lib/theme";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MapPin, Heart, MessageCircle, Volume2, VolumeX, Maximize, Minimize, Camera, Loader2, Rewind, FastForward, Pause, HeartHandshake
+  MapPin, Volume2, VolumeX, Rewind, FastForward, Pause
 } from "lucide-react";
-import { Avatar } from "@/components/shared/avatar";
 import { CommentsSheet } from "./comments-sheet";
 import { ViewsSheet } from "./views-sheet";
 import { glassStyle } from "../shared/glass-style";
@@ -15,6 +12,10 @@ import { useHls } from "@/components/shared/use-hls";
 import { PhotoResponsesOverlay } from "@/components/shared/photo-responses-overlay";
 import { PhotoCaptureModal } from "./photo-capture-modal";
 import { useTranslation } from "@/lib/i18n/LanguageProvider";
+import { SleepModeView } from "./sleep-mode-view";
+import { NoClipView } from "./no-clip-view";
+import { VideoActionBar } from "./video-action-bar";
+import { VideoStoryIndicators } from "./video-story-indicators";
 
 // Isolated component used to cleanly mount `useHls` while hiding it securely from normal rendering boundaries.
 // `useHls` natively kicks off preload network requests simply by binding the src. 
@@ -141,7 +142,6 @@ export function VideoFeed({
   volunteerError = "",
   onToggleVolunteer,
 }: VideoFeedProps) {
-  const router = useRouter();
   const { t } = useTranslation();
   const [isMuted, setIsMuted] = useState(true);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
@@ -365,143 +365,23 @@ export function VideoFeed({
       <PrefetchVideo src={nextClipUrl} />
 
       {isSleepMode && !activeClipUrl ? (
-        <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
-          <div
-            className="absolute inset-0 bg-cover bg-center z-0"
-            style={{ backgroundImage: "url('/assets/images/resting.jpeg')" }}
-          />
-
-          <div className="absolute top-0 left-0 right-0 h-[60%] overflow-hidden z-10 pointer-events-none">
-            <div
-              className="absolute inset-0 bg-cover bg-center filter blur-[28px] scale-[1.08] origin-top"
-              style={{
-                backgroundImage: "url('/assets/images/resting.jpeg')",
-                maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
-                WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent" />
-          </div>
-
-          <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-6 text-center">
-            <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">{t("today.restingTitle")}</h2>
-            <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
-              {t("today.restingBody")}
-            </p>
-            <div className="flex flex-col gap-3.5 w-full mt-2">
-              <button
-                onClick={(e) => { e.stopPropagation(); router.push("/streaks"); }}
-                style={glassStyle(0.08, 16, 0.12)}
-                className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center pointer-events-auto border border-white/10"
-              >
-                {t("today.watchLastVlog")}
-              </button>
-
-              <button
-                onClick={(e) => { e.stopPropagation(); onToggleVolunteer(); }}
-                disabled={isVolunteering || !canVolunteer}
-                className={`w-full py-3.5 font-extrabold rounded-2xl text-xs flex items-center justify-center pointer-events-auto transition-all duration-300 ease-out active:translate-y-[2px] ${
-                  hasVolunteeredForTomorrow
-                    ? "bg-gradient-to-b from-[#f05a7e] to-[#e84365] text-white border-b-[4px] border-[#a01a35] active:border-b-[2px] hover:brightness-110 shadow-[0_4px_12px_rgba(232,67,101,0.25)]"
-                    : !canVolunteer
-                    ? "bg-[#111112] text-white/40 border border-white/5 cursor-not-allowed"
-                    : "bg-[#222225] hover:bg-[#2b2b2f] text-white border-b-[4px] border-[#111112] active:border-b-[2px]"
-                }`}
-              >
-                <AnimatePresence mode="popLayout" initial={false}>
-                  {isVolunteering ? (
-                    <motion.div
-                      key="loading"
-                      initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
-                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
-                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                      className="flex items-center gap-2"
-                    >
-                      <Loader2 size={16} className="animate-spin" />
-                      <span>{t("today.updating")}</span>
-                    </motion.div>
-                  ) : hasVolunteeredForTomorrow ? (
-                    <motion.div
-                      key="volunteered"
-                      initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
-                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
-                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                      className="flex items-center gap-2"
-                    >
-                      <HeartHandshake size={16} />
-                      <span>{t("today.volunteeredForTomorrow")}</span>
-                    </motion.div>
-                  ) : !canVolunteer ? (
-                    <motion.div
-                      key="ineligible"
-                      initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
-                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
-                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                      className="flex items-center gap-2"
-                    >
-                      <HeartHandshake size={16} className="opacity-50" />
-                      <span>{volunteerEligibilityReason || t("today.notEligibleVolunteer")}</span>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="unvolunteered"
-                      initial={{ opacity: 0, y: 8, filter: "blur(2px)" }}
-                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, y: -8, filter: "blur(2px)" }}
-                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                      className="flex items-center gap-2"
-                    >
-                      <HeartHandshake size={16} />
-                      <span>{t("today.volunteerForTomorrow")}</span>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </button>
-
-              <AnimatePresence>
-                {volunteerError && (
-                  <motion.span
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="text-red-400 text-[10px] font-semibold mt-0.5"
-                  >
-                    {volunteerError}
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-        </div>
+        <SleepModeView
+          hasVolunteeredForTomorrow={hasVolunteeredForTomorrow}
+          canVolunteer={canVolunteer}
+          volunteerEligibilityReason={volunteerEligibilityReason}
+          isVolunteering={isVolunteering}
+          volunteerError={volunteerError}
+          onToggleVolunteer={onToggleVolunteer}
+        />
       ) : activeClipUrl ? (
         <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-black touch-pan-y">
           {/* Top Story Indicators */}
-          {activeSlotClips.length > 1 && (
-            <div className="absolute top-2.5 left-6 right-6 flex gap-2 z-40 pointer-events-none">
-              {activeSlotClips.map((c, idx) => {
-                const isActive = idx === currentClipSubIndex;
-                const isDone = idx < currentClipSubIndex;
-                return (
-                  <div key={c.id || idx} className="h-[3px] flex-1 rounded-full overflow-hidden bg-white/20 shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-                    {isActive ? (
-                      <div
-                        className="h-full bg-white rounded-full"
-                        style={{
-                          width: `${videoProgress}%`,
-                          transition: gesture !== "none" ? "none" : "width 0.1s linear"
-                        }}
-                      />
-                    ) : isDone ? (
-                      <div className="h-full bg-white rounded-full" style={{ width: "100%" }} />
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <VideoStoryIndicators
+            clips={activeSlotClips}
+            currentClipSubIndex={currentClipSubIndex}
+            videoProgress={videoProgress}
+            gesture={gesture}
+          />
 
           {/* Invisible Tap Zones for Manual Forward/Back Control */}
           <div className="absolute inset-y-0 left-0 w-[25%] z-20 pointer-events-auto" onClick={(e) => {
@@ -572,69 +452,14 @@ export function VideoFeed({
           </AnimatePresence>
         </div>
       ) : (
-        <div className="absolute inset-0 bg-[#060814] z-0 flex flex-col items-center justify-start p-6 text-center overflow-hidden">
-          <div
-            className="absolute inset-0 bg-cover bg-center z-0"
-            style={{ backgroundImage: "url('/assets/images/no-clip-yet.jpeg')" }}
-          />
-
-          <div className="absolute top-0 left-0 right-0 h-[60%] overflow-hidden z-10 pointer-events-none">
-            <div
-              className="absolute inset-0 bg-cover bg-center filter blur-[28px] scale-[1.08] origin-top"
-              style={{
-                backgroundImage: "url('/assets/images/no-clip-yet.jpeg')",
-                maskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
-                WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0) 100%)",
-              }}
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/55 to-transparent" />
-          </div>
-
-          <div className="relative z-20 flex flex-col items-center max-w-[280px] mt-4 text-center">
-            {isCurrentUserVlogger ? (
-              <>
-                <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">{t("today.itsYourTurn")}</h2>
-                <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
-                  {t("today.itsYourTurnBody")}
-                </p>
-                <button
-                  onClick={() => router.push("/record")}
-                  style={{ background: ACCENT }}
-                  className="w-full py-3.5 text-black font-extrabold rounded-2xl text-sm transition-all active:scale-[0.98]"
-                >
-                  {t("today.recordNow")}
-                </button>
-              </>
-            ) : (
-              <>
-                <h2 className="text-white text-lg font-extrabold tracking-tight mb-2">
-                  {t("today.waitingForVlogger", { name: assignment?.user?.name || "Vlogger" })}
-                </h2>
-                <p className="text-white/60 text-[12px] leading-relaxed mb-6 font-medium">
-                  {assignment?.clips?.length > 0
-                    ? t("today.noClipsYet")
-                    : t("today.noClipsTodayYet")}
-                </p>
-                <button
-                  onClick={onPoke}
-                  disabled={poking || pokeCooldown > 0 || hasPostedInCurrentSlot}
-                  style={glassStyle(0.08, 16, 0.12)}
-                  className="w-full py-3 text-white font-extrabold rounded-2xl text-xs active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50 pointer-events-auto"
-                >
-                  {pokeCooldown > 0 ? (
-                    <span>{t("today.pokeCooldown", { time: `${Math.floor(pokeCooldown / 60)}:${(pokeCooldown % 60).toString().padStart(2, "0")}` })}</span>
-                  ) : hasPostedInCurrentSlot ? (
-                    <span>{t("today.vloggerAlreadyPosted")}</span>
-                  ) : poking ? (
-                    <span>{t("today.poking")}</span>
-                  ) : (
-                    <span>{t("today.pokeVlogger")}</span>
-                  )}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
+        <NoClipView
+          isCurrentUserVlogger={isCurrentUserVlogger}
+          assignment={assignment}
+          poking={poking}
+          pokeCooldown={pokeCooldown}
+          hasPostedInCurrentSlot={hasPostedInCurrentSlot}
+          onPoke={onPoke}
+        />
       )}
 
       <div className="absolute inset-0 z-0 pointer-events-none bg-gradient-to-b from-black/60 via-transparent to-black/80" />
@@ -701,68 +526,23 @@ export function VideoFeed({
           )}
 
           {activeClipUrl && (
-            <div className="mt-auto relative z-30 flex flex-col w-full pointer-events-none">
-              <div className="py-2 px-3.5 flex items-center justify-between flex-shrink-0 pointer-events-auto">
-                <div
-                  onClick={onOpenViews}
-                  className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer"
-                >
-                  <div className="flex -space-x-1.5">
-                    {displayViews.slice(0, 3).map((view: any, idx: number) => (
-                      <div key={view.id || idx} className="relative z-10 border border-black rounded-full">
-                        <Avatar src={view.user?.image} name={view.user?.name} size={20} />
-                      </div>
-                    ))}
-                    {displayViews.length === 0 && (
-                      <span className="text-white/40 text-[9px] font-semibold pl-1">0 {t("today.views")}</span>
-                    )}
-                  </div>
-                  {displayViews.length > 0 && (
-                    <span className="text-white/65 text-[9px] font-bold tracking-tight pl-1.5">
-                      {displayViews.length} {displayViews.length > 1 ? t("today.viewers") : t("today.viewer")}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3 pr-2">
-                  <button onClick={onLike} className="flex items-center gap-1 cursor-pointer">
-                    <Heart
-                      size={16}
-                      className="transition-transform duration-200"
-                      style={{
-                        fill: liked ? "#ff6b6b" : "none",
-                        color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)",
-                        transform: liked ? "scale(1.2)" : "scale(1)",
-                      }}
-                    />
-                    <span
-                      className="text-[11px] font-bold drop-shadow-md"
-                      style={{ color: liked ? "#ff6b6b" : "rgba(255,255,255,0.9)" }}
-                    >
-                      {likeCount}
-                    </span>
-                  </button>
-                  <span className="w-[1px] h-3.5 bg-white/20" />
-                  <button onClick={onOpenComments} className="flex items-center gap-1 cursor-pointer">
-                    <MessageCircle size={16} className="text-white/95" />
-                    <span className="text-[11px] font-bold text-white/95">{commentList.length}</span>
-                  </button>
-                  <span className="w-[1px] h-3.5 bg-white/20" />
-                  <button onClick={onPhotoResponseClick} disabled={uploadingPhoto || hasResponded} className="flex items-center gap-1 cursor-pointer disabled:opacity-50">
-                    {uploadingPhoto ? <Loader2 size={16} className="text-white/95 animate-spin" /> : <Camera size={16} className="text-white/95" />}
-                    <span className="text-[11px] font-bold text-white/95">{activeClip?.photoResponses?.length || 0}</span>
-                  </button>
-                  <span className="w-[1px] h-3.5 bg-white/20" />
-                  <button onClick={(e) => { e.stopPropagation(); onToggleExpand(); }} className="flex items-center gap-1 cursor-pointer hover:scale-110 transition-transform">
-                    {isVideoExpanded ? (
-                      <Minimize size={16} className="text-white/95" />
-                    ) : (
-                      <Maximize size={16} className="text-white/95" />
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <VideoActionBar
+              activeClip={activeClip}
+              activeSlotClips={activeSlotClips}
+              displayViews={displayViews}
+              liked={liked}
+              likeCount={likeCount}
+              commentList={commentList}
+              uploadingPhoto={uploadingPhoto}
+              hasResponded={hasResponded}
+              isVideoExpanded={isVideoExpanded}
+              videoProgress={videoProgress}
+              onLike={onLike}
+              onOpenComments={onOpenComments}
+              onOpenViews={onOpenViews}
+              onPhotoResponseClick={onPhotoResponseClick}
+              onToggleExpand={onToggleExpand}
+            />
           )}
         </>
       )}
