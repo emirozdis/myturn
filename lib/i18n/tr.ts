@@ -619,6 +619,7 @@ export const trTranslations = {
     linkCopied: "Bağlantı kopyalandı!",
     shareMessage: "{name} bugünün vlogger'ı ({group} grubunda)!",
     ourGroup: "grubumuz",
+    tapToReveal: "Başlatmak için ortaya dokun",
   },
 
   // ─── Shell Enforcer, Groups & Sheets ────────────────────────────────────

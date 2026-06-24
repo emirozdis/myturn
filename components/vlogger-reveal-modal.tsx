@@ -613,7 +613,7 @@ export function VloggerRevealModal({
 
               <AnimatePresence>
                 {animationPhase === "idle" && (
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30">
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 flex flex-col items-center gap-4">
                     <motion.button
                       key="reveal-btn"
                       initial={{ opacity: 0, scale: 0.8 }}
@@ -630,6 +630,15 @@ export function VloggerRevealModal({
                     >
                       ?
                     </motion.button>
+                    <motion.p
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.4, delay: 0.2 }}
+                      className="text-white/60 text-[13px] font-semibold tracking-wide"
+                    >
+                      {t("reveal.tapToReveal")}
+                    </motion.p>
                   </div>
                 )}
               </AnimatePresence>

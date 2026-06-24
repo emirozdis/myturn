@@ -645,6 +645,7 @@ export const enTranslations = {
     linkCopied: "Link copied!",
     shareMessage: "{name} is today's vlogger in {group}!",
     ourGroup: "our group",
+    tapToReveal: "Tap the center to start",
   },
 
   // ─── Shell Enforcer, Groups & Sheets ────────────────────────────────────
