@@ -76,9 +76,9 @@ Pushing this parent does not itself deploy every component. Existing hosting int
 
 - [Transcoder migration guide](TRANSCODER_MIGRATION_GUIDE.md)
 - [Transcoder performance queries](transcoder-performance-report.sql)
-- [Backend setup](myturn/README.md)
-- [Mobile setup](myturn-app/README.md)
-- [Supervisor setup](supervisor/README.md)
-- [Transcoder setup](transcoder/README.md)
+- [Backend setup](https://github.com/emirozdis/myturn-backend/blob/main/README.md)
+- [Mobile setup](https://github.com/emirozdis/myturn-app/blob/main/README.md)
+- [Supervisor setup](https://github.com/emirozdis/myturn-supervisor/blob/main/README.md)
+- [Transcoder setup](https://github.com/emirozdis/ffmpeg-api/blob/main/README.md)
 
 All repositories are private. No open-source license is granted by this repository.
