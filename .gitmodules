@@ -1,0 +1,28 @@
+[submodule "myturn"]
+	path = myturn
+	url = git@github.com:emirozdis/myturn-backend.git
+	branch = main
+[submodule "myturn-app"]
+	path = myturn-app
+	url = git@github.com:emirozdis/myturn-app.git
+	branch = main
+[submodule "myturn-cron-worker"]
+	path = myturn-cron-worker
+	url = git@github.com:emirozdis/myturn-cron-worker.git
+	branch = main
+[submodule "myturn-wrapped-remotion"]
+	path = myturn-wrapped-remotion
+	url = git@github.com:emirozdis/myturn-wrapped-remotion.git
+	branch = main
+[submodule "supervisor"]
+	path = supervisor
+	url = git@github.com:emirozdis/myturn-supervisor.git
+	branch = main
+[submodule "transcoder"]
+	path = transcoder
+	url = git@github.com:emirozdis/ffmpeg-api.git
+	branch = main
+[submodule "wrapped-scene-storyboard"]
+	path = wrapped-scene-storyboard
+	url = git@github.com:emirozdis/myturn-wrapped-storyboard.git
+	branch = main

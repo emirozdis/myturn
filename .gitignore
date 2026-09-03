@@ -1,0 +1,31 @@
+# Local credentials and production data
+.env
+.env.*
+!.env.example
+.dev.vars*
+.production-backups/
+.production-db-backups/
+*.dump
+*.backup
+*.pem
+*.key
+*.p12
+*.p8
+*.jks
+credentials.json
+
+# Dependencies, generated outputs, and local tooling
+node_modules/
+dist/
+build/
+out/
+tmp/
+.next/
+.expo/
+.wrangler/
+.vercel/
+.idea/
+.DS_Store
+*.log
+*.tsbuildinfo
+*.tar
